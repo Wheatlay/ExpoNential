@@ -37,3 +37,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t exponential-ci .
+
+  # Public demo on Render: deployed only from main and only after tests and the image build pass.
+  deploy-demo:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy hook
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "RENDER_DEPLOY_HOOK not set, skipping"; exit 0; fi
+          curl -fsS -X POST "$HOOK" > /dev/null && echo "Render deploy triggered"
