@@ -1,0 +1,53 @@
+project: Exponential
+kind: flagship_code_showcase
+repository:
+  url: https://github.com/Wheatlay/ExpoNential
+  visibility: pending_batch_review
+demo:
+  url: null
+  status: pending_render_connection
+  health_endpoint: /health
+  data: fully_synthetic
+  model_output: precomputed_and_labelled
+  cold_start_warning: Render free services may spin down while idle; the first request can take up to a minute.
+technology:
+  - TypeScript
+  - Node.js 22
+  - Fastify
+  - PostgreSQL 16 (LISTEN/NOTIFY)
+  - Drizzle ORM
+  - React 19 / TanStack Query / Vite
+  - dnd-kit
+  - Model Context Protocol (Streamable HTTP)
+  - Server-Sent Events
+  - Web Push / iCal
+  - Zod
+  - Vitest
+  - Docker / Render / Neon
+architecture_summary: >-
+  Linear-style issue tracker built around Claude Code. A Fastify API with a
+  Postgres store streams realtime changes to a React board over SSE, and exposes
+  an MCP server so an agent can read issues and write structured analyses with
+  decisions that humans click. Commits and deploys are linked to issues by
+  webhooks. The hosted demo runs a labelled replay instead of a live model.
+guided_recruiter_flow:
+  - Open the demo from the landing page; the guided tour starts on ACME-12.
+  - Click Analyze; the replayed agent writes a structured analysis.
+  - Read the analysis and pick one of the decisions.
+  - Click Start work and follow the replayed commits, worklog and deploy in the activity.
+  - Open the Sprint review to see change notes become the sprint summary.
+screenshots: []
+verified_claims:
+  - Issue board with drag and drop, sub-issues, labels, priorities and sprints.
+  - Realtime updates over Server-Sent Events fed by Postgres LISTEN/NOTIFY.
+  - MCP server for issues, comments, relations, analyses and change notes.
+  - Structured AI analysis with decisions that humans click.
+  - Worklog, commit and deploy linking by issue ID.
+  - Sprint review built from human and technical change notes.
+  - Meeting polls and calendar feed.
+  - English and Polish UI.
+limitations:
+  - Hosted demo disables GitHub login, API tokens and MCP, the local agent, integrations and administration.
+  - The demo agent is a replay of recorded output; no model is called.
+  - Shared sandbox that resets every hour.
+  - Single-instance by design.

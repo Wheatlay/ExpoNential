@@ -1,0 +1,6 @@
+{
+  "name": "tracker",
+  "displayName": "Tracker",
+  "description": "Analiza zgłoszeń, zamykanie (HUMAN/TECH) i ślad pracy w zgłoszeniu dla projektów trackera zespołu",
+  "author": { "name": "Tracker" }
+}

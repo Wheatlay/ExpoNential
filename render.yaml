@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: exponential-demo
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DEMO_MODE
+        value: "1"
+      - key: NODE_ENV
+        value: production
+      - key: APP_TIMEZONE
+        value: Europe/Warsaw
+      - key: APP_LOCALE
+        value: en
+      - key: UPLOADS_DIR
+        value: /tmp/uploads
+      - key: PUBLIC_REPO_URL
+        value: https://github.com/Wheatlay/ExpoNential
+      - key: BASE_URL
+        value: https://exponential-demo.onrender.com
+      - key: DATABASE_URL
+        sync: false

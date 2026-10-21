@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+data
+
+# Local agent notes (not part of the repo)
+CLAUDE.md

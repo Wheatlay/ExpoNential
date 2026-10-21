@@ -1,0 +1,14 @@
+# Lokalny dev: sama baza. Aplikację odpalasz przez `npm run dev` + `npm run dev:web`.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tracker
+      POSTGRES_PASSWORD: tracker
+      POSTGRES_DB: tracker
+    ports:
+      - "5434:5432"
+    volumes:
+      - tracker-db:/var/lib/postgresql/data
+volumes:
+  tracker-db:
