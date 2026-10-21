@@ -35,15 +35,20 @@ export function restartTour() {
   navigate(TOUR_ISSUE);
 }
 
-type Step = { page: 'issue' | 'review'; target: string; text: string };
+type Step = { page: 'issue' | 'review'; target: string; fallback?: string; text: string };
 const steps = (): Step[] => [
-  { page: 'issue', target: 'analyze', text: t('Meet ACME-12, a real-looking bug. Click Analyze — an AI agent reads the code and reports back. You stay in charge.') },
+  // Podczas analizy przycisk Analyze znika (zastępuje go "Waiting"): dymek trzyma się wtedy sekcji analizy.
+  { page: 'issue', target: 'analyze', fallback: 'analysis', text: t('Meet ACME-12, a real-looking bug. Click Analyze — an AI agent reads the code and reports back. You stay in charge.') },
   { page: 'issue', target: 'analysis', text: t('The agent splits its findings into sections and asks you to decide. Pick an option — that\'s the human call.') },
   { page: 'issue', target: 'start-work', text: t('Start work hands the agent a ready prompt. In production this opens Claude Code; here, run the replay.') },
   { page: 'issue', target: 'activity', text: t('Watch the agent work: worklog, commits, deploy and change notes land on the issue in real time.') },
   { page: 'review', target: 'review', text: t('At the end of the sprint the human-readable change notes become your review — the report writes itself.') },
 ];
 const STEP_COUNT = 5;
+
+const findTarget = (step: Step) =>
+  document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`)
+  ?? (step.fallback ? document.querySelector<HTMLElement>(`[data-tour="${step.fallback}"]`) : null);
 
 export function DemoTour() {
   const s = useSyncExternalStore((fn) => { subs.push(fn); return () => { subs = subs.filter((x) => x !== fn); }; }, get);
@@ -58,21 +63,34 @@ export function DemoTour() {
   const onPage = step.page === 'issue' ? path.toLowerCase() === TOUR_ISSUE.toLowerCase() : path.startsWith('/review');
   const active = !s.done && onPage;
 
-  // Elementy pojawiają się z opóźnieniem (dane, animacje): sprawdzamy ich położenie co chwilę.
+  // Cel przesuwa się, gdy rozwija się analiza albo strona się przewija: śledzimy go co klatkę,
+  // żeby dymek jechał razem z nim zamiast doskakiwać z opóźnieniem.
   useEffect(() => {
     if (!active) return;
-    const on = () => setTick((n) => n + 1);
-    const id = setInterval(on, 400);
-    window.addEventListener('resize', on);
-    window.addEventListener('scroll', on, true);
-    return () => { clearInterval(id); window.removeEventListener('resize', on); window.removeEventListener('scroll', on, true); };
-  }, [active]);
+    let last = '';
+    let id = requestAnimationFrame(function loop() {
+      const r = findTarget(step)?.getBoundingClientRect();
+      const key = r ? `${r.left}:${r.top}:${r.bottom}:${window.innerWidth}:${window.innerHeight}` : 'none';
+      if (key !== last) { last = key; setTick((n) => n + 1); }
+      id = requestAnimationFrame(loop);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [active, step.target]);
+
+  // Krok 1 prosi o kliknięcie Analyze: kiedy analiza się skończy (znika "Waiting", są dane),
+  // przechodzimy dalej sami. Tylko przy tej zmianie, żeby Back z kroku 2 dało się użyć.
+  const wasWaiting = useRef(false);
+  useEffect(() => {
+    const waiting = !!issue?.analysisRequestedAt;
+    if (wasWaiting.current && !waiting && issue?.analysisData && s.step === 0 && active) set({ step: 1, done: false });
+    wasWaiting.current = waiting;
+  }, [issue, s.step, active]);
 
   const scrolledFor = useRef<string>('');
   useLayoutEffect(() => {
     document.querySelectorAll('[data-tour-on]').forEach((e) => e.removeAttribute('data-tour-on'));
     if (!active) { setPos(null); return; }
-    const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
+    const el = findTarget(step);
     const h = box.current?.offsetHeight ?? 180;
     const w = box.current?.offsetWidth ?? 320;
     const vw = window.innerWidth, vh = window.innerHeight;
@@ -80,10 +98,17 @@ export function DemoTour() {
     el.setAttribute('data-tour-on', '');
     if (scrolledFor.current !== `${s.step}:${path}`) { scrolledFor.current = `${s.step}:${path}`; el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     const r = el.getBoundingClientRect();
-    const left = Math.min(Math.max(8, r.left), Math.max(8, vw - w - 8));
+    let left = Math.min(Math.max(8, r.left), Math.max(8, vw - w - 8));
     let top = r.bottom + 10;
     if (top + h > vh - 8) top = r.top - 10 - h;
-    if (top < 8) top = Math.max(8, vh - h - 8); // za duży cel: dymek przy dolnej krawędzi
+    if (top < 8) {
+      // Cel nie mieści się z dymkiem nad ani pod sobą: stawiamy dymek obok (najpierw z prawej),
+      // przy górnej krawędzi celu, żeby nie zasłaniał tego, w co trzeba kliknąć.
+      top = Math.min(Math.max(8, r.top), vh - h - 8);
+      if (r.right + 10 + w <= vw - 8) left = r.right + 10;
+      else if (r.left - 10 - w >= 8) left = r.left - 10 - w;
+      else top = Math.max(8, vh - h - 8); // brak miejsca z boku: dymek przy dolnej krawędzi
+    }
     setPos({ left, top });
   }, [active, step.target, s.step, path, tick]);
 
