@@ -1006,7 +1006,7 @@ a.sub-row > button { display: inline-flex; }
 .landing-hero h1 { font-size: clamp(28px, 4vw, 42px); }
 .landing-dim { color: var(--text-tertiary); }
 .landing-hero .hint { margin: 0; }
-.lp-wrap { position: relative; width: 100%; max-width: 1000px; max-height: 520px; overflow: hidden; }
+.lp-wrap { position: relative; width: 100%; max-width: 1000px; max-height: max(520px, calc(100vh - 300px)); overflow: hidden; }
 .lp-wrap::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 80px; background: linear-gradient(to top, var(--bg-app), transparent); pointer-events: none; }
 .lp-frame { border: 1px solid var(--border-secondary); border-bottom: 0; border-radius: var(--radius-xl) var(--radius-xl) 0 0; overflow: hidden; box-shadow: var(--shadow-popover); text-align: left; pointer-events: none; user-select: none; }
 .lp-frame .issue-page { overflow: hidden; }
