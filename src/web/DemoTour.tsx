@@ -56,6 +56,8 @@ export function DemoTour() {
   const issue = useIssue(12).data;
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  // Okno w przyciemnieniu: prostokąt celu z marginesem; null = przyciemniamy całość.
+  const [hole, setHole] = useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   const [tick, setTick] = useState(0);
 
   const list = steps();
@@ -94,10 +96,12 @@ export function DemoTour() {
     const h = box.current?.offsetHeight ?? 180;
     const w = box.current?.offsetWidth ?? 320;
     const vw = window.innerWidth, vh = window.innerHeight;
-    if (!el) { setPos({ left: Math.max(8, (vw - w) / 2), top: Math.max(8, (vh - h) / 2) }); return; }
+    if (!el) { setHole(null); setPos({ left: Math.max(8, (vw - w) / 2), top: Math.max(8, (vh - h) / 2) }); return; }
     el.setAttribute('data-tour-on', '');
     if (scrolledFor.current !== `${s.step}:${path}`) { scrolledFor.current = `${s.step}:${path}`; el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     const r = el.getBoundingClientRect();
+    const pad = 6;
+    setHole({ left: Math.max(0, r.left - pad), top: Math.max(0, r.top - pad), right: Math.min(vw, r.right + pad), bottom: Math.min(vh, r.bottom + pad) });
     let left = Math.min(Math.max(8, r.left), Math.max(8, vw - w - 8));
     let top = r.bottom + 10;
     if (top + h > vh - 8) top = r.top - 10 - h;
@@ -132,8 +136,19 @@ export function DemoTour() {
     if (list[s.step - 1].page !== step.page) navigate(TOUR_ISSUE);
   };
 
-  return (
+  // Przyciemnienie z czterech pasów wokół celu (jak w przewodniku Najemnika): przerwa między nimi
+  // to okno na podświetlony element. Pasy nie łapią kliknięć ani przewijania.
+  const dim = hole
+    ? [{ left: 0, top: 0, right: 0, height: hole.top },
+       { left: 0, top: hole.bottom, right: 0, bottom: 0 },
+       { left: 0, top: hole.top, width: hole.left, height: hole.bottom - hole.top },
+       { left: hole.right, top: hole.top, right: 0, height: hole.bottom - hole.top }]
+    : [{ inset: 0 }];
+
+  return (<>
+    {dim.map((st, i) => <div key={i} className="demo-tour-dim" style={st} />)}
     <div className="demo-tour" ref={box} role="dialog" aria-label={t('Demo tour')} style={pos ? { left: pos.left, top: pos.top } : { visibility: 'hidden' }}>
+      <div className="demo-tour-kicker">{t('Demo tour')}</div>
       <div className="demo-tour-text">{step.text}</div>
       <div className="demo-tour-foot">
         <span className="hint"><Icon.sparkle size={12} /> {s.step + 1} / {STEP_COUNT}</span>
@@ -143,5 +158,5 @@ export function DemoTour() {
         <button className="btn sm primary" disabled={!!blocked} title={blocked ?? undefined} onClick={next}>{last ? t('Finish') : t('Next')}</button>
       </div>
     </div>
-  );
+  </>);
 }
