@@ -1,4 +1,4 @@
-# Contributing to Exponential
+# Exponential - rules for agents
 
 ## The design system is binding
 
