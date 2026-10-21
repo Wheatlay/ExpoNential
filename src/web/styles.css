@@ -996,6 +996,28 @@ a.sub-row > button { display: inline-flex; }
 @media (max-width: 900px) { .flow { grid-template-columns: 1fr; } }
 .landing-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 .landing-cta { height: var(--control-lg); padding: 0 16px; }
+/* Landing B2: nagłówek, hero w jednej linii, przycięty podgląd prawdziwej strony zgłoszenia. */
+.landing { display: flex; flex-direction: column; align-items: center; gap: 36px; padding: 0 16px; }
+.landing-head { width: 100%; max-width: 1180px; display: flex; align-items: center; justify-content: space-between; padding: 20px 0 0; }
+.landing-nav { display: flex; align-items: center; gap: 20px; }
+.landing-link { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.landing-link:hover { color: var(--text-primary); }
+.landing-hero { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; padding-top: 24px; }
+.landing-hero h1 { font-size: clamp(28px, 4vw, 42px); }
+.landing-dim { color: var(--text-tertiary); }
+.landing-hero .hint { margin: 0; }
+.lp-wrap { position: relative; width: 100%; max-width: 1000px; max-height: 520px; overflow: hidden; }
+.lp-wrap::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 80px; background: linear-gradient(to top, var(--bg-app), transparent); pointer-events: none; }
+.lp-frame { border: 1px solid var(--border-secondary); border-bottom: 0; border-radius: var(--radius-xl) var(--radius-xl) 0 0; overflow: hidden; box-shadow: var(--shadow-popover); text-align: left; pointer-events: none; user-select: none; }
+.lp-frame .issue-page { overflow: hidden; }
+.lp-frame .issue-content { padding: 32px 32px 0; animation: none; }
+.lp-frame .props-panel { padding-top: 32px; }
+.lp-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 760px) {
+  .lp-frame .props-panel { display: none; }
+  .lp-frame .issue-content { padding: 20px 16px 0; }
+  .landing-hero h1 { font-size: var(--text-3xl); }
+}
 .landing-team:hover { color: var(--text-primary); }
 
 .about-inner { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
