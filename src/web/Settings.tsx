@@ -85,7 +85,7 @@ export function Settings() {
 }
 
 function Appearance() {
-  const [theme, setT] = useState<Theme>((document.documentElement.dataset.theme as Theme) ?? 'dark');
+  const [theme, setT] = useState<Theme>((document.documentElement.dataset.theme as Theme) ?? 'oled');
   return (
     <div className="s-card">
       <div className="s-row">

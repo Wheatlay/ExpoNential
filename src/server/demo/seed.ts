@@ -256,10 +256,11 @@ export async function seedDemo() {
   }
   if (!ISSUES[11].title.startsWith('Checkout fails for EU VAT')) throw new Error('Demo seed: issue 12 must be the VAT bug');
 
-  // Pytania Need Info: do gościa (od Leo) i do Mai (od Sary).
+  // Pytania Need Info: do Toma (od Leo) i do Mai (od Sary). Nie do gościa: pierwsze wejście ma pokazać
+  // jedną historię (przewodnik), bez odznak i banerów "czeka na Ciebie".
   const needInfo = S['Need Info'];
   await svc.updateIssue(P, actorOf('leo'), 13, {
-    statusId: needInfo, infoFromId: demo.id,
+    statusId: needInfo, infoFromId: U.tom.id,
     infoQuestion: 'Do the affected customers use the same browser profile for guest and signed-in sessions? I suspect the anonymous cart cookie is replaced on login. Can you check one of the support tickets?',
   });
   await svc.updateIssue(P, actorOf('sara'), 17, {
@@ -332,6 +333,9 @@ export async function seedDemo() {
   await vote(P, actorOf('maya'), slots[1].id, 'maybe');
   await vote(P, actorOf('leo'), slots[0].id, 'no');
   await vote(P, actorOf('leo'), slots[1].id, 'yes');
+  // Gość już zagłosował: bez banera "Vote" i odznaki w kalendarzu przy pierwszym wejściu.
+  await vote(P, actorOf('demo'), slots[0].id, 'yes');
+  await vote(P, actorOf('demo'), slots[1].id, 'yes');
 
   // ---- Daty: zgłoszenia mają wyglądać na prowadzone od tygodni ----
   for (const [i, s] of ISSUES.entries()) {
