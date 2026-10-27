@@ -18,7 +18,7 @@ import { agentHere, issuePrompt, runLocalAnalysis, simulateAgent, startOnPc, sta
 import { AnalysisView } from './AnalysisView.tsx';
 import { Attachments, useAttachments } from './ImagePreviews.tsx';
 import { ImageBlock } from './ImageBlock.tsx';
-import { enterToSubmit } from './keys.ts';
+import { enterToSubmit, useAutoGrow } from './keys.ts';
 import { rememberIssue } from './SidebarExtras.tsx';
 import { ident } from './project.ts';
 import { t, tn } from './i18n.ts';
@@ -492,6 +492,7 @@ function eventIcon(p: IssueDetail['activity'][number]['payload']) {
 
 function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?: number }) {
   const [body, setBody] = useState('');
+  const grow = useAutoGrow(body);
   const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const qc = useQueryClient();
@@ -570,6 +571,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
       })}
       <div className="composer">
         <textarea
+          ref={grow}
           placeholder={t('Leave a comment… (Enter to send, Alt+Enter new line)')}
           value={body}
           onChange={(e) => setBody(e.target.value)}
@@ -588,9 +590,10 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
 
 function CommentEditor({ initial, onSave, onCancel }: { initial: string; onSave: (b: string) => void; onCancel: () => void }) {
   const [v, setV] = useState(initial);
+  const grow = useAutoGrow(v);
   return (
     <div>
-      <textarea className="md-edit" style={{ minHeight: 100 }} autoFocus value={v} onChange={(e) => setV(e.target.value)}
+      <textarea ref={grow} className="md-edit" style={{ minHeight: 100 }} autoFocus value={v} onChange={(e) => setV(e.target.value)}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onCancel(); enterToSubmit(e, () => onSave(v), setV); }} />
       <MentionHint text={v} />
       <div className="edit-actions">
