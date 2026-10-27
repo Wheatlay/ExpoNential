@@ -248,6 +248,8 @@ export function IssuePage({ number }: { number: number }) {
               preview={issue.analysisRequestedAt ? t('Waiting for Claude…') : analysisPreview(issue) || t('No analysis yet')}
               meta={issue.analysisUpdatedAt ? timeAgo(issue.analysisUpdatedAt) : ''}
               tools={<span style={{ display: 'inline-flex', gap: 4 }}>
+                {/* Kolejka zespołu jest domyślnie wyłączona; gdy włączona, widać to przy analizie, bo zmienia, czyj PC ją uruchomi. */}
+                {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in Settings > Claude Code.")}>{t('Team queue')}</span>}
                 {issue.analysisRequestedAt && <>
                   <span className={`pill ${stalled || waitingForPc ? 'stalled' : 'ai'}`}
                     title={stalled ? t('No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.')

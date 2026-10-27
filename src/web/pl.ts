@@ -249,6 +249,7 @@ export const pl: Record<string, string> = {
   'Your PC is offline': 'Twój komputer jest wyłączony',
   'Opening Claude Code on your PC.': 'Otwieram Claude Code na twoim komputerze.',
   'Team queue': 'Kolejka zespołu',
+  "Team queue is on: any teammate's PC that is online can run this analysis. Change it in Settings > Claude Code.": 'Kolejka zespołu jest włączona: tę analizę może uruchomić PC dowolnej osoby z zespołu, która jest online. Zmienisz to w Ustawieniach > Claude Code.',
   "An online teammate's PC runs analyses for everyone in this project, on that person's Claude subscription limits. The prompt comes from the project template.": 'Komputer online kogokolwiek z zespołu robi analizy dla wszystkich w tym projekcie, na limitach subskrypcji Claude tej osoby. Polecenie pochodzi z szablonu projektu.',
   'No computer is online right now.': 'Żaden komputer nie jest teraz online.',
   'This computer has the agent':'Ten komputer ma agenta',

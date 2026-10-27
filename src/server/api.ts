@@ -213,7 +213,7 @@ export async function registerApi(app: FastifyInstance) {
       const lastSeenAt = await svc.lastSeen(req.user!.id, d.id);
       await svc.markSeen(req.user!.id, d.id);
       const runner = await ag.analysisRunner(p, d);
-      return { ...d, projectKey: p.key, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName };
+      return { ...d, projectKey: p.key, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, teamQueue: p.agentTeamQueue };
     });
 
     r.post('/api/issues', async (req) => {
