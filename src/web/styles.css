@@ -414,7 +414,8 @@ textarea.md-edit {
   font-size: var(--text-xs); font-weight: 600; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-secondary); }
 .step-dot.done { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success-text); border-color: transparent; }
 @media (max-width: 760px) {
-  .settings-layout { flex-direction: column; gap: 12px; }
+  /* stretch: w kolumnie flex-start dawał treści szerokość jej zawartości, więc długie pola wypychały karty poza ekran. */
+  .settings-layout { flex-direction: column; gap: 12px; align-items: stretch; }
   .settings-nav { width: 100%; position: static; }
 }
 .settings h2 { font-size: var(--text-2xl); margin: 0 0 20px; }

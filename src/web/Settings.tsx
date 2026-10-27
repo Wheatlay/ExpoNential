@@ -162,7 +162,7 @@ function ClaudeConnect() {
             : <button className="btn primary" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void createCmd()}>{t('Create install command')}</button>}
         </div>
         {cmd && token && (
-          <div className="s-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+          <div className="s-row" style={{ flexDirection: 'column', alignItems: 'stretch', flexWrap: 'nowrap' }}>
             <span className="hint">{t("1. Download the installer and run it (double-click). 2. Paste this token when it asks; it is already in your clipboard. The token won't be shown again.")}</span>
             <div className="token-box">{token}</div>
             <div style={{ display: 'flex', gap: 8 }}>
@@ -174,15 +174,25 @@ function ClaudeConnect() {
           </div>
         )}
         {installed && (
-          <div className="s-row">
+          <div className="s-row" style={{ flexDirection: 'column', alignItems: 'stretch', flexWrap: 'nowrap' }}>
             {/* Skrypty na PC nie aktualizują się same (kod z serwera nie podmienia się po cichu): mówimy wprost, że trzeba. */}
-            <span className="hint grow">{me?.agentOutdated
-              ? <><span className="pill stalled">{t('Update needed')}</span> {t('Exponential has newer PC scripts. Run this on your computer.')}</>
-              : t('Update or new project/clone: run this again.')}</span>
-            {download('exponential-install.cmd')}
-            <code className="input" title={t('Or paste this into PowerShell (select and copy it by hand if a blocker such as uBlock refuses the copy):')} style={{ display: 'flex', alignItems: 'center', height: 30, overflowX: 'auto', whiteSpace: 'nowrap', maxWidth: '100%' }}>{update}</code>
-            <button className="btn" onClick={() => copy(update)}><Icon.copy size={13} /> {t('Copy')}</button>
-            <span title={t('Removes it from this computer')} style={{ display: 'inline-flex' }}>{download('exponential-uninstall.cmd')}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+              {/* Na wąskim ekranie opis zajmuje własną linię, a oba przyciski zawijają się razem (bez wychodzenia poza ekran). */}
+              <span className="hint" style={{ flex: '1 1 240px', minWidth: 0 }}>{me?.agentOutdated
+                ? <><span className="pill stalled">{t('Update needed')}</span> {t('Exponential has newer PC scripts. Run this on your computer.')}</>
+                : t('Update or new project/clone: run this again.')}</span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {download('exponential-install.cmd')}
+                <span title={t('Removes it from this computer')} style={{ display: 'inline-flex' }}>{download('exponential-uninstall.cmd')}</span>
+              </div>
+            </div>
+            {/* Alternatywa dla terminala; kopiowanie może zablokować filtr anty-ClickFix, wtedy zaznacza się ręcznie. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+              <span className="hint">{t('Or in PowerShell:')}</span>
+              {/* Polecenie się nie łamie, tylko przewija w poziomie wewnątrz pola: flex 1 1 200px i minWidth 0, żeby pole kurczyło się do ekranu. */}
+              <code className="input" title={t('Or paste this into PowerShell (select and copy it by hand if a blocker such as uBlock refuses the copy):')} style={{ display: 'flex', alignItems: 'center', height: 30, overflowX: 'auto', whiteSpace: 'nowrap', flex: '1 1 200px', minWidth: 0 }}>{update}</code>
+              <button className="btn" onClick={() => copy(update)}><Icon.copy size={13} /> {t('Copy')}</button>
+            </div>
           </div>
         )}
       </div>
@@ -217,7 +227,6 @@ function ClaudeConnect() {
           ))}
         </div>
       )}
-      <TeamQueue />
     </>
   );
 }
@@ -526,6 +535,8 @@ function ProjectPrompts() {
         {/* {description} {analysis} {comments} dalej działają w starych szablonach, ale nie podpowiadamy ich: agent pobiera zgłoszenie sam. */}
         <div className="s-row"><span className="hint">{t('Placeholders:')} <code>{'{id}'}</code> <code>{'{title}'}</code></span></div>
       </div>
+      {/* Kolejka zespołu to ustawienie projektu (kto uruchamia analizy), więc tutaj, a nie w osobistej sekcji Claude Code. */}
+      <TeamQueue />
     </>
   );
 }
