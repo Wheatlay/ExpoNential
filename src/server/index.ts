@@ -59,6 +59,21 @@ app.get<{ Params: { file: string } }>('/agent/:file', async (req, reply) => {
   // Plugin Claude Code (skille + hook śladu pracy), patrz src/server/plugin.ts. Bez sekretów, więc publiczny.
   if (req.params.file === 'plugin.zip') return reply.type('application/zip').header('Cache-Control', 'no-store').send(pluginArchive().zip);
   if (req.params.file === 'marketplace.json') return reply.header('Cache-Control', 'no-store').send(marketplace(process.env.BASE_URL ?? 'http://localhost:3000'));
+  // Instalator do pobrania i dwukliku: kopiowanie "irm … | iex" do schowka blokują filtry anty-ClickFix (np. uBlock Origin),
+  // a plik uruchamia ten sam skrypt z serwera. Token pierwszej instalacji wkleja się przy uruchomieniu, w pliku go nie ma.
+  if (req.params.file === 'install-tracker.cmd' || req.params.file === 'uninstall-tracker.cmd') {
+    const base = process.env.BASE_URL ?? 'http://localhost:3000';
+    const install = req.params.file === 'install-tracker.cmd';
+    const lines = install
+      ? ['@echo off', 'rem Tracker: instalacja albo aktualizacja polaczenia z Claude Code (Ustawienia > Claude Code).',
+        'set "TRACKER_TOKEN="',
+        'set /p "TRACKER_TOKEN=Pierwsza instalacja: wklej token z trackera i nacisnij Enter. Aktualizacja: sam Enter. > "',
+        `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm '${base}/agent/install.ps1' | iex"`, 'set "TRACKER_TOKEN="', 'echo.', 'pause']
+      : ['@echo off', 'rem Tracker: usuniecie lokalnej analizy z tego komputera.',
+        `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "irm '${base}/agent/uninstall.ps1' | iex"`, 'echo.', 'pause'];
+    return reply.type('application/octet-stream').header('Content-Disposition', `attachment; filename="${req.params.file}"`)
+      .header('Cache-Control', 'no-store').send(lines.join('\r\n') + '\r\n');   // CRLF: cmd.exe źle czyta same LF
+  }
   // Wersja skryptów PC: instalator zapisuje ją w config.json, agent zgłasza ją serwerowi (Ustawienia proszą o aktualizację).
   if (req.params.file === 'version') return reply.type('text/plain').header('Cache-Control', 'no-store').send(agentScriptsVersion());
   if (!AGENT_FILES.includes(req.params.file)) return reply.code(404).send('Not found');

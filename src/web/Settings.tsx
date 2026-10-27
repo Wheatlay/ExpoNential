@@ -7,7 +7,7 @@ import { useProjectKey } from './project.ts';
 import { ProjectBadge } from './ProjectSwitcher.tsx';
 import { NotificationSettings } from './Notifications.tsx';
 import { Avatar, Icon, StatusIcon, startedFraction } from './icons.tsx';
-import { toast } from './toast.ts';
+import { copyText, toast } from './toast.ts';
 import { timeAgo } from './time.ts';
 import { Tooltip } from './menu.tsx';
 import { agentHere, agentInstallCommand } from './startWork.ts';
@@ -131,14 +131,19 @@ function ClaudeConnect() {
     window.addEventListener('focus', f);
     return () => window.removeEventListener('focus', f);
   }, [qc]);
-  const copy = (c: string) => void navigator.clipboard.writeText(c).then(() => toast(t('Copied. Paste it into PowerShell.')));
+  const copy = (c: string) => copyText(c, t('Copied. Paste it into PowerShell.'));
+  const [token, setToken] = useState<string | null>(null);
+  // Do schowka idzie sam token, nie polecenie "irm … | iex": to drugie blokują filtry anty-ClickFix (np. uBlock Origin).
   const createCmd = async () => {
     const r = await api<{ token: string }>('/api/tokens', { method: 'POST', body: { name: t('Claude Code, {date}', { date: new Date().toLocaleDateString() }) } });
-    const c = agentInstallCommand(r.token);
-    setCmd(c);
-    copy(c);
+    setToken(r.token);
+    setCmd(agentInstallCommand(r.token));
+    copyText(r.token, t('Token copied. Run the downloaded installer and paste it when asked.'));
     void qc.invalidateQueries({ queryKey: ['tokens'] });
   };
+  const download = (file: string) => (
+    <a className="btn" href={`/agent/${file}`} download>{file === 'install-tracker.cmd' ? t('Download installer') : t('Download uninstaller')}</a>
+  );
   const demo = !!me?.demo;
   const installed = !!me?.localAgentAt;
   const update = agentInstallCommand();
@@ -156,9 +161,15 @@ function ClaudeConnect() {
             ? <button className="btn" disabled={demo} onClick={() => void createCmd()} title={demo ? t('Disabled in the demo') : t('A new computer, or Claude Code without the tracker connection')}>{t('Connect another computer')}</button>
             : <button className="btn primary" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void createCmd()}>{t('Create install command')}</button>}
         </div>
-        {cmd && (
+        {cmd && token && (
           <div className="s-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-            <span className="hint">{t("Copied. Paste it into PowerShell and press Enter. It contains a new token, so it won't be shown again.")}</span>
+            <span className="hint">{t("1. Download the installer and run it (double-click). 2. Paste this token when it asks; it is already in your clipboard. The token won't be shown again.")}</span>
+            <div className="token-box">{token}</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {download('install-tracker.cmd')}
+              <button className="btn" onClick={() => copyText(token, t('Token copied'))}><Icon.copy size={13} /> {t('Copy token')}</button>
+            </div>
+            <span className="hint">{t('Or paste this into PowerShell (select and copy it by hand if a blocker such as uBlock refuses the copy):')}</span>
             <div className="token-box">{cmd}</div>
           </div>
         )}
@@ -168,9 +179,10 @@ function ClaudeConnect() {
             <span className="hint grow">{me?.agentOutdated
               ? <><span className="pill stalled">{t('Update needed')}</span> {t('The tracker has newer PC scripts. Run this on your computer.')}</>
               : t('Update or new project/clone: run this again.')}</span>
-            <code className="input" style={{ display: 'flex', alignItems: 'center', height: 30, overflowX: 'auto', whiteSpace: 'nowrap', maxWidth: '100%' }}>{update}</code>
+            {download('install-tracker.cmd')}
+            <code className="input" title={t('Or paste this into PowerShell (select and copy it by hand if a blocker such as uBlock refuses the copy):')} style={{ display: 'flex', alignItems: 'center', height: 30, overflowX: 'auto', whiteSpace: 'nowrap', maxWidth: '100%' }}>{update}</code>
             <button className="btn" onClick={() => copy(update)}><Icon.copy size={13} /> {t('Copy')}</button>
-            <button className="btn" title={t('Removes it from this computer')} onClick={() => void navigator.clipboard.writeText(update.replace('install.ps1', 'uninstall.ps1')).then(() => toast(t('Uninstall command copied. Paste it into PowerShell.')))}>{t('Uninstall')}</button>
+            <span title={t('Removes it from this computer')} style={{ display: 'inline-flex' }}>{download('uninstall-tracker.cmd')}</span>
           </div>
         )}
       </div>
