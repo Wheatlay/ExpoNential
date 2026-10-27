@@ -5,3 +5,4 @@ Mała etykieta stanu na karcie i w nagłówkach (22 px, `radius-full`, `text-sm`
 - Stan analizy to jedna pigułka w nagłówku sekcji: `.ai` „Waiting · 2 min ago” (jest online komputer, który ją weźmie), `.ai` „Running on {komputer} · 1 min ago” (zlecenie przejęte), `.stalled` jak wyżej. Przy Deep po nazwie stanu dopisek „· Deep”.
 - Zawsze słowo lub liczba w środku; sama ikona tylko z `.icon-only` i `title`.
 - Neutralna `.pill` „Team queue” na pasku analizy zgłoszenia: widoczna tylko, gdy projekt ma włączoną kolejkę zespołu (domyślnie wyłączona), z wyjaśnieniem w `title`.
+- `.pill.stalled` „Update needed” z `role="button"` na pasku analizy: zlecenie czeka, a mój PC ma stare skrypty; klik prowadzi do Ustawień > Claude Code.

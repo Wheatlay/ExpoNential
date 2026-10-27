@@ -262,6 +262,11 @@ export function IssuePage({ number }: { number: number }) {
               tools={<span style={{ display: 'inline-flex', gap: 4 }}>
                 {/* Kolejka zespołu jest domyślnie wyłączona; gdy włączona, widać to przy analizie, bo zmienia, czyj PC ją uruchomi. */}
                 {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in Settings > Claude Code.")}>{t('Team queue')}</span>}
+                {/* Czeka, a mój PC ma stare skrypty: to zwykle prawdziwa przyczyna, więc mówimy o niej tutaj, nie tylko w Ustawieniach. */}
+                {issue.analysisRequestedAt && !issue.analysisClaimedAt && me?.agentOutdated && !demo && (
+                  <span className="pill stalled" role="button" title={t('Your PC has old tracker scripts, so it may not pick this up. Click to open Settings > Claude Code and run the update command.')}
+                    onClick={(e) => { e.stopPropagation(); navigate('/settings#claude'); }}>{t('Update needed')}</span>
+                )}
                 {issue.analysisRequestedAt && <>
                   <span className={`pill ${failed || stalled || waitingForPc ? 'stalled' : 'ai'}`}
                     title={failed ? t('The analysis failed on the PC: {error}. Analyze again or cancel.', { error: issue.analysisError || '?' })
