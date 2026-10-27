@@ -131,6 +131,22 @@ describe('claimAnalysis', () => {
 });
 
 describe('claim lifecycle', () => {
+  it('a failed run is not offered again until a new request (no retry loop)', async () => {
+    const n = await newIssue();
+    await svc.requestAnalysis(P, alice, n);
+    await ag.claimAnalysis(P, alice, n, DEV_A1);
+    await ag.releaseClaim(P, alice, n, DEV_A1, 'Brak repo projektu AGT');
+    const r = await row(n);
+    expect(r.analysisFailedAt).not.toBeNull();
+    expect(r.analysisError).toBe('Brak repo projektu AGT');
+    const agent = { busy: false, repoKeys: ['AGT'] };
+    expect((await ag.pendingWork(alice, agent)).some((j) => j.kind === 'analyze' && j.key === `AGT-${n}`)).toBe(false);
+    expect(await code(ag.claimAnalysis(P, alice, n, DEV_A2))).toBe('conflict');
+    await svc.requestAnalysis(P, alice, n);
+    expect((await row(n)).analysisFailedAt).toBeNull();
+    expect((await ag.pendingWork(alice, agent)).some((j) => j.kind === 'analyze' && j.key === `AGT-${n}`)).toBe(true);
+  });
+
   const claimed = async () => {
     const n = await newIssue();
     await svc.requestAnalysis(P, alice, n);

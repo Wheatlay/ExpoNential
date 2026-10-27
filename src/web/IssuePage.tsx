@@ -181,7 +181,9 @@ export function IssuePage({ number }: { number: number }) {
   // Utknięte liczymy od ostatniego sygnału zajętego agenta (claim jest odświeżany), nie od zlecenia: kolejka przy wyłączonym PC to nie awaria.
   const claimedAt = issue.analysisRequestedAt ? issue.analysisClaimedAt : null;
   const stalled = !!claimedAt && Date.now() - new Date(claimedAt).getTime() > 15 * 60_000;
-  const waitingForPc = !!issue.analysisRequestedAt && !claimedAt && !issue.analysisCanRun && !demo;
+  // Nieudany przebieg nie wraca sam do kolejki: pokazujemy błąd i dajemy zlecić ponownie albo anulować.
+  const failed = !!issue.analysisRequestedAt && !!issue.analysisFailedAt;
+  const waitingForPc = !!issue.analysisRequestedAt && !claimedAt && !failed && !issue.analysisCanRun && !demo;
   const cancelAnalysis = async () => {
     await api(`/api/issues/${ident(number)}/analyze`, { method: 'DELETE' });
     void qc.invalidateQueries({ queryKey: ['issue', number] });
@@ -251,14 +253,15 @@ export function IssuePage({ number }: { number: number }) {
                 {/* Kolejka zespołu jest domyślnie wyłączona; gdy włączona, widać to przy analizie, bo zmienia, czyj PC ją uruchomi. */}
                 {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in Settings > Claude Code.")}>{t('Team queue')}</span>}
                 {issue.analysisRequestedAt && <>
-                  <span className={`pill ${stalled || waitingForPc ? 'stalled' : 'ai'}`}
-                    title={stalled ? t('No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.')
+                  <span className={`pill ${failed || stalled || waitingForPc ? 'stalled' : 'ai'}`}
+                    title={failed ? t('The analysis failed on the PC: {error}. Analyze again or cancel.', { error: issue.analysisError || '?' })
+                      : stalled ? t('No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.')
                       : waitingForPc ? t('No computer with the agent is online for this request. It runs when one is on.') : undefined}>
-                    <Icon.sparkle size={12} /> {stalled ? t('Stalled') : waitingForPc ? t('Waiting for a PC')
-                      : claimedAt ? t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') }) : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(claimedAt ?? issue.analysisRequestedAt)}</span>
+                    <Icon.sparkle size={12} /> {failed ? t('Failed') : stalled ? t('Stalled') : waitingForPc ? t('Waiting for a PC')
+                      : claimedAt ? t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') }) : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(failed ? issue.analysisFailedAt! : claimedAt ?? issue.analysisRequestedAt)}</span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
                 </>}
-                {(!issue.analysisRequestedAt || stalled) && <>
+                {(!issue.analysisRequestedAt || stalled || failed) && <>
                     {!issue.analysisRequestedAt && issue.analysisResultDeep && issue.analysisUpdatedAt && <span className="pill ai done" title={t('Deeper analysis with a stronger model: slower and more expensive')}>{t('Deep')}</span>}
                     <button className="btn sm ai-btn" data-tour="analyze" title={local ? t('Runs Claude on your computer, read-only') : t('Marks the issue for analysis by Claude')}
                       onClick={(e) => { e.stopPropagation(); void analyze(); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>

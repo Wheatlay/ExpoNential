@@ -360,7 +360,7 @@ export async function deleteIssue(p: Project, number: number) {
 }
 
 // Zlecenie znika (analiza zapisana, Cancel) albo wraca na początek (nowe): claim agenta przepada razem z nim.
-const NO_CLAIM = { analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, analysisLocalUntil: null };
+const NO_CLAIM = { analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, analysisLocalUntil: null, analysisFailedAt: null, analysisError: '' };
 
 export async function requestAnalysis(p: Project, actor: Actor, number: number, deep = false, local = false) {
   const cur = await requireIssue(p, number);

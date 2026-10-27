@@ -29,6 +29,13 @@
       "when": 1793102867589,
       "tag": "0003_pc_agent",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793103954767,
+      "tag": "0004_analysis_failed",
+      "breakpoints": true
     }
   ]
 }

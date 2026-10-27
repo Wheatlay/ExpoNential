@@ -127,6 +127,10 @@ export const issues = pgTable('issues', {
   analysisClaimedDevice: text('analysis_claimed_device'),
   // Kliknięte w przeglądarce na PC z agentem; przez 60 s bierze je tylko PC zlecającego (link tracker:// zaraz ruszy).
   analysisLocalUntil: timestamp('analysis_local_until', { withTimezone: true }),
+  // Przebieg na PC padł: zlecenie nie wraca samo do kolejki (każdy trwały błąd, np. brak repo, kręciłby się w kółko).
+  // Czyści je nowe zlecenie albo anulowanie.
+  analysisFailedAt: timestamp('analysis_failed_at', { withTimezone: true }),
+  analysisError: text('analysis_error').notNull().default(''),
   changeHuman: text('change_human').notNull().default(''),
   changeAi: text('change_ai').notNull().default(''),
   // Need Info: kogo pytamy i o co. Czyszczone, gdy zadanie wychodzi z Need Info.

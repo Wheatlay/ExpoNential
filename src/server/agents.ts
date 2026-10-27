@@ -37,6 +37,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
     .where(and(
       eq(issues.id, cur.id),
       dsql`${issues.analysisRequestedAt} is not null`,
+      isNull(issues.analysisFailedAt),
       dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}) or ${issues.analysisClaimedDevice} = ${deviceId})`,
       dsql`(${issues.analysisRequestedBy} = ${user.id} or (${p.agentTeamQueue}::boolean and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
     ))
@@ -49,9 +50,13 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
   return { ok: true, deep: rows[0].deep, model: analysisModel(p, rows[0].deep) };
 }
 
-/** Oddanie zlecenia po nieudanym uruchomieniu: tylko to urządzenie, które je przejęło. Brak zmian to nie błąd. */
-export async function releaseClaim(p: Project, user: User, number: number, deviceId: string) {
-  const rows = await db.update(issues).set({ analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null })
+/**
+ * Oddanie zlecenia przez urządzenie, które je przejęło. Z błędem: zlecenie zostaje oznaczone jako nieudane i nie wraca
+ * samo do kolejki (inaczej trwały błąd powtarzałby się co kilka sekund). Brak zmian to nie błąd.
+ */
+export async function releaseClaim(p: Project, user: User, number: number, deviceId: string, error?: string) {
+  const failed = error !== undefined ? { analysisFailedAt: new Date(), analysisError: error.slice(0, 300) } : {};
+  const rows = await db.update(issues).set({ analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, ...failed })
     .where(and(eq(issues.projectId, p.id), eq(issues.number, number), eq(issues.analysisClaimedDevice, deviceId), eq(issues.analysisClaimedBy, user.id)))
     .returning({ id: issues.id });
   if (rows.length) await publish({ type: 'issue', projectKey: p.key, number });
@@ -108,6 +113,7 @@ export async function pendingWork(user: User, agent: { busy: boolean; repoKeys: 
       .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
       .where(and(
         dsql`${issues.analysisRequestedAt} is not null`,
+        isNull(issues.analysisFailedAt),
         dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}))`,
         inArray(projects.key, agent.repoKeys),
         dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,

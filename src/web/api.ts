@@ -69,7 +69,7 @@ export type AnalysisData = {
 export type IssueDetail = {
   id: number; number: number; identifier: string; title: string; description: string; statusId: number;
   assigneeId: number | null; creatorId: number | null; priority: number; parentId: number | null; sprintId: number | null;
-  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; analysisResultDeep: boolean; analysisClaimedAt: string | null; analysisClaimedDeviceName: string | null; analysisCanRun: boolean; teamQueue: boolean; changeHuman: string; changeAi: string;
+  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; analysisResultDeep: boolean; analysisClaimedAt: string | null; analysisClaimedDeviceName: string | null; analysisCanRun: boolean; analysisFailedAt: string | null; analysisError: string; teamQueue: boolean; changeHuman: string; changeAi: string;
   infoFromId: number | null; infoQuestion: string; infoById: number | null;
   createdAt: string; updatedAt: string; completedAt: string | null; labelIds: number[];
   parent: { number: number; title: string } | null;

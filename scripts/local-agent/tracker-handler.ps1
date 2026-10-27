@@ -13,6 +13,7 @@ function Log($m) { Add-Content -Path $log -Value "$(Get-Date -Format s) $m" -Enc
 
 $claimed = $false
 $failed = $false
+$failMsg = ''
 try {
   if ($Url -notmatch '^tracker://analyze/([A-Za-z]{2,10}-\d{1,6})/?(\?deep)?$') { Log "odrzucony link: $Url"; exit 1 }
   $key = $Matches[1].ToUpper()
@@ -136,17 +137,21 @@ try {
   # Skille z pluginu trackera (zawsze aktualne z serwera), niezależnie od tego, co jest w repo i u użytkownika.
   $prompt | & $claude -p --model $model --plugin-url "$base/agent/plugin.zip" --allowedTools $allowed --disallowedTools $denied --setting-sources project --strict-mcp-config --mcp-config $mcpFile 2>&1 |
     ForEach-Object { "$_" } | Out-File -FilePath $log -Append -Encoding utf8   # *>> w PS 5.1 pisze UTF-16
-  if ($LASTEXITCODE -ne 0) { $failed = $true }
+  if ($LASTEXITCODE -ne 0) { $failed = $true; $failMsg = "Claude zakonczyl sie kodem $LASTEXITCODE (szczegoly w log.txt)" }
   Log "koniec $key (kod $LASTEXITCODE)"
 } catch {
   $failed = $true
-  Log "blad: $($_.Exception.Message)"
+  $failMsg = $_.Exception.Message
+  Log "blad: $failMsg"
 } finally {
   if ($lock) { Remove-Item $lock -ErrorAction SilentlyContinue }
   # Oddajemy zlecenie tylko po bledzie. Po kodzie 0 NIE: jesli Claude przebiegl, ale nic nie zapisal, zlecenie ma
   # przejsc w Stalled, a nie wracac do kolejki w nieskonczonosc (kazdy przebieg to platne uzycie).
   if ($claimed -and $failed) {
-    try { Invoke-RestMethod -Method Delete -Uri "$base/api/issues/$key/analyze/claim" -Headers $headers -ContentType 'application/json' -Body $claimBody | Out-Null }
+    # Z treścią błędu: serwer oznacza zlecenie jako nieudane i nie podaje go ponownie (bez pętli prób co kilka sekund).
+    # Bajty UTF-8, bo PS 5.1 koduje tekstowe body w ISO-8859-1 (polskie znaki w komunikacie).
+    $failBody = [Text.Encoding]::UTF8.GetBytes((@{ deviceId = $cfg.deviceId; error = [string]$failMsg } | ConvertTo-Json))
+    try { Invoke-RestMethod -Method Delete -Uri "$base/api/issues/$key/analyze/claim" -Headers $headers -ContentType 'application/json; charset=utf-8' -Body $failBody | Out-Null }
     catch { Log "zwolnienie: $($_.Exception.Message)" }
   }
   # Bez samoaktualizacji: kod z serwera nie nadpisuje skryptu po cichu. Aktualizacja = ponowne install.ps1.

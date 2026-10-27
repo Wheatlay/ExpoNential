@@ -246,7 +246,8 @@ export async function registerApi(app: FastifyInstance) {
     });
     r.delete<{ Params: { id: string } }>('/api/issues/:id/analyze/claim', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
-      return ag.releaseClaim(p, req.user!, number, deviceBody.parse(req.body).deviceId);
+      const b = deviceBody.extend({ error: z.string().max(2000).optional() }).parse(req.body);
+      return ag.releaseClaim(p, req.user!, number, b.deviceId, b.error);
     });
     r.delete<{ Params: { id: string } }>('/api/issues/:id/analyze', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
