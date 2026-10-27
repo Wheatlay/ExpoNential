@@ -201,6 +201,7 @@ function ClaudeConnect() {
           ))}
         </div>
       )}
+      <TeamQueue />
     </>
   );
 }
@@ -209,7 +210,7 @@ type ProjectDetail = {
   id: number; key: string; name: string; color: string; discordWebhookUrl: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
-  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string;
+  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; agentTeamQueue: boolean;
   defaultPrompts: { start: string; analyze: string; close: string; deep: string };
   defaultModels: { analyze: string; deep: string };
   role: 'admin' | 'member'; canEdit: boolean;
@@ -556,4 +557,35 @@ async function swap(statuses: { id: number; position: number }[], a: number, b: 
 
 function toHex(c: string) {
   return /^#[0-9a-f]{6}$/i.test(c) ? c : '#888888';
+}
+
+/** Kolejka zespołu projektu: online komputer któregokolwiek członka bierze analizy wszystkich (na limitach jego Claude). */
+function TeamQueue() {
+  const c = useProject();
+  const demo = !!useMe().data?.demo;
+  const key = useProjectKey();
+  const online = useQuery({ queryKey: ['project-agents', key], queryFn: () => api<{ name: string; owner: string; busy: boolean }[]>(`/api/projects/${key}/agents`), enabled: !!c && !demo, refetchInterval: 30_000 });
+  if (!c) return null;
+  const { p, ro: roBase, patch } = c;
+  const ro = roBase ?? (demo ? t('Disabled in the demo') : null);
+  return (
+    <div className="s-card" style={{ marginTop: 12 }}>
+      <div className="s-row">
+        <span className="grow">{t('Team queue')} · {p.name}
+          <div className="hint">{t("An online teammate's PC runs analyses for everyone in this project, on that person's Claude subscription limits. The prompt comes from the project template.")}</div>
+        </span>
+        <Tooltip text={ro}>
+          <button className={`switch ${p.agentTeamQueue ? 'on' : ''}`} role="switch" aria-checked={p.agentTeamQueue} aria-label={t('Team queue')}
+            disabled={!!ro} style={ro ? { opacity: 0.45, cursor: 'not-allowed' } : undefined} onClick={() => void patch({ agentTeamQueue: !p.agentTeamQueue })} />
+        </Tooltip>
+      </div>
+      {(online.data ?? []).map((a, i) => (
+        <div key={i} className="s-row">
+          <span className="grow">{a.name || t('Unnamed computer')} · {a.owner}</span>
+          {a.busy && <span className="hint">{t('running an analysis')}</span>}
+        </div>
+      ))}
+      {!demo && !(online.data ?? []).length && <div className="s-row"><span className="hint">{t('No computer is online right now.')}</span></div>}
+    </div>
+  );
 }

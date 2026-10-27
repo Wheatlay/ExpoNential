@@ -242,3 +242,15 @@ describe('heartbeat', () => {
     expect((await ag.myAgents(bob)).some((a) => a.id === id)).toBe(false);
   });
 });
+
+describe('projectAgents', () => {
+  it('lists online computers of project members only', async () => {
+    await dbmod.sql`update agents set last_seen_at = now() where id in (${DEV_A1}, ${DEV_O1})`;
+    await dbmod.sql`update agents set last_seen_at = now() - interval '10 minutes' where id = ${DEV_B1}`;
+    const list = await ag.projectAgents(P);
+    expect(list.map((a) => a.name)).toContain('ALICE-PC');
+    expect(list.map((a) => a.name)).not.toContain('OUT-PC');
+    expect(list.map((a) => a.name)).not.toContain('BOB-PC');
+    expect(list.find((a) => a.name === 'ALICE-PC')?.owner).toBe('Alice');
+  });
+});

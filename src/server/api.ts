@@ -140,6 +140,7 @@ export async function registerApi(app: FastifyInstance) {
         promptStart: z.string().max(8000).optional(), promptAnalyze: z.string().max(8000).optional(), promptClose: z.string().max(8000).optional(), promptDeep: z.string().max(8000).optional(),
         analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
         githubRepo: z.string().max(200).optional(), deployBranch: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(), deploySourceRef: z.string().max(200).optional(),
+        agentTeamQueue: z.boolean().optional(),
       }).parse(req.body);
       if (body.discordWebhookUrl === '') body.discordWebhookUrl = null;
       const next = await pr.updateProject(p.id, body);
@@ -149,6 +150,8 @@ export async function registerApi(app: FastifyInstance) {
       await svc.publish({ type: 'sprints', projectKey: p.key });
       return next;
     });
+    // Komputery z agentem online u członków projektu (kolejka zespołu).
+    r.get<{ Params: { key: string } }>('/api/projects/:key/agents', async (req) => ag.projectAgents((await ctx(req, req.params.key)).project));
     r.post<{ Params: { key: string } }>('/api/projects/:key/members', async (req) => {
       const p = await manage(req, req.params.key);
       const body = z.object({ login: z.string().min(1), role: z.enum(['admin', 'member']).optional() }).parse(req.body);
