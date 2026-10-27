@@ -51,7 +51,7 @@ export function Settings() {
       { id: 'people', name: t('People'), render: () => <ProjectPeople /> },
       { id: 'labels', name: t('Labels and statuses'), render: () => <ProjectLabelsStatuses /> },
       { id: 'integrations', name: t('Integrations'), render: () => <ProjectIntegrations /> },
-      { id: 'prompts', name: t('AI prompts'), render: () => <ProjectPrompts /> },
+      { id: 'prompts', name: t('AI agent'), render: () => <ProjectPrompts /> },
     ] },
     ...(me?.isAdmin ? [{ name: t('Workspace'), items: [{ id: 'accounts', name: t('Accounts'), render: () => <Accounts /> }] }] : []),
   ];

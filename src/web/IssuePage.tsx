@@ -264,7 +264,7 @@ export function IssuePage({ number }: { number: number }) {
               meta={issue.analysisUpdatedAt ? timeAgo(issue.analysisUpdatedAt) : ''}
               tools={<span style={{ display: 'inline-flex', gap: 4 }}>
                 {/* Kolejka zespołu jest domyślnie wyłączona; gdy włączona, widać to przy analizie, bo zmienia, czyj PC ją uruchomi. */}
-                {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in project settings > AI prompts.")}>{t('Team queue')}</span>}
+                {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in project settings > AI agent.")}>{t('Team queue')}</span>}
                 {/* Czeka, a mój PC ma stare skrypty: to zwykle prawdziwa przyczyna, więc mówimy o niej tutaj, nie tylko w Ustawieniach. */}
                 {outdated && !issue.analysisClaimedAt && (
                   <span className="pill stalled" role="button" title={t('Your PC has old Exponential scripts, so it may not pick this up. Click to open Settings > Claude Code and run the update command.')}
