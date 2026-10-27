@@ -16,7 +16,7 @@ import { openNewIssue } from './NewIssue.tsx';
 import { toast } from './toast.ts';
 import { timeAgo, fullDate } from './time.ts';
 import { InlineCode } from './InlineCode.tsx';
-import { issuePrompt, runLocalAnalysis, simulateAgent, startWork } from './startWork.ts';
+import { agentHere, issuePrompt, runLocalAnalysis, simulateAgent, startWork } from './startWork.ts';
 import { AnalysisView } from './AnalysisView.tsx';
 import { Attachments, useAttachments } from './ImagePreviews.tsx';
 import { ImageBlock } from './ImageBlock.tsx';
@@ -167,15 +167,21 @@ export function IssuePage({ number }: { number: number }) {
   const demo = !!me?.demo;
   const analyze = async (deep = false) => {
     if (demo) { await simulateAgent(number, 'analyze'); return; }
-    await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep } });
+    // Na komputerze z agentem link tracker:// rusza od razu (local rezerwuje zlecenie dla tego PC na 60 s); gdzie indziej zlecenie czeka w kolejce.
+    const here = agentHere(me);
+    await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep, local: here } });
     void qc.invalidateQueries({ queryKey: ['issue', number] });
-    if (local) {
+    if (here) {
       runLocalAnalysis(number, deep);
       toast(deep ? t('Deep analysis started on your computer. It shows up here in a few minutes.') : t('Analysis started on your computer. It shows up here in a few minutes.'));
-    } else toast(t('AI analysis requested. To have it run by itself on your computer, set up local analysis in Settings > Claude Code.'));
+    } else if (local) toast(me?.agentOnline ? t('Queued. It runs on your PC in a moment.') : t('Queued. Your PC is offline, it runs when it is on.'));
+    else toast(t('AI analysis requested. To have it run by itself on your computer, set up local analysis in Settings > Claude Code.'));
   };
-  // Zlecenie bez odpowiedzi przez 15 minut uznajemy za utknięte (agent nie ruszył, np. kliknięte na telefonie, albo padł).
-  const stalled = !!issue.analysisRequestedAt && Date.now() - new Date(issue.analysisRequestedAt).getTime() > 15 * 60_000;
+  // Stan zlecenia: czeka (jest online PC, który je weźmie) / czeka na PC (nikt nie słucha) / biegnie na PC (claim).
+  // Utknięte liczymy od ostatniego sygnału zajętego agenta (claim jest odświeżany), nie od zlecenia: kolejka przy wyłączonym PC to nie awaria.
+  const claimedAt = issue.analysisRequestedAt ? issue.analysisClaimedAt : null;
+  const stalled = !!claimedAt && Date.now() - new Date(claimedAt).getTime() > 15 * 60_000;
+  const waitingForPc = !!issue.analysisRequestedAt && !claimedAt && !issue.analysisCanRun && !demo;
   const cancelAnalysis = async () => {
     await api(`/api/issues/${ident(number)}/analyze`, { method: 'DELETE' });
     void qc.invalidateQueries({ queryKey: ['issue', number] });
@@ -233,13 +239,16 @@ export function IssuePage({ number }: { number: number }) {
               meta={issue.analysisUpdatedAt ? timeAgo(issue.analysisUpdatedAt) : ''}
               tools={<span style={{ display: 'inline-flex', gap: 4 }}>
                 {issue.analysisRequestedAt && <>
-                  <span className={`pill ${stalled ? 'stalled' : 'ai'}`} title={stalled ? t('No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.') : undefined}>
-                    <Icon.sparkle size={12} /> {stalled ? t('Stalled') : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(issue.analysisRequestedAt)}</span>
+                  <span className={`pill ${stalled || waitingForPc ? 'stalled' : 'ai'}`}
+                    title={stalled ? t('No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.')
+                      : waitingForPc ? t('No computer with the agent is online for this request. It runs when one is on.') : undefined}>
+                    <Icon.sparkle size={12} /> {stalled ? t('Stalled') : waitingForPc ? t('Waiting for a PC')
+                      : claimedAt ? t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') }) : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(claimedAt ?? issue.analysisRequestedAt)}</span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
                 </>}
                 {(!issue.analysisRequestedAt || stalled) && <>
                     {!issue.analysisRequestedAt && issue.analysisResultDeep && issue.analysisUpdatedAt && <span className="pill ai done" title={t('Deeper analysis with a stronger model: slower and more expensive')}>{t('Deep')}</span>}
-                    <button className="btn sm ai-btn" data-tour="analyze" title={local ? t('Runs Claude (Sonnet) on your computer, read-only') : t('Marks the issue for analysis by Claude')}
+                    <button className="btn sm ai-btn" data-tour="analyze" title={local ? t('Runs Claude on your computer, read-only') : t('Marks the issue for analysis by Claude')}
                       onClick={(e) => { e.stopPropagation(); void analyze(); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
                     {demo && <button className="btn sm ai-btn" disabled title={t('Disabled in the demo')} onClick={(e) => e.stopPropagation()}>{t('Deep')}</button>}
                     {!demo && local && <button className="btn sm ai-btn" title={t('Deeper analysis with a stronger model: slower and more expensive')} onClick={(e) => { e.stopPropagation(); void analyze(true); }}>{t('Deep')}</button>}
@@ -427,6 +436,7 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
     case 'labels': return <>{p.added.length > 0 && <>{t('added')} <b>{p.added.join(', ')}</b> </>}{p.removed.length > 0 && <>{t('removed')} <b>{p.removed.join(', ')}</b></>}</>;
     case 'field': return <>{t('edited')} {{ title: t('the title'), description: t('the description'), analysis: t('the AI analysis'), change_human: t('the HUMAN change notes'), change_ai: t('the AI change log') }[p.field] ?? p.field}</>;
     case 'analysis_requested': return <>{t('requested')} <b>{p.deep ? t('a deep AI analysis') : t('an AI analysis')}</b></>;
+    case 'analysis_claimed': return <>{t('started the analysis on')} <b>{p.device}</b></>;
     case 'decision': return p.answer
       ? <>{t('decided')} „{p.question}”: <b>{p.answer}</b></>
       : <>{t('cleared the decision')} „{p.question}”</>;
@@ -454,7 +464,7 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
 function eventIcon(p: IssueDetail['activity'][number]['payload']) {
   if (p.kind === 'commit') return <Icon.commit size={14} />;
   if (p.kind === 'deploy') return <span style={{ color: 'var(--success-text)' }}><Icon.rocket size={14} /></span>;
-  if (p.kind === 'analysis_requested') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
+  if (p.kind === 'analysis_requested' || p.kind === 'analysis_claimed') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
   if (p.kind === 'worklog') return <span style={{ color: 'var(--ai-text)' }}><Icon.cursor size={14} /></span>;
   return null;
 }

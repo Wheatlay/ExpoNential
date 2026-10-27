@@ -10,7 +10,7 @@ import { Avatar, Icon, StatusIcon, startedFraction } from './icons.tsx';
 import { toast } from './toast.ts';
 import { timeAgo } from './time.ts';
 import { Tooltip } from './menu.tsx';
-import { agentInstallCommand } from './startWork.ts';
+import { agentHere, agentInstallCommand } from './startWork.ts';
 import { lang, setLang, t, type Lang } from './i18n.ts';
 
 export type Theme = 'dark' | 'light' | 'oled';
@@ -119,10 +119,15 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; lastSeenAt: string | null; busy: boolean; online: boolean }[]>('/api/agents'), enabled: !!me && !me.demo && !!me.localAgentAt });
+  // Przełącznik "ten komputer ma agenta": tylko ta przeglądarka (localStorage), dla laptopów z dotykiem, gdzie wykrycie telefonu myli.
+  const [, setTick] = useState(0);
+  const here = agentHere(me);
+  const toggleHere = () => { try { localStorage.setItem('tracker.agentHere', here ? '0' : '1'); } catch { /* prywatne okno */ } setTick((n) => n + 1); };
   const [cmd, setCmd] = useState<string | null>(null);
   // Instalacja dzieje się w terminalu: po powrocie do karty odświeżamy status bez przeładowania.
   useEffect(() => {
-    const f = () => { void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['tokens'] }); };
+    const f = () => { void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['tokens'] }); void qc.invalidateQueries({ queryKey: ['agents'] }); };
     window.addEventListener('focus', f);
     return () => window.removeEventListener('focus', f);
   }, [qc]);
@@ -166,6 +171,24 @@ function ClaudeConnect() {
           </div>
         )}
       </div>
+      {installed && !demo && (
+        <div className="s-card" style={{ marginTop: 12 }}>
+          <div className="s-row s-row-head"><b>{t('Your computers')}</b><span className="hint">{t('A computer with the agent picks up analyses requested from your phone.')}</span></div>
+          {(agentList.data ?? []).map((a) => (
+            <div key={a.id} className="s-row">
+              <span className="grow">{a.name || t('Unnamed computer')}</span>
+              <span className="hint">{a.online ? (a.busy ? t('running an analysis') : t('online')) : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>
+              <button className="btn sm danger" onClick={() => void askConfirm({
+                title: t('Remove "{name}"?', { name: a.name || t('Unnamed computer') }), body: t('This computer stops picking up work until the install command is run on it again.'), action: t('Remove'), danger: true,
+              }).then((ok) => { if (ok) void api(`/api/agents/${a.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['agents'] })); })}>{t('Remove')}</button>
+            </div>
+          ))}
+          <div className="s-row">
+            <span className="grow">{t('This computer has the agent')}<div className="hint">{t('For laptops with a touch screen. Off: Analyze here only queues the request.')}</div></span>
+            <button className={`switch ${here ? 'on' : ''}`} role="switch" aria-checked={here} aria-label={t('This computer has the agent')} onClick={toggleHere} />
+          </div>
+        </div>
+      )}
       {(tokens.data?.length ?? 0) > 0 && (
         <div className="s-card" style={{ marginTop: 12 }}>
           <div className="s-row s-row-head"><b>{t('Tokens')}</b><span className="hint">{t('One per connected computer. Revoke the one from a computer you no longer use.')}</span></div>

@@ -49,6 +49,18 @@ function copyLater(text: Promise<string>): Promise<boolean> {
 /** Z tokenem: pierwsza instalacja, instalator sam dodaje serwer MCP trackera każdemu kontu Claude Code. */
 export const agentInstallCommand = (token?: string) =>
   `${token ? `$env:TRACKER_TOKEN='${token}'; ` : ''}irm ${location.origin}/agent/install.ps1 | iex`;
+/**
+ * Czy ta przeglądarka działa na komputerze z agentem (wtedy link tracker:// ruszy analizę od razu). Telefon i tablet nie;
+ * laptop z ekranem dotykowym ręcznie przełącza to w Ustawieniach (localStorage), bo `pointer: coarse` bywa mylące.
+ */
+export function agentHere(me?: Me | null) {
+  try {
+    const v = localStorage.getItem('tracker.agentHere');
+    if (v === '1') return true;
+    if (v === '0') return false;
+  } catch { /* prywatne okno */ }
+  return !!me?.localAgentAt && !matchMedia('(pointer: coarse)').matches;
+}
 export function runLocalAnalysis(number: number, deep: boolean) {
   location.href = `tracker://analyze/${ident(number)}${deep ? '?deep' : ''}`;
 }
