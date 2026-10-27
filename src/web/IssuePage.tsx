@@ -238,7 +238,7 @@ export function IssuePage({ number }: { number: number }) {
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
                 </>}
                 {(!issue.analysisRequestedAt || stalled) && <>
-                    {!issue.analysisRequestedAt && issue.analysisDeep && issue.analysisUpdatedAt && <span className="pill ai done" title={t('Deeper analysis with a stronger model: slower and more expensive')}>{t('Deep')}</span>}
+                    {!issue.analysisRequestedAt && issue.analysisResultDeep && issue.analysisUpdatedAt && <span className="pill ai done" title={t('Deeper analysis with a stronger model: slower and more expensive')}>{t('Deep')}</span>}
                     <button className="btn sm ai-btn" data-tour="analyze" title={local ? t('Runs Claude (Sonnet) on your computer, read-only') : t('Marks the issue for analysis by Claude')}
                       onClick={(e) => { e.stopPropagation(); void analyze(); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
                     {demo && <button className="btn sm ai-btn" disabled title={t('Disabled in the demo')} onClick={(e) => e.stopPropagation()}>{t('Deep')}</button>}

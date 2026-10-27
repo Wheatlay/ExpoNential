@@ -1,0 +1,2 @@
+ALTER TABLE "issues" ADD COLUMN "analysis_result_deep" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+UPDATE "issues" SET "analysis_result_deep" = "analysis_deep" WHERE "analysis_updated_at" IS NOT NULL AND "analysis_requested_at" IS NULL;

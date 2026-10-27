@@ -252,6 +252,7 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
     if (patch.analysis !== undefined && patch.analysis !== cur.analysis) {
       set.analysisUpdatedAt = new Date();
       set.analysisRequestedAt = null;
+      if (cur.analysisRequestedAt) set.analysisResultDeep = cur.analysisDeep;
       // Ręcznie poprawiony tekst nie zgadza się już z sekcjami: zostaje sam tekst.
       if (patch.analysisData === undefined) set.analysisData = null;
     }
@@ -259,6 +260,7 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
       set.analysisData = patch.analysisData;
       set.analysisUpdatedAt = new Date();
       set.analysisRequestedAt = null;
+      if (cur.analysisRequestedAt) set.analysisResultDeep = cur.analysisDeep;
     }
 
     if (patch.statusId !== undefined && patch.statusId !== cur.statusId) {
