@@ -13,7 +13,7 @@ import { assigneeMenu, labelMenu, priorityMenu, relationMenu, sprintLabel, sprin
 import { isAskedTo, type IssueRow, type RelatedIssue, type RelationKind } from './api.ts';
 import { linkProps, navigate } from './router.ts';
 import { openNewIssue } from './NewIssue.tsx';
-import { toast } from './toast.ts';
+import { copyText, toast } from './toast.ts';
 import { timeAgo, fullDate } from './time.ts';
 import { InlineCode } from './InlineCode.tsx';
 import { agentHere, issuePrompt, runLocalAnalysis, simulateAgent, startOnPc, startWork } from './startWork.ts';
@@ -384,8 +384,8 @@ export function IssuePage({ number }: { number: number }) {
         <div className="props-group hint">
           {t('Created by {name}', { name: creator?.name ?? t('unknown') })} · <span title={fullDate(issue.createdAt)}>{timeAgo(issue.createdAt)}</span>
           <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-            <button className="btn sm" onClick={() => { void navigator.clipboard.writeText(`${location.origin}/issue/${ident(number)}`); toast(t('Link copied')); }}><Icon.link size={13} /> {t('Copy link')}</button>
-            <button className="btn sm" onClick={() => { void navigator.clipboard.writeText(`${ident(number)}`); toast(t('ID copied')); }}><Icon.copy size={13} /> ID</button>
+            <button className="btn sm" onClick={() => copyText(`${location.origin}/issue/${ident(number)}`, t('Link copied'))}><Icon.link size={13} /> {t('Copy link')}</button>
+            <button className="btn sm" onClick={() => copyText(`${ident(number)}`, t('ID copied'))}><Icon.copy size={13} /> ID</button>
           </div>
         </div>
       </aside>
@@ -409,7 +409,7 @@ function SubIssues({ issue, meta, done }: { issue: IssueDetail; meta: Meta; done
       { key: 'priority', label: t('Priority'), kbd: ['P'], icon: <PriorityIcon priority={c.priority} colored={false} />, submenu: () => priorityMenu(meta, tg, upd(c.number)) },
       { key: 'assignee', label: t('Assignee'), kbd: ['A'], icon: <Icon.user size={14} />, submenu: () => assigneeMenu(meta, tg, upd(c.number)) },
       { key: 'sep2', separator: true },
-      { key: 'copy', label: t('Copy ID'), icon: <Icon.copy size={14} />, onSelect: () => void navigator.clipboard.writeText(`${ident(c.number)}`) },
+      { key: 'copy', label: t('Copy ID'), icon: <Icon.copy size={14} />, onSelect: () => copyText(`${ident(c.number)}`, t('ID copied')) },
       { key: 'detach', label: t('Remove from parent'), icon: <Icon.parent size={14} />, onSelect: () => upd(c.number)({ parentNumber: null }) },
     ],
   });
@@ -753,7 +753,7 @@ function DemoStartModal({ number, onClose }: { number: number; onClose: () => vo
         <pre className="demo-prompt">{prompt.data ?? (prompt.isError ? t('Could not load the prompt') : t('Loading…'))}</pre>
         <div className="hint">{t('In production this opens Claude Code in VS Code with the prompt above.')}</div>
         <div className="foot">
-          <button className="btn" disabled={!prompt.data} onClick={() => void navigator.clipboard.writeText(prompt.data ?? '').then(() => toast(t('Copied')))}><Icon.copy size={13} /> {t('Copy')}</button>
+          <button className="btn" disabled={!prompt.data} onClick={() => copyText(prompt.data ?? '', t('Copied'))}><Icon.copy size={13} /> {t('Copy')}</button>
           <span className="spacer" />
           <button className="btn" onClick={onClose}>{t('Cancel')}</button>
           <button className="btn primary" disabled={busy} onClick={() => void run()}><Icon.play size={12} /> {t('Run the agent (replay)')}</button>

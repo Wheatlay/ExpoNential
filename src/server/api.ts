@@ -90,12 +90,12 @@ export async function registerApi(app: FastifyInstance) {
     // Agent na PC (tracker-agent.ps1): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
     r.get<{ Querystring: Record<string, string> }>('/api/agent/work', async (req) => {
       const q = z.object({
-        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(1000).default(''), version: z.string().max(40).default(''),
+        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(1000).default(''), version: z.string().max(40).default(''), error: z.string().max(300).default(''),
       }).parse(req.query);
       // Zamknięte połączenie przerywa czekanie, żeby pętla nie trzymała zapytań do bazy po odejściu agenta.
       const ac = new AbortController();
       req.raw.on('close', () => ac.abort());
-      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys: q.repos.split(',').filter(Boolean), version: q.version }, ac.signal);
+      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys: q.repos.split(',').filter(Boolean), version: q.version, error: q.error }, ac.signal);
     });
     r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
       const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);

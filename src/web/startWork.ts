@@ -92,7 +92,7 @@ export async function startOnPc(number: number) {
   await api(`/api/issues/${ident(number)}/start-on-pc`, { method: 'POST' });
   void queryClient.invalidateQueries({ queryKey: ['issues'] });
   void queryClient.invalidateQueries({ queryKey: ['issue', number] });
-  toast(t('Opening Claude Code on your PC.'));
+  toast(t('Sent to your PC. Claude Code opens there in a few seconds if the PC is on and up to date.'));
 }
 
 /** Demo: zamiast prawdziwego agenta serwer odgrywa nagraną sesję; zmiany wracają zwykłym SSE. */

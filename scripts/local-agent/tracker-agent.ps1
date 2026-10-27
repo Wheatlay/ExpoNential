@@ -21,6 +21,8 @@ $handler = Join-Path $dir 'tracker-handler.ps1'
 $child = $null
 $delay = 2
 $errLogged = $false
+# Ostatni błąd pętli: idzie do trackera przy najbliższym udanym zapytaniu (Ustawienia pokazują go przy komputerze).
+$lastErr = ''
 $keyRe = '^[A-Z]{2,10}-\d{1,6}$'
 
 # Konto i token jak w tracker-handler.ps1 (ta sama tożsamość co MCP w Claude Code).
@@ -55,7 +57,10 @@ while ($true) {
     # Zajęty: nasz potomek żyje albo trwa przebieg uruchomiony z przeglądarki (tracker://), co widać po pliku .lock.
     $busy = ($child -and -not $child.HasExited) -or [bool](Get-ChildItem $dir -Filter '*.lock' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-30) })
     $repos = ($cfg.repos.PSObject.Properties.Name) -join ','
-    $res = Invoke-RestMethod -Uri "$base/api/agent/work?deviceId=$($cfg.deviceId)&name=$([uri]::EscapeDataString($env:COMPUTERNAME))&busy=$([int][bool]$busy)&repos=$repos&version=$($cfg.version)" -Headers $headers -TimeoutSec 60
+    $errQ = if ($lastErr) { '&error=' + [uri]::EscapeDataString($lastErr.Substring(0, [Math]::Min($lastErr.Length, 300))) } else { '' }
+    $res = Invoke-RestMethod -Uri "$base/api/agent/work?deviceId=$($cfg.deviceId)&name=$([uri]::EscapeDataString($env:COMPUTERNAME))&busy=$([int][bool]$busy)&repos=$repos&version=$($cfg.version)$errQ" -Headers $headers -TimeoutSec 60
+    # Serwer odebrał błąd, więc lokalnie go czyścimy.
+    $lastErr = ''
     $delay = 2
     $errLogged = $false
 
@@ -80,7 +85,8 @@ while ($true) {
         if ($link.Length -gt $max) { $link = & $mk (Invoke-RestMethod -Uri "$base/api/issues/$key/prompt/start?compact=1" -Headers $headers).prompt }
         if ($link.Length -gt $max) { $link = & $mk "Pracujemy nad $key. Pełne dane: get_issue $key." }
         Log "start pracy $key"
-        Start-Process $link
+        # Brak obsługi vscode:// rzuca wyjątek; zgłaszamy go do Ustawień zamiast milczeć.
+        try { Start-Process $link } catch { $lastErr = "$(Get-Date -Format 'HH:mm') Nie udalo sie otworzyc VS Code: $($_.Exception.Message)"; Log $lastErr }
       } catch {
         # 409 = ktoś był pierwszy albo zlecenie wygasło: nic do zrobienia.
         if (-not ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 409)) { throw }
@@ -89,6 +95,7 @@ while ($true) {
     # Bez przerwy po udanej odpowiedzi: serwer sam wstrzymuje żądanie (long poll). Chroni tylko przed pętlą bez opóźnienia.
     if (-not $busy -and -not $job) { Start-Sleep -Milliseconds 200 }
   } catch {
+    $lastErr = "$(Get-Date -Format 'HH:mm') $($_.Exception.Message)"
     if (-not $errLogged) { Log "blad: $($_.Exception.Message)"; $errLogged = $true }
     Start-Sleep $delay
     $delay = [Math]::Min($delay * 2, 60)

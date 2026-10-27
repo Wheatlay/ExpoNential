@@ -1,5 +1,5 @@
 import { api, type IssuePatch, type IssueRow, type Meta, type RelationKind, type Sprint, type Status } from './api.ts';
-import { toast } from './toast.ts';
+import { copyText, toast } from './toast.ts';
 import { openAsk } from './AskModal.tsx';
 import { guardDone } from './DoneGuard.tsx';
 import { isNeedInfo } from '../server/rules.ts';
@@ -143,8 +143,8 @@ export function issueContextMenu(opts: {
     ...(opts.allIssues ? [{ key: 'relation', label: t('Add relation'), icon: <Icon.relation size={14} />, kbd: ['R'], submenu: () => relationMenu(opts.allIssues!, tg.number) }] : []),
     { key: 'sep2', separator: true },
     { key: 'open', label: t('Open'), icon: <Icon.chevronRight size={14} />, kbd: ['↵'], onSelect: opts.onOpen },
-    { key: 'copyid', label: t('Copy ID'), icon: <Icon.copy size={14} />, onSelect: () => void navigator.clipboard.writeText(`${ident(tg.number)}`) },
-    { key: 'copyurl', label: t('Copy link'), icon: <Icon.link size={14} />, onSelect: () => void navigator.clipboard.writeText(url) },
+    { key: 'copyid', label: t('Copy ID'), icon: <Icon.copy size={14} />, onSelect: () => copyText(`${ident(tg.number)}`, t('ID copied')) },
+    { key: 'copyurl', label: t('Copy link'), icon: <Icon.link size={14} />, onSelect: () => copyText(url, t('Link copied')) },
     { key: 'sep3', separator: true },
     { key: 'delete', label: t('Delete'), icon: <Icon.trash size={14} />, danger: true, onSelect: opts.onDelete },
   ];

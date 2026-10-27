@@ -245,9 +245,19 @@ export function useLiveUpdates(enabled: boolean) {
     };
     // Po zerwaniu połączenia (np. uśpiony laptop) odświeżamy wszystko, bo mogliśmy coś przegapić.
     let dropped = false;
-    es.onerror = () => { dropped = true; };
-    es.onopen = () => { if (dropped) { dropped = false; void qc.invalidateQueries(); } };
-    return () => { es.close(); if (timer) clearTimeout(timer); };
+    // Krótkie zerwania (np. restart serwera) są normalne; użytkownik dostaje znać dopiero po 10 s.
+    let downTimer: ReturnType<typeof setTimeout> | null = null;
+    let warned = false;
+    es.onerror = () => {
+      dropped = true;
+      downTimer ??= setTimeout(() => { warned = true; toast(t('Live updates paused. Reconnecting…'), 'warn'); }, 10_000);
+    };
+    es.onopen = () => {
+      if (downTimer) { clearTimeout(downTimer); downTimer = null; }
+      if (warned) { warned = false; toast(t('Live updates are back.')); }
+      if (dropped) { dropped = false; void qc.invalidateQueries(); }
+    };
+    return () => { es.close(); if (timer) clearTimeout(timer); if (downTimer) clearTimeout(downTimer); };
   }, [enabled, qc]);
 }
 

@@ -186,13 +186,16 @@ async function call(path, init = {}) {
   return res.json();
 }
 
+let noCfgLogged = false;
 async function sync(st, session) {
   try {
-    await call(`/api/issues/${st.issue}/worklog`, {
+    const sent = await call(`/api/issues/${st.issue}/worklog`, {
       method: 'POST',
       // Limity serwera (200 plików, 50 commitów): za duża paczka byłaby odrzucona w całości.
       body: JSON.stringify({ session, repo: (st.repo || '').slice(0, 100), files: st.files.slice(0, 200).map((f) => f.slice(0, 300)), commits: st.commits.slice(-50), prompts: st.prompts }),
     });
+    // null = brak konfiguracji trackera: nic nie poszło, więc stan zostaje brudny i następny hook ponowi próbę.
+    if (sent === null) { if (!noCfgLogged) { noCfgLogged = true; log('brak konfiguracji trackera, slad pracy czeka'); } return; }
     st.dirty = false;
     st.lastSync = Date.now();
   } catch (e) { log(`sync ${st.issue}: ${e.message}`); }

@@ -119,7 +119,7 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean }[]>('/api/agents'), enabled: !!me && !me.demo && !!me.localAgentAt });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; lastError: string; lastErrorAt: string | null }[]>('/api/agents'), enabled: !!me && !me.demo && !!me.localAgentAt });
   // Przełącznik "ten komputer ma agenta": tylko ta przeglądarka (localStorage), dla laptopów z dotykiem, gdzie wykrycie telefonu myli.
   const [, setTick] = useState(0);
   const here = agentHere(me);
@@ -179,7 +179,8 @@ function ClaudeConnect() {
           <div className="s-row s-row-head"><b>{t('Your computers')}</b><span className="hint">{t('A computer with the agent picks up analyses requested from your phone.')}</span></div>
           {(agentList.data ?? []).map((a) => (
             <div key={a.id} className="s-row">
-              <span className="grow">{a.name || t('Unnamed computer')}{a.outdated && <> <span className="pill stalled" title={t('Old version of the PC scripts. Run the update command above on this computer.')}>{t('Update needed')}</span></>}</span>
+              <span className="grow">{a.name || t('Unnamed computer')}{a.outdated && <> <span className="pill stalled" title={t('Old version of the PC scripts. Run the update command above on this computer.')}>{t('Update needed')}</span></>}
+                {a.lastError && <div className="hint">{t('Last error {when}: {error}', { when: a.lastErrorAt ? timeAgo(a.lastErrorAt) : '', error: a.lastError })}</div>}</span>
               <span className="hint">{a.online ? (a.busy ? t('running an analysis') : t('online')) : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>
               <button className="btn sm danger" onClick={() => void askConfirm({
                 title: t('Remove "{name}"?', { name: a.name || t('Unnamed computer') }), body: t('This computer stops picking up work until the install command is run on it again.'), action: t('Remove'), danger: true,
@@ -210,7 +211,7 @@ function ClaudeConnect() {
 }
 
 type ProjectDetail = {
-  id: number; key: string; name: string; color: string; discordWebhookUrl: string | null; meetingLocationUrl: string;
+  id: number; key: string; name: string; color: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
   githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; agentTeamQueue: boolean;
@@ -346,6 +347,7 @@ function ProjectIntegrations() {
             onBlur={(e) => e.target.value.trim() !== (p.discordWebhookUrl ?? '') && void patch({ discordWebhookUrl: e.target.value.trim() || null })} />
         </Tooltip>
         <span className="hint s-hint">{t('Meeting polls, picked times and reminders are posted to this channel with @here.')}</span>
+        {p.discordLastError && <span className="hint s-hint">{t('Last Discord message failed {when}: {error}. Check the webhook URL.', { when: p.discordLastErrorAt ? timeAgo(p.discordLastErrorAt) : '', error: p.discordLastError })}</span>}
       </div>
       <div className="s-row">
         <span className="s-label">{t('Meeting place')}</span>

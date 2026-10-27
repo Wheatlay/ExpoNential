@@ -110,14 +110,17 @@ const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && lastSeenAt.getTime
  * Sygnał życia agenta (też rejestracja nowego urządzenia). Urządzenie jednego użytkownika nie może przejąć cudze id.
  * Gdy agent jest zajęty, odświeżamy claim jego analizy: długi przebieg Deep nie wraca do kolejki ani nie wygląda na zawieszony.
  */
-export async function heartbeat(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[]; version?: string }) {
+export async function heartbeat(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[]; version?: string; error?: string }) {
   const [existing] = await db.select({ userId: agents.userId }).from(agents).where(eq(agents.id, deviceId));
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
   // Bez podanej wersji zostaje zapisana (wersję podaje tracker-agent.ps1 z config.json).
   const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date(), ...(info.version !== undefined ? { version: info.version.slice(0, 40) } : {}) };
-  const [row] = await db.insert(agents).values({ id: deviceId, userId: user.id, ...values })
-    .onConflictDoUpdate({ target: agents.id, set: values }).returning();
+  // Pusty błąd nie kasuje poprzedniego: zostaje widoczny do kolejnego błędu albo 24 h.
+  const err = (info.error ?? '').trim().slice(0, 300);
+  const errValues = err ? { lastError: err, lastErrorAt: new Date() } : {};
+  const [row] = await db.insert(agents).values({ id: deviceId, userId: user.id, ...values, ...errValues })
+    .onConflictDoUpdate({ target: agents.id, set: { ...values, ...errValues } }).returning();
   if (info.busy) {
     await db.update(issues).set({ analysisClaimedAt: new Date() })
       .where(and(eq(issues.analysisClaimedDevice, deviceId), dsql`${issues.analysisRequestedAt} is not null`));
@@ -161,7 +164,7 @@ const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) =
 });
 
 /** Long poll agenta: jeden heartbeat na żądanie, potem do 25 s sprawdzamy co 2 s, czy jest praca. */
-export async function waitForWork(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[]; version?: string }, signal: AbortSignal) {
+export async function waitForWork(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[]; version?: string; error?: string }, signal: AbortSignal) {
   const agent = await heartbeat(user, deviceId, info);
   const until = Date.now() + 25_000;
   for (;;) {
@@ -185,7 +188,9 @@ export async function claimStartJob(user: User, jobId: number, deviceId: string)
 /** Moje komputery do Ustawień. */
 export async function myAgents(user: User) {
   const rows = await db.select().from(agents).where(eq(agents.userId, user.id)).orderBy(dsql`${agents.lastSeenAt} desc nulls last`);
-  return rows.map((a) => ({ id: a.id, name: a.name, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: a.version !== agentScriptsVersion() }));
+  return rows.map((a) => ({ id: a.id, name: a.name, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: a.version !== agentScriptsVersion(),
+    // Błąd starszy niż 24 h już nie jest istotny.
+    lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 ? a.lastError : '', lastErrorAt: a.lastErrorAt }));
 }
 
 export async function removeAgent(user: User, id: string) {

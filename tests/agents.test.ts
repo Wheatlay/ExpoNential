@@ -264,6 +264,16 @@ describe('heartbeat', () => {
     await ag.removeAgent(bob, id);
     expect((await ag.myAgents(bob)).some((a) => a.id === id)).toBe(false);
   });
+
+  it('stores the reported error, an empty error keeps it, and an error older than 24 h is hidden', async () => {
+    const base = { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'] };
+    await ag.heartbeat(alice, DEV_A1, { ...base, error: 'boom' });
+    expect((await ag.myAgents(alice)).find((a) => a.id === DEV_A1)?.lastError).toBe('boom');
+    await ag.heartbeat(alice, DEV_A1, { ...base, error: '' });
+    expect((await ag.myAgents(alice)).find((a) => a.id === DEV_A1)?.lastError).toBe('boom');
+    await dbmod.db.update(schema.agents).set({ lastErrorAt: new Date(Date.now() - 25 * 3600_000) }).where(dz.eq(schema.agents.id, DEV_A1));
+    expect((await ag.myAgents(alice)).find((a) => a.id === DEV_A1)?.lastError).toBe('');
+  });
 });
 
 describe('script version', () => {

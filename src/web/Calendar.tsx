@@ -88,7 +88,7 @@ export function Calendar() {
 
   const copyIcs = async () => {
     const { url } = await api<{ url: string }>('/api/calendar-link');
-    await navigator.clipboard.writeText(url);
+    try { await navigator.clipboard.writeText(url); } catch { toast(t('Could not copy to the clipboard.'), 'err'); return; }
     toast(t('Calendar link copied. Add it in Google Calendar or Outlook as "From URL".'));
   };
 

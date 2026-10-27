@@ -30,6 +30,9 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   color: text('color').notNull().default('#5e6ad2'),
   discordWebhookUrl: text('discord_webhook_url'),
+  // Ostatnia nieudana wysyłka na Discorda (bez adresu webhooka), żeby zepsuty webhook nie milczał.
+  discordLastError: text('discord_last_error').notNull().default(''),
+  discordLastErrorAt: timestamp('discord_last_error_at', { withTimezone: true }),
   // Domyślne miejsce spotkań (link do kanału głosowego Discorda): nowe spotkania i sprint review.
   meetingLocationUrl: text('meeting_location_url').notNull().default(''),
   sprintLengthDays: integer('sprint_length_days').notNull().default(14),
@@ -342,6 +345,9 @@ export const agents = pgTable('agents', {
   repoKeys: jsonb('repo_keys').$type<string[]>().notNull().default([]),
   // Wersja skryptów na PC (skrót treści z install.ps1). Inna niż na serwerze = Ustawienia proszą o ponowną instalację.
   version: text('version').notNull().default(''),
+  // Ostatni błąd zgłoszony przez agenta (widoczny w Ustawieniach, bo skrypt działa w tle bez okna).
+  lastError: text('last_error').notNull().default(''),
+  lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

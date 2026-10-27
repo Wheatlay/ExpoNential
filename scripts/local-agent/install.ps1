@@ -42,7 +42,9 @@ if ($env:TRACKER_TOKEN) {
     if ((Read-Mcp $d) -or -not (Test-Path (Join-Path $d '.claude.json'))) { continue }
     if ($d -eq $env:USERPROFILE) { Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue } else { $env:CLAUDE_CONFIG_DIR = $d }
     & $claudeExe mcp add --transport http --scope user tracker "$base/mcp" --header "Authorization: Bearer $($env:TRACKER_TOKEN)" 2>&1 | Out-Null
-    Say "Serwer MCP trackera dodany: $d" Green
+    # claude.exe potrafi zakonczyc sie po cichu bez zapisu, wiec sprawdzamy konfiguracje po fakcie.
+    if (Read-Mcp $d) { Say "Serwer MCP trackera dodany: $d" Green }
+    else { Say "Nie udalo sie dodac serwera MCP trackera dla $d. Recznie: claude mcp add --transport http --scope user tracker $base/mcp --header `"Authorization: Bearer <token>`"" Yellow }
   }
   $ErrorActionPreference = 'Stop'
   $env:CLAUDE_CONFIG_DIR = $prevDir
@@ -90,7 +92,7 @@ foreach ($p in $projects) {
       $pick = New-Object Windows.Forms.FolderBrowserDialog -Property @{ Description = "Tracker: wskaz klon repo $($p.githubRepo) (projekt $($p.key))" }
       $repo = if ($pick.ShowDialog($owner) -eq 'OK') { $pick.SelectedPath } else { '' }
       $owner.Dispose()
-    } catch { $repo = '' }
+    } catch { Say "Okno wyboru folderu nie dzialalo ($($_.Exception.Message)), pomijam projekt $($p.key)." Yellow; $repo = '' }
     if ($repo -and -not (Test-Path (Join-Path $repo '.git'))) { Say "$repo nie jest repozytorium git, pomijam $($p.key)" Yellow; $repo = '' }
   }
   if ($repo) { $repos[$p.key] = (Resolve-Path $repo).Path }
@@ -134,6 +136,13 @@ Set-ItemProperty -Path "$root\shell\open\command" -Name '(default)' `
 Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'TrackerAgent' `
   -Value "conhost.exe --headless powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$agent`""
 Start-Process conhost.exe -ArgumentList '--headless', 'powershell.exe', '-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', "`"$agent`""
+# Start jest asynchroniczny: czekamy do 10 s, az proces agenta sie pojawi.
+$agentUp = $false
+for ($i = 0; $i -lt 10 -and -not $agentUp; $i++) {
+  Start-Sleep -Seconds 1
+  $agentUp = [bool](Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -like '*tracker-agent.ps1*' })
+}
+if ($agentUp) { Say 'Agent w tle dziala.' Green } else { Say "Agent w tle nie wystartowal. Zobacz $dir\log.txt" Yellow }
 
 # 5b. Plugin "tracker" w Claude Code (skille analizy i zamykania, hook śladu pracy) dla każdego repo i projektu.
 #     Ponowne uruchomienie instalacji aktualizuje go do wersji z serwera.

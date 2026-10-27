@@ -1,7 +1,7 @@
 import { eq, inArray } from 'drizzle-orm';
 import webpush from 'web-push';
 import { db } from '../db/index.ts';
-import { pushSubscriptions, userNotificationSettings } from '../db/schema.ts';
+import { projects, pushSubscriptions, userNotificationSettings } from '../db/schema.ts';
 import type { Project } from './projects.ts';
 import { RuleError } from './rules.ts';
 
@@ -96,9 +96,15 @@ export async function sendDiscord(p: Project, m: DiscordMessage, log?: { warn: (
       }),
     });
     if (!res.ok) throw new Error(`Discord ${res.status}`);
+    // Ślad błędu czyścimy tylko gdy był, żeby nie pisać do bazy przy każdej wiadomości.
+    if (p.discordLastError) await db.update(projects).set({ discordLastError: '', discordLastErrorAt: null }).where(eq(projects.id, p.id)).catch(() => {});
     return true;
   } catch (e) {
-    log?.warn({ err: (e as Error).message }, 'discord webhook failed');
+    const msg = (e as Error).message;
+    log?.warn({ err: msg }, 'discord webhook failed');
+    // Komunikat z fetch bywa z adresem webhooka, więc zapisujemy tylko kod statusu albo ogólny opis.
+    const safe = /^Discord \d+$/.test(msg) ? msg : 'Request failed';
+    await db.update(projects).set({ discordLastError: safe.slice(0, 200), discordLastErrorAt: new Date() }).where(eq(projects.id, p.id)).catch(() => {});
     return false;
   }
 }

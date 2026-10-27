@@ -6,7 +6,7 @@ import { About } from './About.tsx';
 import { Landing } from './Landing.tsx';
 import { DemoBanner } from './DemoBanner.tsx';
 import { DemoTour } from './DemoTour.tsx';
-import { api, awaitsMyVote, isAskedTo, markDemoSession, queryClient, useConfig, useMeetings, useIssue, useIssues, useLiveUpdates, useMe, useMeta, useProjects, useSprints } from './api.ts';
+import { ApiError, api, awaitsMyVote, isAskedTo, markDemoSession, queryClient, useConfig, useMeetings, useIssue, useIssues, useLiveUpdates, useMe, useMeta, useProjects, useSprints } from './api.ts';
 import { Board } from './Board.tsx';
 import { IssuePage } from './IssuePage.tsx';
 import { SprintReview } from './SprintReview.tsx';
@@ -22,7 +22,7 @@ import { DeployStatus, RecentIssues } from './SidebarExtras.tsx';
 import { requestQuestionsScope } from './Board.tsx';
 import { Avatar, BrandMark, Icon } from './icons.tsx';
 import { linkProps, usePath } from './router.ts';
-import { onToast } from './toast.ts';
+import { onToast, toast } from './toast.ts';
 import { InlineCode } from './InlineCode.tsx';
 import { ident, setProjectKey, useProjectKey } from './project.ts';
 import { ProjectBadge, ProjectSwitcher, useCurrentProject } from './ProjectSwitcher.tsx';
@@ -235,6 +235,19 @@ function Toasts() {
   if (!t) return null;
   return <div className={`toast ${t.kind === 'ok' ? '' : t.kind}`}>{t.kind === 'ok' ? <Icon.check size={14} /> : null}{t.text}</div>;
 }
+
+// Wiele miejsc woła `void api(...)` bez .catch (zapis widoku tablicy, usuwanie, etykiety/statusy, głosy, Analyze z menu);
+// to robi z ich porażek widoczny komunikat zamiast ciszy. 'demo' i 'rate' toastuje już sam api().
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  if (r instanceof ApiError) {
+    e.preventDefault();
+    if (r.code !== 'demo' && r.code !== 'rate') toast(r.message || t('Something went wrong'), 'err');
+  } else if (r instanceof TypeError && /Failed to fetch|NetworkError|Load failed/i.test(r.message)) {
+    e.preventDefault();
+    toast(t('No connection to the tracker. The change was not saved.'), 'err');
+  }
+});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

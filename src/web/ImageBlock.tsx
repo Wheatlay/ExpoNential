@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { Icon } from './icons.tsx';
-import { toast } from './toast.ts';
+import { copyText, toast } from './toast.ts';
 import { t } from './i18n.ts';
 
 let open: string | null = null;
@@ -57,7 +57,7 @@ function ImageTools({ src, onExpand }: { src: string; onExpand?: () => void }) {
       {onExpand && <button className="img-tool" title={t('Expand')} onClick={onExpand}><Icon.expand size={14} /></button>}
       <a className="img-tool" title={t('Download')} href={src} download={name}><Icon.download size={14} /></a>
       <button className="img-tool" title={t('Copy image')} onClick={() => void copyImage(src)}><Icon.copy size={14} /></button>
-      <button className="img-tool" title={t('Copy link')} onClick={() => { void navigator.clipboard.writeText(new URL(src, location.origin).href); toast(t('Link copied')); }}><Icon.link size={14} /></button>
+      <button className="img-tool" title={t('Copy link')} onClick={() => copyText(new URL(src, location.origin).href, t('Link copied'))}><Icon.link size={14} /></button>
     </>
   );
 }

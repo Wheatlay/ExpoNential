@@ -87,7 +87,7 @@ export function SprintReview() {
       notes.trim() ? `\n**Notatki ze spotkania**\n${notes.trim()}` : null,
     ].filter((l) => l !== null).join('\n');
     const text = out.length > 1950 ? out.slice(0, 1940) + '\n…' : out;
-    await navigator.clipboard.writeText(text);
+    try { await navigator.clipboard.writeText(text); } catch { toast(t('Could not copy to the clipboard.'), 'err'); return; }
     toast(out.length > 1950 ? t('Summary copied (cut to Discord limit)') : t('Summary copied, paste it on Discord'));
   };
 
