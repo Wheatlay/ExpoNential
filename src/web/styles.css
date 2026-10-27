@@ -300,7 +300,8 @@ svg.i { flex-shrink: 0; }
 .md h1 { font-size: var(--text-2xl); } .md h2 { font-size: var(--text-xl); } .md h3 { font-size: var(--text-lg); }
 .md a { color: var(--accent-hover); }
 /* Wzmianka o zgłoszeniu (ACME-12) w tekście: karta IssueMention w design systemie. */
-.md a.issue-mention { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 0 6px; vertical-align: bottom; border: 1px solid var(--border-secondary); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary); text-decoration: none; }
+.mention-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.issue-mention, .md a.issue-mention { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 0 6px; vertical-align: bottom; border: 1px solid var(--border-secondary); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary); text-decoration: none; }
 .md a.issue-mention:hover { background: var(--bg-hover); }
 .issue-mention .id { color: var(--text-secondary); font-weight: 450; white-space: nowrap; }
 .issue-mention .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

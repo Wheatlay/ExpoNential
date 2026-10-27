@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { askConfirm } from './Confirm.tsx';
-import { Markdown } from './Markdown.tsx';
+import { Markdown, MentionHint } from './Markdown.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api, useIssue, useMe, useMeta, useSprints, useUpdateIssue, type IssueDetail, type IssuePatch, type Meta,
@@ -68,6 +68,7 @@ export function MarkdownField({ value, onSave, placeholder, minHeight }: {
           enterToSubmit(e, save, setDraft);
         }}
       />
+      <MentionHint text={draft} />
       <Attachments urls={att.urls} onRemove={att.remove} />
       <div className="edit-actions">
         <span className="hint" style={{ marginRight: 'auto' }}>{t('Enter to save · Alt+Enter new line · paste images')}</span>
@@ -575,6 +576,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
           onPaste={att.onPaste}
           onKeyDown={(e) => { e.stopPropagation(); enterToSubmit(e, () => void send(), setBody); }}
         />
+        <MentionHint text={body} />
         <Attachments urls={att.urls} onRemove={att.remove} />
         <div className="row">
           <button className="btn sm primary" disabled={!body.trim() && !att.urls.length} onClick={() => void send()}><Icon.arrowUp size={13} /> {t('Comment')}</button>
@@ -590,6 +592,7 @@ function CommentEditor({ initial, onSave, onCancel }: { initial: string; onSave:
     <div>
       <textarea className="md-edit" style={{ minHeight: 100 }} autoFocus value={v} onChange={(e) => setV(e.target.value)}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onCancel(); enterToSubmit(e, () => onSave(v), setV); }} />
+      <MentionHint text={v} />
       <div className="edit-actions">
         <button className="btn sm" onClick={onCancel}>{t('Cancel')}</button>
         <button className="btn sm primary" disabled={!v.trim()} onClick={() => onSave(v)}>{t('Save')}</button>
@@ -709,6 +712,7 @@ function AnswerBox({ number }: { number: number }) {
         onPaste={att.onPaste}
         onKeyDown={(e) => { e.stopPropagation(); enterToSubmit(e, () => void send(), setV); }} />
       <button className="btn sm primary" disabled={!v.trim() && !att.urls.length} onClick={() => void send()}>{t('Answer')}</button>
+      <MentionHint text={v} />
       <Attachments urls={att.urls} onRemove={att.remove} />
     </div>
   );

@@ -6,6 +6,7 @@ import { assigneeMenu, labelMenu, priorityMenu, sprintMenu, statusMenu, type Pic
 import { navigate } from './router.ts';
 import { toast } from './toast.ts';
 import { Attachments, useAttachments } from './ImagePreviews.tsx';
+import { MentionHint } from './Markdown.tsx';
 import { enterToSubmit } from './keys.ts';
 import { api } from './api.ts';
 import { getProjectKey, ident } from './project.ts';
@@ -84,6 +85,7 @@ function NewIssueModal({ init }: { init: Init }) {
         <textarea placeholder={t('What happens?\nWhat should happen?\nWhere (screen, link, steps)?\n\nEnter creates · Alt+Enter new line · paste screenshots')} value={description} onChange={(e) => setDescription(e.target.value)}
           onPaste={att.onPaste}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') close(); enterToSubmit(e, () => void submit(), setDescription); }} />
+        <MentionHint text={description} />
         <Attachments urls={att.urls} onRemove={att.remove} />
         <div className="props">
           <button className="chip" onClick={(e) => openMenu(e.currentTarget, statusMenu(meta, form, set))}>

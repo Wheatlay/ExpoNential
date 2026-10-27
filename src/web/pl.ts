@@ -59,6 +59,7 @@ export const pl: Record<string, string> = {
   'anyone': 'ktokolwiek',
   'Anyone': 'Ktokolwiek',
   'Link copied': 'Skopiowano link',
+  'Links to': 'Linkuje do',
   'Copy link': 'Kopiuj link',
   'Copy ID': 'Kopiuj ID',
   'ID copied': 'Skopiowano ID',

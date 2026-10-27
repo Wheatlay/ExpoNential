@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { useIssues, useMe, useMeta, useUpdateIssue, type IssuePatch } from './api.ts';
+import { useIssues, useMe, useMeta, useProjects, useUpdateIssue, type IssuePatch } from './api.ts';
 import { Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu, type MenuSpec } from './menu.tsx';
 import { assigneeMenu, priorityMenu, statusMenu } from './pickers.tsx';
@@ -11,16 +11,50 @@ import { t } from './i18n.ts';
 import { getProjectKey } from './project.ts';
 import { ImageBlock } from './ImageBlock.tsx';
 
-const ISSUE_ID = /\b[A-Z]{2,6}-\d+\b/g;
+// Kod, istniejące linki i gołe adresy zostają nietknięte (nieparzyste kawałki po split).
+const SKIP = /(```[\s\S]*?```|`[^`\n]*`|\[[^\]\n]*\]\([^)\n]*\)|https?:\/\/\S+)/;
+// Znacznik w tytule linku: odróżnia wzmiankę od ręcznie wpisanego linku do zgłoszenia.
+const MENTION = 'issue-mention';
 
-// Goły identyfikator (ACME-12) staje się linkiem do zgłoszenia; kod i istniejące linki zostają nietknięte.
-function linkIssues(text: string) {
-  return text.split(/(```[\s\S]*?```|`[^`\n]*`|\[[^\]\n]*\]\([^)\n]*\))/).map((part, i) =>
-    i % 2 ? part : part.replace(ISSUE_ID, (id) => `[${id}](/issue/${id})`)).join('');
+/**
+ * Wzorzec wzmianki: tylko klucze istniejących projektów (inaczej UTF-8 czy ISO-9001 stałyby się linkami),
+ * dowolna wielkość liter, myślnik, spacja albo nic przed numerem: CHUB-172, chub 172, chub172.
+ */
+function useMentionPattern() {
+  const keys = new Set((useProjects().data ?? []).map((p) => p.key));
+  if (getProjectKey()) keys.add(getProjectKey());
+  if (!keys.size) return null;
+  return new RegExp(`(?<![\\w/-])(${[...keys].join('|')})[- ]?(\\d+)\\b`, 'gi');
+}
+
+function linkIssues(text: string, re: RegExp | null) {
+  if (!re) return text;
+  return text.split(SKIP).map((part, i) =>
+    i % 2 ? part : part.replace(re, (all, key: string, num: string) => `[${all}](/issue/${key.toUpperCase()}-${num} "${MENTION}")`)).join('');
+}
+
+/** Identyfikatory rozpoznane w tekście, bez powtórzeń, w kolejności wystąpienia. */
+function findMentions(text: string, re: RegExp | null) {
+  if (!re) return [];
+  const ids = text.split(SKIP).filter((_, i) => i % 2 === 0)
+    .flatMap((part) => [...part.matchAll(re)].map((m) => `${m[1].toUpperCase()}-${m[2]}`));
+  return [...new Set(ids)];
+}
+
+/** Pod polem edycji: które zgłoszenia tekst rozpozna, zanim ktoś zapisze. Chipy tylko do podglądu (klik nie zabiera z edycji). */
+export function MentionHint({ text }: { text: string }) {
+  const ids = findMentions(text, useMentionPattern());
+  if (!ids.length) return null;
+  return (
+    <div className="mention-hint">
+      <span className="hint">{t('Links to')}</span>
+      {ids.map((id) => <IssueMention key={id} id={id} preview />)}
+    </div>
+  );
 }
 
 /** Wzmianka o zgłoszeniu jak w Linearze: ikona statusu, id i tytuł. Inny projekt albo brak w liście = zwykły link. */
-function IssueMention({ id }: { id: string }) {
+function IssueMention({ id, preview }: { id: string; preview?: boolean }) {
   const issues = useIssues().data;
   const meta = useMeta().data;
   const [key, num] = [id.slice(0, id.lastIndexOf('-')), Number(id.slice(id.lastIndexOf('-') + 1))];
@@ -28,7 +62,16 @@ function IssueMention({ id }: { id: string }) {
   const update = useUpdateIssue();
   const me = useMe().data;
   const st = row && meta?.statuses.find((s) => s.id === row.statusId);
-  if (!row || !st || !meta) return <a {...linkProps(`/issue/${id}`)}>{id}</a>;
+  if (!row || !st || !meta) return preview ? <span className="issue-mention"><span className="id">{id}</span></span> : <a {...linkProps(`/issue/${id}`)}>{id}</a>;
+  if (preview) {
+    return (
+      <span className="issue-mention" title={`${st.name} · ${row.title}`}>
+        <StatusIcon status={st} fraction={startedFraction(meta.statuses, st)} size={12} />
+        <span className="id">{id}</span>
+        <span className="t">{row.title}</span>
+      </span>
+    );
+  }
   const path = `/issue/${id}`;
   const upd = (patch: IssuePatch) => update.mutate({ number: row.number, patch });
   // Prawy przycisk: menu aplikacji jak przy podzadaniu. Środkowy i Ctrl+klik obsługuje przeglądarka (prawdziwy href).
@@ -57,19 +100,20 @@ function IssueMention({ id }: { id: string }) {
 }
 
 export function Markdown({ text, empty, className = '' }: { text: string; empty?: string; className?: string }) {
+  const re = useMentionPattern();
   if (!text.trim()) return <div className={`md empty ${className}`}>{empty ?? ''}</div>;
   return (
     <div className={`md ${className}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={{
         // Linki do innych zadań (/issue/ACME-…) nawigują w aplikacji, zewnętrzne w nowej karcie.
         img: ({ node: _n, src, alt }) => <ImageBlock src={typeof src === 'string' ? src : undefined} alt={alt} />,
-        a: ({ node: _n, href, children, ...p }) => {
-          const m = href && /^\/issue\/([A-Z]{2,6}-\d+)$/.exec(href);
-          if (m && children === m[1]) return <IssueMention id={m[1]} />;
-          return href?.startsWith('/') ? <a {...p} {...linkProps(href)}>{children}</a> : <a {...p} href={href} target="_blank" rel="noreferrer">{children}</a>;
+        a: ({ node: _n, href, children, title, ...p }) => {
+          const m = title === MENTION && href && /^\/issue\/([A-Z]{2,6}-\d+)$/.exec(href);
+          if (m) return <IssueMention id={m[1]} />;
+          return href?.startsWith('/') ? <a {...p} title={title} {...linkProps(href)}>{children}</a> : <a {...p} title={title} href={href} target="_blank" rel="noreferrer">{children}</a>;
         },
       }}>
-        {linkIssues(text)}
+        {linkIssues(text, re)}
       </ReactMarkdown>
     </div>
   );
