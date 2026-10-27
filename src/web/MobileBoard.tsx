@@ -7,6 +7,8 @@ import { navigate } from './router.ts';
 import { IssuePage } from './IssuePage.tsx';
 import { InlineCode } from './InlineCode.tsx';
 import { ident } from './project.ts';
+import { startOnPc } from './startWork.ts';
+import { toast } from './toast.ts';
 import { t } from './i18n.ts';
 
 type Props = { columns: Status[]; visible: IssueRow[]; sorter: (a: IssueRow, b: IssueRow) => number; meta: Meta };
@@ -23,6 +25,11 @@ function useMoveSheet(meta: Meta) {
       ...statusMenu(meta, { ...i }, patch).items.map((it) => ({ ...it, kbd: undefined })),
       { key: 'sep', separator: true },
       { key: 'me', label: t('Assign to me'), checked: !!me && i.assigneeId === me.id, onSelect: () => { if (me) patch({ assigneeId: me.id }); } },
+      // Start na moim komputerze: wyszarzone z powodem, gdy agent jest offline (nie chowamy pozycji).
+      ...(me && !me.demo && me.localAgentAt ? [{
+        key: 'start', label: t('Start on my PC'), disabledReason: me.agentOnline ? undefined : t('Your PC is offline'),
+        onSelect: () => { void startOnPc(i.number).catch((e: Error) => toast(e.message, 'err')); },
+      } satisfies MenuItem] : []),
       { key: 'open', label: t('Open'), onSelect: onOpen },
     ];
     openMenu({ x: 0, y: 0, sheet: true }, { searchable: false, items });

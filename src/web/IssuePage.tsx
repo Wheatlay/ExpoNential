@@ -16,7 +16,7 @@ import { openNewIssue } from './NewIssue.tsx';
 import { toast } from './toast.ts';
 import { timeAgo, fullDate } from './time.ts';
 import { InlineCode } from './InlineCode.tsx';
-import { agentHere, issuePrompt, runLocalAnalysis, simulateAgent, startWork } from './startWork.ts';
+import { agentHere, issuePrompt, runLocalAnalysis, simulateAgent, startOnPc, startWork } from './startWork.ts';
 import { AnalysisView } from './AnalysisView.tsx';
 import { Attachments, useAttachments } from './ImagePreviews.tsx';
 import { ImageBlock } from './ImageBlock.tsx';
@@ -198,9 +198,19 @@ export function IssuePage({ number }: { number: number }) {
           )}
           <TitleField value={issue.title} onSave={(title) => save({ title })} />
           <div className="issue-actions">
-            <button className="btn sm start-btn" data-tour="start-work" onClick={() => (demo ? setStartOpen(true) : void startWork(number))} title={t('Opens Claude Code in VS Code with this issue, assigns you and moves it to In Progress')}>
-              <Icon.play size={12} /> {t('Start work in Claude')}
-            </button>
+            {!demo && !!me?.localAgentAt && !agentHere(me) ? (
+              // Telefon (albo przeglądarka bez agenta): polecenie leci do agenta na moim komputerze. Wyłączone z powodem, nie ukryte.
+              <Tooltip text={me?.agentOnline ? null : t('Your PC is offline')}>
+                <button className="btn sm start-btn" data-tour="start-work" disabled={!me?.agentOnline}
+                  onClick={() => void startOnPc(number).catch((e: Error) => toast(e.message, 'err'))}>
+                  <Icon.play size={12} /> {t('Start on my PC')}
+                </button>
+              </Tooltip>
+            ) : (
+              <button className="btn sm start-btn" data-tour="start-work" onClick={() => (demo ? setStartOpen(true) : void startWork(number))} title={t('Opens Claude Code in VS Code with this issue, assigns you and moves it to In Progress')}>
+                <Icon.play size={12} /> {t('Start work in Claude')}
+              </button>
+            )}
           </div>
           {startOpen && <DemoStartModal number={number} onClose={() => setStartOpen(false)} />}
           {issue.infoQuestion && (() => {

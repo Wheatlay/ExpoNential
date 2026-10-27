@@ -254,3 +254,47 @@ describe('projectAgents', () => {
     expect(list.find((a) => a.name === 'ALICE-PC')?.owner).toBe('Alice');
   });
 });
+
+describe('start jobs', () => {
+  const offlineUser = () => ({ id: outsider.id, name: outsider.name });
+  const agentOf = async (id: string) => (await dbmod.db.select().from(schema.agents).where(dz.eq(schema.agents.id, id)))[0];
+  const jobsOf = async (userId: number) => (await dbmod.db.select().from(schema.agentJobs).where(dz.eq(schema.agentJobs.userId, userId)));
+
+  it('refuses without an online agent', async () => {
+    await dbmod.sql`update agents set last_seen_at = now() - interval '10 minutes' where user_id = ${alice.id}`;
+    const n = await newIssue();
+    expect(await code(ag.createStartJob(P, alice, n))).toBe('invalid');
+    expect(await code(ag.createStartJob(P, offlineUser(), n))).toBe('invalid');
+  });
+
+  it('creates a job, assigns the issue and moves it to In Progress', async () => {
+    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'] });
+    const n = await newIssue();
+    const r = await ag.createStartJob(P, alice, n);
+    expect(r.ok).toBe(true);
+    const cur = await row(n);
+    expect(cur.assigneeId).toBe(alice.id);
+    expect(cur.statusId).toBe(await (async () => (await svc.getMeta(P)).statuses.find((s) => s.name === 'In Progress')!.id)());
+    expect((await jobsOf(alice.id)).some((j) => j.id === r.id && j.issueId === cur.id)).toBe(true);
+  });
+
+  it('lists only my unclaimed fresh jobs, claims once, and expires after an hour', async () => {
+    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'] });
+    await dbmod.sql`delete from agent_jobs`;
+    const n = await newIssue();
+    const { id } = await ag.createStartJob(P, alice, n);
+    const starts = async (u: { id: number }, dev: string) => (await ag.pendingWork(u, await agentOf(dev))).filter((j) => j.kind === 'start');
+    expect(await starts(alice, DEV_A1)).toEqual([{ kind: 'start', id, key: `AGT-${n}` }]);
+    expect(await starts(bob, DEV_B1)).toEqual([]);
+    await expect(ag.claimStartJob(alice, id, DEV_A1)).resolves.toEqual({ key: `AGT-${n}` });
+    expect(await code(ag.claimStartJob(alice, id, DEV_A1))).toBe('conflict');
+    expect(await starts(alice, DEV_A1)).toEqual([]);
+
+    const m = await newIssue();
+    const old = await ag.createStartJob(P, alice, m);
+    await dbmod.sql`update agent_jobs set created_at = now() - interval '61 minutes' where id = ${old.id}`;
+    expect(await starts(alice, DEV_A1)).toEqual([]);
+    expect(await code(ag.claimStartJob(alice, old.id, DEV_A1))).toBe('conflict');
+    expect(await code(ag.claimStartJob(bob, old.id, DEV_B1))).toBe('conflict');
+  });
+});

@@ -87,6 +87,14 @@ export async function startWork(number: number) {
   toast(t((await copied) ? 'Opening Claude Code with {id}. The prompt is also in your clipboard.' : 'Opening Claude Code with {id}.', { id: ident(number) }));
 }
 
+/** Telefon: zleca agentowi na moim komputerze otwarcie Claude Code z zadaniem (serwer też przypisuje i przesuwa do In Progress). */
+export async function startOnPc(number: number) {
+  await api(`/api/issues/${ident(number)}/start-on-pc`, { method: 'POST' });
+  void queryClient.invalidateQueries({ queryKey: ['issues'] });
+  void queryClient.invalidateQueries({ queryKey: ['issue', number] });
+  toast(t('Opening Claude Code on your PC.'));
+}
+
 /** Demo: zamiast prawdziwego agenta serwer odgrywa nagraną sesję; zmiany wracają zwykłym SSE. */
 export async function simulateAgent(number: number, kind: 'analyze' | 'work') {
   try {

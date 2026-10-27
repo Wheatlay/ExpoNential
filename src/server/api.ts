@@ -99,6 +99,11 @@ export async function registerApi(app: FastifyInstance) {
       const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);
       return ag.claimStartJob(req.user!, intParam(req.params.id), deviceId);
     });
+    // Telefon zleca otwarcie Claude Code na moim komputerze (agent odbierze w kilka sekund).
+    r.post<{ Params: { id: string } }>('/api/issues/:id/start-on-pc', async (req) => {
+      const { p, number } = await issueRef(req, req.params.id);
+      return ag.createStartJob(p, req.user!, number);
+    });
     r.get('/api/agents', async (req) => ag.myAgents(req.user!));
     r.delete<{ Params: { id: string } }>('/api/agents/:id', async (req) => ag.removeAgent(req.user!, req.params.id));
     // Instalator lokalnej analizy zgłasza się tu tokenem MCP, deinstalator kasuje znacznik.

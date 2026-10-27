@@ -1,9 +1,9 @@
 import { and, asc, eq, gt, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { agentJobs, agents, issues, projectMembers, projects, users } from '../db/schema.ts';
+import { agentJobs, agents, issues, projectMembers, projects, statuses, users } from '../db/schema.ts';
 import { RuleError, identifier } from './rules.ts';
 import { analysisModel } from './prompts.ts';
-import { log, publish, type Actor, type Project } from './service.ts';
+import { log, publish, requireIssue, updateIssue, type Actor, type Project } from './service.ts';
 
 // Agent na PC zgłasza się co kilkanaście sekund; claim analizy wygasa po 30 min (tyle co lock w tracker-handler.ps1).
 export const CLAIM_TTL_MIN = 30;
@@ -166,4 +166,23 @@ export async function projectAgents(p: Project) {
     .innerJoin(projectMembers, and(eq(projectMembers.userId, agents.userId), eq(projectMembers.projectId, p.id)))
     .where(gt(agents.lastSeenAt, ago(ONLINE_MS))).orderBy(asc(agents.name));
   return rows;
+}
+
+/**
+ * "Start on my PC" z telefonu: zlecenie dla agenta (otworzy VS Code z poleceniem) plus to samo przypisanie i przesunięcie
+ * do In Progress, co robi startWork() w aplikacji, bo na telefonie nikt tego nie zrobi po stronie przeglądarki.
+ */
+export async function createStartJob(p: Project, user: NonNullable<Actor>, number: number) {
+  const mine = await myAgents(user);
+  if (!mine.some((a) => a.online)) throw new RuleError('Your PC is offline', 'invalid');
+  const cur = await requireIssue(p, number);
+  const [job] = await db.insert(agentJobs).values({ userId: user.id, issueId: cur.id, kind: 'start' }).returning({ id: agentJobs.id });
+  const sts = await db.select().from(statuses).where(eq(statuses.projectId, p.id)).orderBy(asc(statuses.position));
+  const now = sts.find((s) => s.id === cur.statusId);
+  const inProgress = sts.find((s) => s.type === 'started' && /progress/i.test(s.name)) ?? sts.find((s) => s.type === 'started');
+  const patch: { statusId?: number; assigneeId?: number } = {};
+  if (inProgress && now && (now.type === 'backlog' || now.type === 'unstarted')) patch.statusId = inProgress.id;
+  if (cur.assigneeId == null) patch.assigneeId = user.id;
+  if (Object.keys(patch).length) await updateIssue(p, user, number, patch);
+  return { ok: true, id: job.id };
 }
