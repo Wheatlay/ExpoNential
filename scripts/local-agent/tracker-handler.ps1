@@ -34,7 +34,8 @@ try {
   # się między nimi, gdy jedno wyczerpie limit. Bez tego pliku: konto z najświeżej zmienionym .claude.json.
   $accounts = @(Get-ChildItem (Join-Path $env:USERPROFILE '.claude-accounts') -Directory -ErrorAction SilentlyContinue | ForEach-Object FullName) + @($env:USERPROFILE)
   $activeFile = Join-Path $dir 'active-account.txt'
-  $account = if (Test-Path $activeFile) { (Get-Content $activeFile -Raw -Encoding utf8).Trim() } else { $null }
+  # Pusty plik (hook z konta domyślnego) = ''. ReadAllText, bo Get-Content -Raw na pustym pliku nie zwraca nic i .Trim() się wywraca.
+  $account = if (Test-Path $activeFile) { [IO.File]::ReadAllText($activeFile).Trim() } else { $null }
   if ($null -eq $account -or ($account -and -not (Test-Path (Join-Path $account '.claude.json')))) {
     $account = $accounts | Where-Object { Test-Path (Join-Path $_ '.claude.json') } |
       Sort-Object { (Get-Item (Join-Path $_ '.claude.json')).LastWriteTime } | Select-Object -Last 1
