@@ -167,11 +167,11 @@ export function IssuePage({ number }: { number: number }) {
   const demo = !!me?.demo;
   const analyze = async (deep = false) => {
     if (demo) { await simulateAgent(number, 'analyze'); return; }
-    await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST' });
+    await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep } });
     void qc.invalidateQueries({ queryKey: ['issue', number] });
     if (local) {
       runLocalAnalysis(number, deep);
-      toast(deep ? t('Analysis started on your computer (deep, Opus). It shows up here in a few minutes.') : t('Analysis started on your computer. It shows up here in a few minutes.'));
+      toast(deep ? t('Deep analysis started on your computer. It shows up here in a few minutes.') : t('Analysis started on your computer. It shows up here in a few minutes.'));
     } else toast(t('AI analysis requested. To have it run by itself on your computer, set up local analysis in Settings > Claude Code.'));
   };
 
@@ -226,12 +226,13 @@ export function IssuePage({ number }: { number: number }) {
               preview={issue.analysisRequestedAt ? t('Waiting for Claude…') : analysisPreview(issue) || t('No analysis yet')}
               meta={issue.analysisUpdatedAt ? timeAgo(issue.analysisUpdatedAt) : ''}
               tools={issue.analysisRequestedAt
-                ? <span className="pill ai"><Icon.sparkle size={12} /> {t('Waiting')} · {timeAgo(issue.analysisRequestedAt)}</span>
+                ? <span className="pill ai"><Icon.sparkle size={12} /> {t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(issue.analysisRequestedAt)}</span>
                 : <span style={{ display: 'inline-flex', gap: 4 }}>
+                    {issue.analysisDeep && issue.analysisUpdatedAt && <span className="pill ai done" title={t('Deeper analysis with a stronger model: slower and more expensive')}>{t('Deep')}</span>}
                     <button className="btn sm ai-btn" data-tour="analyze" title={local ? t('Runs Claude (Sonnet) on your computer, read-only') : t('Marks the issue for analysis by Claude')}
                       onClick={(e) => { e.stopPropagation(); void analyze(); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
                     {demo && <button className="btn sm ai-btn" disabled title={t('Disabled in the demo')} onClick={(e) => e.stopPropagation()}>{t('Deep')}</button>}
-                    {!demo && local && <button className="btn sm ai-btn" title={t('Deeper analysis with Opus: slower and more expensive')} onClick={(e) => { e.stopPropagation(); void analyze(true); }}>{t('Deep')}</button>}
+                    {!demo && local && <button className="btn sm ai-btn" title={t('Deeper analysis with a stronger model: slower and more expensive')} onClick={(e) => { e.stopPropagation(); void analyze(true); }}>{t('Deep')}</button>}
                   </span>}>
               <div className="panel ai">
                 {issue.analysisData
@@ -414,7 +415,7 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
     case 'priority': return <>{t('set priority to')} <b>{t(meta.priorities[p.to])}</b></>;
     case 'labels': return <>{p.added.length > 0 && <>{t('added')} <b>{p.added.join(', ')}</b> </>}{p.removed.length > 0 && <>{t('removed')} <b>{p.removed.join(', ')}</b></>}</>;
     case 'field': return <>{t('edited')} {{ title: t('the title'), description: t('the description'), analysis: t('the AI analysis'), change_human: t('the HUMAN change notes'), change_ai: t('the AI change log') }[p.field] ?? p.field}</>;
-    case 'analysis_requested': return <>{t('requested')} <b>{t('an AI analysis')}</b></>;
+    case 'analysis_requested': return <>{t('requested')} <b>{p.deep ? t('a deep AI analysis') : t('an AI analysis')}</b></>;
     case 'decision': return p.answer
       ? <>{t('decided')} „{p.question}”: <b>{p.answer}</b></>
       : <>{t('cleared the decision')} „{p.question}”</>;

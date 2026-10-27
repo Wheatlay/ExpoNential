@@ -9,7 +9,7 @@ import * as sp from './sprints.ts';
 import * as pr from './projects.ts';
 import { addRelation, removeRelation } from './relations.ts';
 import { RuleError, parseIdentifier } from './rules.ts';
-import { DEFAULT_PROMPTS, PROMPT_KINDS, renderPrompt } from './prompts.ts';
+import { DEEP_PROMPT, DEFAULT_MODELS, DEFAULT_PROMPTS, MODELS, PROMPT_KINDS, analysisModel, renderPrompt } from './prompts.ts';
 
 export const issueInputSchema = z.object({
   title: z.string().max(500).optional(),
@@ -110,14 +110,15 @@ export async function registerApi(app: FastifyInstance) {
       const { project, role } = await ctx(req, req.params.key);
       const canEdit = pr.canManage(req.user!, role);
       // Webhook to sekret: widzi go tylko admin projektu.
-      return { ...project, discordWebhookUrl: canEdit ? project.discordWebhookUrl : null, role, canEdit, members: await pr.listMembers(project.id), defaultPrompts: DEFAULT_PROMPTS };
+      return { ...project, discordWebhookUrl: canEdit ? project.discordWebhookUrl : null, role, canEdit, members: await pr.listMembers(project.id), defaultPrompts: { ...DEFAULT_PROMPTS, deep: DEEP_PROMPT }, defaultModels: DEFAULT_MODELS };
     });
     r.patch<{ Params: { key: string } }>('/api/projects/:key', async (req) => {
       const p = await manage(req, req.params.key);
       const body = z.object({
         name: z.string().optional(), color: z.string().optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).optional(),
         sprintLengthDays: z.number().int().optional(), reviewTime: z.string().optional(), reviewMinutes: z.number().int().optional(),
-        promptStart: z.string().max(8000).optional(), promptAnalyze: z.string().max(8000).optional(), promptClose: z.string().max(8000).optional(),
+        promptStart: z.string().max(8000).optional(), promptAnalyze: z.string().max(8000).optional(), promptClose: z.string().max(8000).optional(), promptDeep: z.string().max(8000).optional(),
+        analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
         githubRepo: z.string().max(200).optional(), deployBranch: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(), deploySourceRef: z.string().max(200).optional(),
       }).parse(req.body);
       if (body.discordWebhookUrl === '') body.discordWebhookUrl = null;
@@ -204,7 +205,8 @@ export async function registerApi(app: FastifyInstance) {
     });
     r.post<{ Params: { id: string } }>('/api/issues/:id/analyze', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
-      await svc.requestAnalysis(p, req.user, number);
+      const b = z.object({ deep: z.boolean().default(false) }).parse(req.body ?? {});
+      await svc.requestAnalysis(p, req.user, number, b.deep);
       return { ok: true };
     });
 
@@ -216,10 +218,12 @@ export async function registerApi(app: FastifyInstance) {
     });
 
     // Gotowe polecenie dla Claude Code z szablonu projektu (guziki, lokalny skrypt analizy).
-    r.get<{ Params: { id: string; kind: string }; Querystring: { compact?: string } }>('/api/issues/:id/prompt/:kind', async (req) => {
+    r.get<{ Params: { id: string; kind: string }; Querystring: { compact?: string; deep?: string } }>('/api/issues/:id/prompt/:kind', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
       const kind = z.enum(PROMPT_KINDS).parse(req.params.kind);
-      return { prompt: await renderPrompt(p, number, kind, req.query.compact === '1') };
+      const deep = req.query.deep === '1';
+      // Model tylko dla analizy: lokalny skrypt odpala z nim claude -p.
+      return { prompt: await renderPrompt(p, number, kind, req.query.compact === '1', deep), ...(kind === 'analyze' ? { model: analysisModel(p, deep) } : {}) };
     });
 
     // Ślad pracy z sesji Claude Code, wysyłany przez hooki dewelopera (token API).

@@ -58,6 +58,32 @@ export const DEFAULT_PROMPTS_EN: Record<PromptKind, string> = {
 
 export const DEFAULT_PROMPTS: Record<PromptKind, string> = LOCALE === 'pl' ? DEFAULT_PROMPTS_PL : DEFAULT_PROMPTS_EN;
 
+// Doklejane do analizy z guzika Deep, także do własnego szablonu projektu. Projekt może je zmienić (promptDeep).
+const DEEP_PL = [
+  '## Analiza pogłębiona',
+  'To jest analiza Deep. Nie spiesz się:',
+  '- Prześledź cały przepływ od początku do końca (UI → API → serwis → baza).',
+  '- Rozważ co najmniej 2 hipotezy przyczyny; podaj dowody (plik:linia) i napisz, czemu odrzucasz słabszą.',
+  '- Sprawdź powiązane ścieżki w kodzie, testy i podobne wzorce.',
+  '- Wypisz ryzyka, przypadki brzegowe i to, co poprawka może zepsuć.',
+  '- Przy każdym twierdzeniu zaznacz, czy jest sprawdzone, czy założone.',
+].join('\n');
+const DEEP_EN = [
+  '## Deep analysis',
+  'This is a DEEP analysis. Take your time:',
+  '- Trace the full flow end to end (UI → API → service → DB).',
+  '- Consider at least 2 root-cause hypotheses; cite file:line evidence and say why you reject the weaker one.',
+  '- Check related code paths, tests and similar patterns.',
+  '- List risks, edge cases and what the fix could break.',
+  '- Mark each claim as verified or assumed.',
+].join('\n');
+export const DEEP_PROMPT = LOCALE === 'pl' ? DEEP_PL : DEEP_EN;
+
+// Modele lokalnej analizy (aliasy claude --model, zawsze najnowsza wersja). Pusty wybór projektu = domyślny.
+export const MODELS = ['haiku', 'sonnet', 'opus', 'fable'] as const;
+export const DEFAULT_MODELS = { analyze: 'sonnet', deep: 'opus' };
+export const analysisModel = (p: Project, deep: boolean) => (deep ? p.deepModel || DEFAULT_MODELS.deep : p.analyzeModel || DEFAULT_MODELS.analyze);
+
 export const PROMPT_VARS = ['{id}', '{title}', '{description}', '{analysis}', '{comments}'];
 
 const column = { start: 'promptStart', analyze: 'promptAnalyze', close: 'promptClose' } as const;
@@ -70,7 +96,7 @@ const cut = (s: string, n: number, id = '') =>
  * Gotowe polecenie dla zgłoszenia. `compact` skraca długie pola: link vscode:// ma limit
  * długości, a pełne dane agent i tak pobiera przez get_issue.
  */
-export async function renderPrompt(p: Project, number: number, kind: PromptKind, compact = false) {
+export async function renderPrompt(p: Project, number: number, kind: PromptKind, compact = false, deep = false) {
   const d = await svc.getIssueDetail(p, number);
   const meta = await svc.getMeta(p);
   const who = (id: number | null) => meta.users.find((u) => u.id === id)?.name ?? '?';
@@ -87,8 +113,10 @@ export async function renderPrompt(p: Project, number: number, kind: PromptKind,
       : '',
   };
   const template = p[column[kind]] || DEFAULT_PROMPTS[kind];
-  return template
+  const text = template
     .replace(/\{(id|title|description|analysis|comments)\}/g, (_, k: string) => vars[k])
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  const extra = (p.promptDeep || DEEP_PROMPT).replace(/\{(id|title)\}/g, (_, k: string) => vars[k]).trim();
+  return deep && kind === 'analyze' && extra ? `${text}\n\n${extra}` : text;
 }

@@ -40,7 +40,7 @@ export type ActivityPayload =
   | { kind: 'priority'; from: number; to: number }
   | { kind: 'labels'; added: string[]; removed: string[] }
   | { kind: 'field'; field: string }
-  | { kind: 'analysis_requested' }
+  | { kind: 'analysis_requested'; deep?: boolean }
   | { kind: 'decision'; question: string; answer: string | null }
   | { kind: 'sprint'; to: string | null }
   | { kind: 'parent'; to: number | null }
@@ -68,7 +68,7 @@ export type AnalysisData = {
 export type IssueDetail = {
   id: number; number: number; identifier: string; title: string; description: string; statusId: number;
   assigneeId: number | null; creatorId: number | null; priority: number; parentId: number | null; sprintId: number | null;
-  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; changeHuman: string; changeAi: string;
+  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; changeHuman: string; changeAi: string;
   infoFromId: number | null; infoQuestion: string; infoById: number | null;
   createdAt: string; updatedAt: string; completedAt: string | null; labelIds: number[];
   parent: { number: number; title: string } | null;

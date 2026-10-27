@@ -355,11 +355,11 @@ export async function deleteIssue(p: Project, number: number) {
   await publish({ type: 'issue', projectKey: p.key, number });
 }
 
-export async function requestAnalysis(p: Project, actor: Actor, number: number) {
+export async function requestAnalysis(p: Project, actor: Actor, number: number, deep = false) {
   const cur = await requireIssue(p, number);
   await db.transaction(async (tx) => {
-    await tx.update(issues).set({ analysisRequestedAt: new Date(), updatedAt: new Date() }).where(eq(issues.id, cur.id));
-    await log(tx, cur.id, actor, { kind: 'analysis_requested' });
+    await tx.update(issues).set({ analysisRequestedAt: new Date(), analysisDeep: deep, updatedAt: new Date() }).where(eq(issues.id, cur.id));
+    await log(tx, cur.id, actor, deep ? { kind: 'analysis_requested', deep } : { kind: 'analysis_requested' });
   });
   await publish({ type: 'issue', projectKey: p.key, number });
 }

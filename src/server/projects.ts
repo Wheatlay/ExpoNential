@@ -88,7 +88,7 @@ export async function createProject(creatorId: number, input: { key: string; nam
 
 export type ProjectPatch = Partial<{
   name: string; color: string; discordWebhookUrl: string | null; meetingLocationUrl: string; sprintLengthDays: number; reviewTime: string; reviewMinutes: number;
-  promptStart: string; promptAnalyze: string; promptClose: string;
+  promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
   githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string;
 }>;
 

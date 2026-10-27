@@ -40,6 +40,11 @@ export const projects = pgTable('projects', {
   promptStart: text('prompt_start').notNull().default(''),
   promptAnalyze: text('prompt_analyze').notNull().default(''),
   promptClose: text('prompt_close').notNull().default(''),
+  // Blok doklejany do Analyze przy Deep. Pusty = domyślny z prompts.ts.
+  promptDeep: text('prompt_deep').notNull().default(''),
+  // Modele lokalnej analizy (alias claude --model: haiku, sonnet, opus, fable). Pusty = domyślny w prompts.ts.
+  analyzeModel: text('analyze_model').notNull().default(''),
+  deepModel: text('deep_model').notNull().default(''),
   // Repo GitHub projektu ("owner/name"): lokalna analiza, commity z webhooka i deploye tylko z niego.
   githubRepo: text('github_repo').notNull().default(''),
   deployBranch: text('deploy_branch').notNull().default('master'),
@@ -109,6 +114,8 @@ export const issues = pgTable('issues', {
   analysisData: jsonb('analysis_data'),
   analysisRequestedAt: timestamp('analysis_requested_at', { withTimezone: true }),
   analysisUpdatedAt: timestamp('analysis_updated_at', { withTimezone: true }),
+  // Ostatnie zlecenie było Deep (mocniejszy model, pogłębiony prompt); zostaje przy zapisanej analizie.
+  analysisDeep: boolean('analysis_deep').notNull().default(false),
   changeHuman: text('change_human').notNull().default(''),
   changeAi: text('change_ai').notNull().default(''),
   // Need Info: kogo pytamy i o co. Czyszczone, gdy zadanie wychodzi z Need Info.
@@ -151,7 +158,7 @@ export type ActivityPayload =
   | { kind: 'priority'; from: number; to: number }
   | { kind: 'labels'; added: string[]; removed: string[] }
   | { kind: 'field'; field: 'title' | 'description' | 'analysis' | 'change_human' | 'change_ai' }
-  | { kind: 'analysis_requested' }
+  | { kind: 'analysis_requested'; deep?: boolean }
   | { kind: 'decision'; question: string; answer: string | null }
   | { kind: 'sprint'; to: string | null }
   | { kind: 'parent'; to: number | null }

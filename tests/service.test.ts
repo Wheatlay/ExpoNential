@@ -68,6 +68,24 @@ describe('issues', () => {
     expect(await svc.listIssues(P, { analysisRequested: true })).toEqual([]);
   });
 
+  it('deep analysis: flag stays with the analysis, logged in activity, prompt gets the deep block', async () => {
+    const prompts = await import('../src/server/prompts.ts');
+    await svc.requestAnalysis(P, null, 4, true);
+    await svc.updateIssue(P, null, 4, { analysis: '## Deep' });
+    const d = await svc.getIssueDetail(P, 4);
+    expect(d.analysisDeep).toBe(true);
+    expect(d.activity.some((a) => a.payload.kind === 'analysis_requested' && a.payload.deep)).toBe(true);
+    expect(await prompts.renderPrompt(P, 4, 'analyze', false, true)).toContain(prompts.DEEP_PROMPT);
+    expect(await prompts.renderPrompt(P, 4, 'analyze')).not.toContain(prompts.DEEP_PROMPT);
+    await svc.requestAnalysis(P, null, 4);
+    expect((await svc.getIssueDetail(P, 4)).analysisDeep).toBe(false);
+    // Projekt może zmienić blok Deep i modele.
+    expect([prompts.analysisModel(P, false), prompts.analysisModel(P, true)]).toEqual(['sonnet', 'opus']);
+    const custom = { ...P, promptDeep: 'Extra care for {id}', deepModel: 'haiku' };
+    expect(await prompts.renderPrompt(custom, 4, 'analyze', false, true)).toMatch(/Extra care for [A-Z]+-4$/);
+    expect(prompts.analysisModel(custom, true)).toBe('haiku');
+  });
+
   it('sub-issues: parent link and progress', async () => {
     const child = await svc.createIssue(P, null, { title: 'child', parentNumber: 5 });
     const [row] = (await svc.listIssues(P)).filter((i) => i.number === 5);

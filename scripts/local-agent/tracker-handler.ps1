@@ -14,7 +14,8 @@ function Log($m) { Add-Content -Path $log -Value "$(Get-Date -Format s) $m" -Enc
 try {
   if ($Url -notmatch '^tracker://analyze/([A-Za-z]{2,10}-\d{1,6})/?(\?deep)?$') { Log "odrzucony link: $Url"; exit 1 }
   $key = $Matches[1].ToUpper()
-  $model = if ($Matches[2]) { 'opus' } else { 'sonnet' }
+  $deep = [bool]$Matches[2]
+  $model = if ($deep) { 'opus' } else { 'sonnet' }   # gdy serwer nie poda modelu projektu
 
   $cfg = Get-Content (Join-Path $dir 'config.json') -Raw -Encoding utf8 | ConvertFrom-Json
 
@@ -50,7 +51,11 @@ try {
   $base = $mcp.url -replace '/mcp/?$', ''
   $headers = @{ Authorization = $mcp.headers.Authorization }
 
-  $prompt = (Invoke-RestMethod -Uri "$base/api/issues/$key/prompt/analyze" -Headers $headers).prompt
+  $deepQuery = if ($deep) { '?deep=1' } else { '' }
+  $res = Invoke-RestMethod -Uri "$base/api/issues/$key/prompt/analyze$deepQuery" -Headers $headers
+  $prompt = $res.prompt
+  # Model ustawia projekt (Settings > Prompts); serwer go sprawdza, ale idzie do argumentu programu, więc sprawdzamy też tu.
+  if ($res.model -in 'haiku', 'sonnet', 'opus', 'fable') { $model = $res.model }
   Log "start $key ($model)"
 
   # Tylko MCP trackera, bez reszty serwerów użytkownika: szybszy start i mniej narzędzi w kontekście.

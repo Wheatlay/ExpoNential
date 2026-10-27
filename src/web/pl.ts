@@ -208,7 +208,7 @@ export const pl: Record<string, string> = {
 
   // Strona zgłoszenia
   'Enter to save · Alt+Enter new line · paste images': 'Enter zapisuje · Alt+Enter nowa linia · wklej obrazki',
-  'Analysis started on your computer (deep, Opus). It shows up here in a few minutes.': 'Analiza ruszyła na twoim komputerze (głęboka, Opus). Pojawi się tu za kilka minut.',
+  'Deep analysis started on your computer. It shows up here in a few minutes.': 'Głęboka analiza ruszyła na twoim komputerze. Pojawi się tu za kilka minut.',
   'Analysis started on your computer. It shows up here in a few minutes.': 'Analiza ruszyła na twoim komputerze. Pojawi się tu za kilka minut.',
   'AI analysis requested. To have it run by itself on your computer, set up local analysis in Settings > Claude Code.': 'Zlecono analizę AI. Żeby uruchamiała się sama na twoim komputerze, skonfiguruj lokalną analizę w Ustawienia > Claude Code.',
   'Opens Claude Code in VS Code with this issue, assigns you and moves it to In Progress': 'Otwiera Claude Code w VS Code z tym zgłoszeniem, przypisuje je tobie i przenosi do In Progress',
@@ -228,7 +228,10 @@ export const pl: Record<string, string> = {
   'Marks the issue for analysis by Claude': 'Oznacza zgłoszenie do analizy przez Claude',
   'Re-analyze': 'Analizuj ponownie',
   'Analyze': 'Analizuj',
-  'Deeper analysis with Opus: slower and more expensive': 'Głębsza analiza przez Opus: wolniej i drożej',
+  'Deeper analysis with a stronger model: slower and more expensive': 'Głębsza analiza mocniejszym modelem: wolniej i drożej',
+  'Added to the end of Analyze when someone clicks Deep.': 'Doklejane na koniec Analyze, gdy ktoś kliknie Głęboko.',
+  'Model for this analysis': 'Model tej analizy',
+  'Model': 'Model',
   'Deep': 'Głęboko',
   'Claude will write the analysis here.': 'Claude wpisze tu analizę.',
   'No analysis yet. Analyze runs Claude on your computer and writes it here in a few minutes.': 'Brak analizy. Analizuj uruchamia Claude na twoim komputerze i za kilka minut wpisuje ją tutaj.',
@@ -271,6 +274,7 @@ export const pl: Record<string, string> = {
   'the AI change log': 'dziennik zmian AI',
   'requested': 'zlecił(a)',
   'an AI analysis': 'analizę AI',
+  'a deep AI analysis': 'głęboką analizę AI',
   'moved to': 'przeniósł(a) do',
   'removed from sprint': 'usunął(ęła) ze sprintu',
   'set parent to': 'ustawił(a) zadanie nadrzędne',

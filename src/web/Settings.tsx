@@ -185,9 +185,10 @@ function ClaudeConnect() {
 type ProjectDetail = {
   id: number; key: string; name: string; color: string; discordWebhookUrl: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewTime: string; reviewMinutes: number;
-  promptStart: string; promptAnalyze: string; promptClose: string;
+  promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
   githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string;
-  defaultPrompts: { start: string; analyze: string; close: string };
+  defaultPrompts: { start: string; analyze: string; close: string; deep: string };
+  defaultModels: { analyze: string; deep: string };
   role: 'admin' | 'member'; canEdit: boolean;
   members: { id: number; login: string; name: string; avatarUrl: string | null; active: boolean; role: 'admin' | 'member' }[];
 };
@@ -431,9 +432,12 @@ function ProjectLabelsStatuses() {
   );
 }
 
+const MODELS = ['haiku', 'sonnet', 'opus', 'fable'] as const;
+
 const PROMPTS = [
   { kind: 'start', field: 'promptStart', name: t('Start work'), hint: t('Opens a new Claude Code tab in VS Code with this text typed in.') },
-  { kind: 'analyze', field: 'promptAnalyze', name: t('Analyze'), hint: t('Runs in the background on the computer of whoever clicks it (local runner), read-only.') },
+  { kind: 'analyze', field: 'promptAnalyze', name: t('Analyze'), hint: t('Runs in the background on the computer of whoever clicks it (local runner), read-only.'), model: 'analyzeModel' },
+  { kind: 'deep', field: 'promptDeep', name: t('Deep'), hint: t('Added to the end of Analyze when someone clicks Deep.'), model: 'deepModel' },
   { kind: 'close', field: 'promptClose', name: t('Close'), hint: t('"Close in Claude" in the Move to Done dialog.') },
 ] as const;
 
@@ -457,6 +461,17 @@ function ProjectPrompts() {
             <div key={x.kind} className="s-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <b>{x.name}</b><span className="hint grow">{x.hint}</span>
+                {'model' in x && (
+                  // Aliasy Claude Code: zawsze najnowsza wersja danego modelu. Wybór równy domyślnemu zapisujemy jako pusty.
+                  <Tooltip text={ro ?? t('Model for this analysis')}>
+                    <div className="seg" aria-label={t('Model')}>
+                      {MODELS.map((m) => (
+                        <button key={m} disabled={!!ro} className={(p[x.model] || p.defaultModels[x.kind]) === m ? 'on' : ''}
+                          onClick={() => { const v = m === p.defaultModels[x.kind] ? '' : m; if (v !== p[x.model]) void save(x.model, v); }}>{m[0].toUpperCase() + m.slice(1)}</button>
+                      ))}
+                    </div>
+                  </Tooltip>
+                )}
                 {value && <Tooltip text={ro}><button className="btn sm" disabled={!!ro} onClick={() => void save(x.field, '')}>{t('Reset to default')}</button></Tooltip>}
               </div>
               <Tooltip text={ro}>
