@@ -26,6 +26,9 @@ export async function requireOwnAgent(user: User, deviceId: string) {
  * z dwóch równoczesnych wywołań wygra jedno, drugie dostaje 409. To samo urządzenie może przejąć ponownie (idempotentnie).
  */
 export async function claimAnalysis(p: Project, user: User & { name: string }, number: number, deviceId: string) {
+  // Kliknięcie w przeglądarce może odpalić handler, zanim agent w tle zdąży się pierwszy raz zgłosić: wtedy rejestrujemy
+  // urządzenie tutaj (należy do właściciela tokenu), zamiast wywracać analizę na "Unknown device".
+  await db.insert(agents).values({ id: deviceId, userId: user.id }).onConflictDoNothing();
   const agent = await requireOwnAgent(user, deviceId);
   const [cur] = await db.select().from(issues).where(and(eq(issues.projectId, p.id), eq(issues.number, number)));
   if (!cur) throw new RuleError(`Issue ${identifier(p.key, number)} not found`, 'not_found');
@@ -40,7 +43,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
     .returning({ deep: issues.analysisDeep });
   if (!rows.length) throw new RuleError('Already taken or no longer requested', 'conflict');
   if (!already) {
-    await db.transaction((tx) => log(tx, cur.id, user as Actor, { kind: 'analysis_claimed', device: agent.name }));
+    await db.transaction((tx) => log(tx, cur.id, user as Actor, { kind: 'analysis_claimed', device: agent.name || 'PC' }));
     await publish({ type: 'issue', projectKey: p.key, number });
   }
   return { ok: true, deep: rows[0].deep, model: analysisModel(p, rows[0].deep) };

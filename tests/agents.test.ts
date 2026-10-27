@@ -119,7 +119,14 @@ describe('claimAnalysis', () => {
     const n = await newIssue();
     await svc.requestAnalysis(P, alice, n);
     expect(await code(ag.claimAnalysis(P, alice, n, DEV_B1))).toBe('forbidden');
-    expect(await code(ag.claimAnalysis(P, alice, n, '55555555-5555-4555-8555-555555555555'))).toBe('invalid');
+  });
+
+  it('registers an unknown device of the caller on claim (handler started before the agent checked in)', async () => {
+    const n = await newIssue();
+    await svc.requestAnalysis(P, alice, n);
+    const fresh = '55555555-5555-4555-8555-555555555555';
+    expect((await ag.claimAnalysis(P, alice, n, fresh)).ok).toBe(true);
+    expect((await ag.myAgents(alice)).some((a) => a.id === fresh)).toBe(true);
   });
 });
 
