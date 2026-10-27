@@ -164,6 +164,9 @@ export function IssuePage({ number }: { number: number }) {
   const subDone = issue.children.filter((c) => ['completed', 'canceled', 'duplicate'].includes(meta.statuses.find((s) => s.id === c.statusId)?.type ?? '')).length;
 
   const local = !!me?.localAgentAt;
+  // Stare skrypty na PC: serwer i tak nie wyda im zlecenia, więc nie dajemy go złożyć (powód + skrót do aktualizacji obok).
+  const outdated = !!me?.agentOutdated && local && !me?.demo;
+  const outdatedReason = t('Your PC has old tracker scripts. Update them first: Settings > Claude Code (or click Update needed).');
   // Bez podłączonego Claude Code link vscode:// albo nic nie otworzy, albo otworzy Claude bez dostępu do zgłoszenia:
   // zamiast udawać, że działa, prowadzimy do jednorazowego podłączenia.
   const connectFirst = async () => {
@@ -212,8 +215,8 @@ export function IssuePage({ number }: { number: number }) {
           <div className="issue-actions">
             {!demo && !!me?.localAgentAt && !agentHere(me) ? (
               // Telefon (albo przeglądarka bez agenta): polecenie leci do agenta na moim komputerze. Wyłączone z powodem, nie ukryte.
-              <Tooltip text={me?.agentOnline ? null : t('Your PC is offline')}>
-                <button className="btn sm start-btn" data-tour="start-work" disabled={!me?.agentOnline}
+              <Tooltip text={outdated ? outdatedReason : me?.agentOnline ? null : t('Your PC is offline')}>
+                <button className="btn sm start-btn" data-tour="start-work" disabled={outdated || !me?.agentOnline}
                   onClick={() => void startOnPc(number).catch((e: Error) => toast(e.message, 'err'))}>
                   <Icon.play size={12} /> {t('Start on my PC')}
                 </button>
@@ -263,7 +266,7 @@ export function IssuePage({ number }: { number: number }) {
                 {/* Kolejka zespołu jest domyślnie wyłączona; gdy włączona, widać to przy analizie, bo zmienia, czyj PC ją uruchomi. */}
                 {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in Settings > Claude Code.")}>{t('Team queue')}</span>}
                 {/* Czeka, a mój PC ma stare skrypty: to zwykle prawdziwa przyczyna, więc mówimy o niej tutaj, nie tylko w Ustawieniach. */}
-                {issue.analysisRequestedAt && !issue.analysisClaimedAt && me?.agentOutdated && !demo && (
+                {outdated && !issue.analysisClaimedAt && (
                   <span className="pill stalled" role="button" title={t('Your PC has old tracker scripts, so it may not pick this up. Click to open Settings > Claude Code and run the update command.')}
                     onClick={(e) => { e.stopPropagation(); navigate('/settings#claude'); }}>{t('Update needed')}</span>
                 )}
@@ -278,10 +281,14 @@ export function IssuePage({ number }: { number: number }) {
                 </>}
                 {(!issue.analysisRequestedAt || stalled || failed) && <>
                     {!issue.analysisRequestedAt && issue.analysisResultDeep && issue.analysisUpdatedAt && <span className="pill ai done" title={t('Deeper analysis with a stronger model: slower and more expensive')}>{t('Deep')}</span>}
-                    <button className="btn sm ai-btn" data-tour="analyze" title={local ? t('Runs Claude on your computer, read-only') : t('Marks the issue for analysis by Claude')}
-                      onClick={(e) => { e.stopPropagation(); void analyze(); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
+                    <Tooltip text={outdated ? outdatedReason : null}>
+                      <button className="btn sm ai-btn" data-tour="analyze" disabled={outdated} title={outdated ? undefined : local ? t('Runs Claude on your computer, read-only') : t('Marks the issue for analysis by Claude')}
+                        onClick={(e) => { e.stopPropagation(); void analyze(); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
+                    </Tooltip>
                     {demo && <button className="btn sm ai-btn" disabled title={t('Disabled in the demo')} onClick={(e) => e.stopPropagation()}>{t('Deep')}</button>}
-                    {!demo && local && <button className="btn sm ai-btn" title={t('Deeper analysis with a stronger model: slower and more expensive')} onClick={(e) => { e.stopPropagation(); void analyze(true); }}>{t('Deep')}</button>}
+                    {!demo && local && <Tooltip text={outdated ? outdatedReason : null}>
+                      <button className="btn sm ai-btn" disabled={outdated} title={outdated ? undefined : t('Deeper analysis with a stronger model: slower and more expensive')} onClick={(e) => { e.stopPropagation(); void analyze(true); }}>{t('Deep')}</button>
+                    </Tooltip>}
                 </>}
                   </span>}>
               <div className="panel ai">

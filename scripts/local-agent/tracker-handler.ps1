@@ -58,9 +58,15 @@ try {
   # Claim przed uruchomieniem: ten sam link może obsłużyć agent w tle albo drugi komputer, wygrywa jeden.
   # Bez deviceId (stara instalacja) działamy jak dawniej.
   if ($cfg.deviceId) {
-    $claimBody = @{ deviceId = $cfg.deviceId } | ConvertTo-Json
+    $claimBody = @{ deviceId = $cfg.deviceId; version = [string]$cfg.version } | ConvertTo-Json
     try { $claim = Invoke-RestMethod -Method Post -Uri "$base/api/issues/$key/analyze/claim" -Headers $headers -ContentType 'application/json' -Body $claimBody }
-    catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 409) { Log "$key zajete albo juz nieaktualne, pomijam"; exit 0 } else { throw } }
+    catch {
+      $status = if ($_.Exception.Response) { [int]$_.Exception.Response.StatusCode } else { 0 }
+      if ($status -eq 409) { Log "$key zajete albo juz nieaktualne, pomijam"; exit 0 }
+      # 426: serwer ma nowsze skrypty i nie puszcza starych (Ustawienia > Claude Code pokazują polecenie aktualizacji).
+      if ($status -eq 426) { Log "$key pominiete: stara wersja skryptow, uruchom ponownie instalacje (Ustawienia > Claude Code)"; exit 0 }
+      throw
+    }
     $claimed = $true
     # Deep z serwera wygrywa z linkiem: analiza zlecona z telefonu jako Deep leci jako Deep.
     $deep = [bool]$claim.deep

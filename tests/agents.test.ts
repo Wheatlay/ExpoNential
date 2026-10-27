@@ -44,10 +44,10 @@ beforeAll(async () => {
   [outsider] = await db.insert(schema.users).values({ login: 'outsider', name: 'Outsider' }).returning();
   await db.insert(schema.projectMembers).values([{ projectId: P.id, userId: alice.id }, { projectId: P.id, userId: bob.id }]);
   await db.insert(schema.agents).values([
-    { id: DEV_A1, userId: alice.id, name: 'ALICE-PC', repoKeys: ['AGT'] },
-    { id: DEV_A2, userId: alice.id, name: 'ALICE-LAPTOP', repoKeys: ['AGT'] },
-    { id: DEV_B1, userId: bob.id, name: 'BOB-PC', repoKeys: ['AGT'] },
-    { id: DEV_O1, userId: outsider.id, name: 'OUT-PC', repoKeys: ['AGT'] },
+    { id: DEV_A1, userId: alice.id, name: 'ALICE-PC', repoKeys: ['AGT'], version: ag.agentScriptsVersion() },
+    { id: DEV_A2, userId: alice.id, name: 'ALICE-LAPTOP', repoKeys: ['AGT'], version: ag.agentScriptsVersion() },
+    { id: DEV_B1, userId: bob.id, name: 'BOB-PC', repoKeys: ['AGT'], version: ag.agentScriptsVersion() },
+    { id: DEV_O1, userId: outsider.id, name: 'OUT-PC', repoKeys: ['AGT'], version: ag.agentScriptsVersion() },
   ]);
 });
 afterAll(async () => { await dbmod?.sql.end(); });
@@ -125,7 +125,7 @@ describe('claimAnalysis', () => {
     const n = await newIssue();
     await svc.requestAnalysis(P, alice, n);
     const fresh = '55555555-5555-4555-8555-555555555555';
-    expect((await ag.claimAnalysis(P, alice, n, fresh)).ok).toBe(true);
+    expect((await ag.claimAnalysis(P, alice, n, fresh, ag.agentScriptsVersion())).ok).toBe(true);
     expect((await ag.myAgents(alice)).some((a) => a.id === fresh)).toBe(true);
   });
 });
@@ -139,7 +139,7 @@ describe('claim lifecycle', () => {
     const r = await row(n);
     expect(r.analysisFailedAt).not.toBeNull();
     expect(r.analysisError).toBe('Brak repo projektu AGT');
-    const agent = { busy: false, repoKeys: ['AGT'] };
+    const agent = { busy: false, repoKeys: ['AGT'], version: ag.agentScriptsVersion() };
     expect((await ag.pendingWork(alice, agent)).some((j) => j.kind === 'analyze' && j.key === `AGT-${n}`)).toBe(false);
     expect(await code(ag.claimAnalysis(P, alice, n, DEV_A2))).toBe('conflict');
     await svc.requestAnalysis(P, alice, n);
@@ -219,9 +219,9 @@ describe('pendingWork', () => {
     await clearAll();
     const n = await newIssue();
     await svc.requestAnalysis(P, alice, n);
-    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: ['OTHER'] }))).toEqual([]);
-    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: [] }))).toEqual([]);
-    expect(await ag.pendingWork(alice, { busy: true, repoKeys: ['AGT'] })).toEqual([]);
+    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: ['OTHER'], version: ag.agentScriptsVersion() }))).toEqual([]);
+    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: [], version: ag.agentScriptsVersion() }))).toEqual([]);
+    expect(await ag.pendingWork(alice, { busy: true, repoKeys: ['AGT'], version: ag.agentScriptsVersion() })).toEqual([]);
   });
 
   it('skips an issue that is already claimed (fresh) and offers it again once stale', async () => {
@@ -273,6 +273,17 @@ describe('script version', () => {
     expect((await ag.myAgents(bob)).find((a) => a.id === id)?.outdated).toBe(true);
     await ag.heartbeat(bob, id, { name: 'OLD-PC', busy: false, repoKeys: [], version: ag.agentScriptsVersion() });
     expect((await ag.myAgents(bob)).find((a) => a.id === id)?.outdated).toBe(false);
+  });
+
+  it('old scripts get no work and cannot claim; the handler reporting the new version can', async () => {
+    const id = '77777777-7777-4777-8777-777777777777';
+    const a = await ag.heartbeat(alice, id, { name: 'STALE-PC', busy: false, repoKeys: ['AGT'], version: 'old' });
+    const n = await newIssue();
+    await svc.requestAnalysis(P, alice, n);
+    expect(await ag.pendingWork(alice, a)).toEqual([]);
+    expect(await code(ag.claimAnalysis(P, alice, n, id))).toBe('outdated');
+    expect(await code(ag.claimAnalysis(P, alice, n, id, 'old'))).toBe('outdated');
+    expect((await ag.claimAnalysis(P, alice, n, id, ag.agentScriptsVersion())).ok).toBe(true);
   });
 });
 

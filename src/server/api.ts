@@ -67,7 +67,7 @@ async function manage(req: FastifyRequest, key?: string | null) {
 export async function registerApi(app: FastifyInstance) {
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof RuleError) {
-      const code = err.code === 'not_found' ? 404 : err.code === 'forbidden' ? 403 : err.code === 'conflict' ? 409 : 422;
+      const code = err.code === 'not_found' ? 404 : err.code === 'forbidden' ? 403 : err.code === 'conflict' ? 409 : err.code === 'outdated' ? 426 : 422;
       return reply.code(code).send({ error: err.message, code: err.code });
     }
     if (err instanceof z.ZodError) return reply.code(400).send({ error: 'Invalid input', issues: err.issues });
@@ -244,7 +244,8 @@ export async function registerApi(app: FastifyInstance) {
     const deviceBody = z.object({ deviceId: z.string().uuid() });
     r.post<{ Params: { id: string } }>('/api/issues/:id/analyze/claim', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
-      return ag.claimAnalysis(p, req.user!, number, deviceBody.parse(req.body).deviceId);
+      const b = deviceBody.extend({ version: z.string().max(40).optional() }).parse(req.body);
+      return ag.claimAnalysis(p, req.user!, number, b.deviceId, b.version);
     });
     r.delete<{ Params: { id: string } }>('/api/issues/:id/analyze/claim', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);

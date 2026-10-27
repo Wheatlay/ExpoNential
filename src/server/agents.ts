@@ -41,11 +41,18 @@ export async function requireOwnAgent(user: User, deviceId: string) {
  * Przejęcie zlecenia analizy przed uruchomieniem. Jeden UPDATE z warunkami w WHERE daje wyłączność:
  * z dwóch równoczesnych wywołań wygra jedno, drugie dostaje 409. To samo urządzenie może przejąć ponownie (idempotentnie).
  */
-export async function claimAnalysis(p: Project, user: User & { name: string }, number: number, deviceId: string) {
+export async function claimAnalysis(p: Project, user: User & { name: string }, number: number, deviceId: string, version?: string) {
   // Kliknięcie w przeglądarce może odpalić handler, zanim agent w tle zdąży się pierwszy raz zgłosić: wtedy rejestrujemy
   // urządzenie tutaj (należy do właściciela tokenu), zamiast wywracać analizę na "Unknown device".
   await db.insert(agents).values({ id: deviceId, userId: user.id }).onConflictDoNothing();
   const agent = await requireOwnAgent(user, deviceId);
+  // Handler podaje swoją wersję: świeżo zaktualizowany PC nie czeka na pierwszy sygnał agenta.
+  if (version !== undefined && version !== agent.version) {
+    await db.update(agents).set({ version: version.slice(0, 40) }).where(eq(agents.id, deviceId));
+    agent.version = version;
+  }
+  // Stare skrypty nie dostają pracy: poprawki (np. blokada .env) działają dopiero po aktualizacji, więc nie puszczamy ich bez niej.
+  if (agent.version !== agentScriptsVersion()) throw new RuleError('PC scripts are outdated: run the install command again (Settings > Claude Code)', 'outdated');
   const [cur] = await db.select().from(issues).where(and(eq(issues.projectId, p.id), eq(issues.number, number)));
   if (!cur) throw new RuleError(`Issue ${identifier(p.key, number)} not found`, 'not_found');
   const already = cur.analysisClaimedDevice === deviceId && cur.analysisClaimedAt != null;
@@ -107,7 +114,8 @@ export async function heartbeat(user: User, deviceId: string, info: { name: stri
   const [existing] = await db.select({ userId: agents.userId }).from(agents).where(eq(agents.id, deviceId));
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
-  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, version: (info.version ?? '').slice(0, 40), lastSeenAt: new Date() };
+  // Bez podanej wersji zostaje zapisana (wersję podaje tracker-agent.ps1 z config.json).
+  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date(), ...(info.version !== undefined ? { version: info.version.slice(0, 40) } : {}) };
   const [row] = await db.insert(agents).values({ id: deviceId, userId: user.id, ...values })
     .onConflictDoUpdate({ target: agents.id, set: values }).returning();
   if (info.busy) {
@@ -120,8 +128,9 @@ export async function heartbeat(user: User, deviceId: string, info: { name: stri
 export type AgentJob = { kind: 'analyze'; key: string; deep: boolean } | { kind: 'start'; id: number; key: string };
 
 /** Co ten agent może teraz wziąć: moje zlecenia (i kolejka zespołu w projektach z włączonym przełącznikiem) oraz zlecenia Start. */
-export async function pendingWork(user: User, agent: { busy: boolean; repoKeys: string[] }): Promise<AgentJob[]> {
-  if (agent.busy) return [];
+export async function pendingWork(user: User, agent: { busy: boolean; repoKeys: string[]; version: string }): Promise<AgentJob[]> {
+  // Stara wersja skryptów: nic nie dostaje (Ustawienia i pasek analizy pokazują "Update needed").
+  if (agent.busy || agent.version !== agentScriptsVersion()) return [];
   const jobs: AgentJob[] = [];
   if (agent.repoKeys.length) {
     const rows = await db.select({ key: projects.key, number: issues.number, deep: issues.analysisDeep })
@@ -200,6 +209,8 @@ export async function projectAgents(p: Project) {
 export async function createStartJob(p: Project, user: NonNullable<Actor>, number: number) {
   const mine = await myAgents(user);
   if (!mine.some((a) => a.online)) throw new RuleError('Your PC is offline', 'invalid');
+  // Agent ze starymi skryptami nie dostaje pracy, więc zlecenie by tylko wisiało.
+  if (!mine.some((a) => a.online && !a.outdated)) throw new RuleError('PC scripts are outdated: run the install command again (Settings > Claude Code)', 'outdated');
   const cur = await requireIssue(p, number);
   const [job] = await db.insert(agentJobs).values({ userId: user.id, issueId: cur.id, kind: 'start' }).returning({ id: agentJobs.id });
   const sts = await db.select().from(statuses).where(eq(statuses.projectId, p.id)).orderBy(asc(statuses.position));

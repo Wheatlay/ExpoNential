@@ -254,6 +254,7 @@ export const pl: Record<string, string> = {
   'This account has no computer connected to the tracker yet. One PowerShell command in Settings > Claude Code connects it; without it Claude cannot read the issue.': 'To konto nie ma jeszcze komputera podłączonego do trackera. Podłączysz go jednym poleceniem PowerShell w Ustawieniach > Claude Code; bez tego Claude nie odczyta zgłoszenia.',
   'Open settings': 'Otwórz ustawienia',
   'Update needed': 'Wymaga aktualizacji',
+  'Your PC has old tracker scripts. Update them first: Settings > Claude Code (or click Update needed).': 'Twój PC ma stare skrypty trackera. Najpierw je zaktualizuj: Ustawienia > Claude Code (albo kliknij Wymaga aktualizacji).',
   'Your PC has old tracker scripts, so it may not pick this up. Click to open Settings > Claude Code and run the update command.': 'Twój PC ma stare skrypty trackera, więc może tego nie podjąć. Kliknij, żeby otworzyć Ustawienia > Claude Code i uruchomić polecenie aktualizacji.',
   'The tracker has newer PC scripts. Run this on your computer.': 'Tracker ma nowsze skrypty dla PC. Uruchom to na swoim komputerze.',
   'Old version of the PC scripts. Run the update command above on this computer.': 'Stara wersja skryptów PC. Uruchom na tym komputerze polecenie aktualizacji z góry.',
