@@ -174,6 +174,12 @@ export function IssuePage({ number }: { number: number }) {
       toast(deep ? t('Deep analysis started on your computer. It shows up here in a few minutes.') : t('Analysis started on your computer. It shows up here in a few minutes.'));
     } else toast(t('AI analysis requested. To have it run by itself on your computer, set up local analysis in Settings > Claude Code.'));
   };
+  // Zlecenie bez odpowiedzi przez 15 minut uznajemy za utknięte (agent nie ruszył, np. kliknięte na telefonie, albo padł).
+  const stalled = !!issue.analysisRequestedAt && Date.now() - new Date(issue.analysisRequestedAt).getTime() > 15 * 60_000;
+  const cancelAnalysis = async () => {
+    await api(`/api/issues/${ident(number)}/analyze`, { method: 'DELETE' });
+    void qc.invalidateQueries({ queryKey: ['issue', number] });
+  };
 
   return (
     <div className="issue-page">
@@ -225,14 +231,19 @@ export function IssuePage({ number }: { number: number }) {
             <FoldBar id="analysis" tour="analysis" badge={<span className="badge ai">AI</span>} name={t('Problem analysis')}
               preview={issue.analysisRequestedAt ? t('Waiting for Claude…') : analysisPreview(issue) || t('No analysis yet')}
               meta={issue.analysisUpdatedAt ? timeAgo(issue.analysisUpdatedAt) : ''}
-              tools={issue.analysisRequestedAt
-                ? <span className="pill ai"><Icon.sparkle size={12} /> {t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(issue.analysisRequestedAt)}</span>
-                : <span style={{ display: 'inline-flex', gap: 4 }}>
-                    {issue.analysisDeep && issue.analysisUpdatedAt && <span className="pill ai done" title={t('Deeper analysis with a stronger model: slower and more expensive')}>{t('Deep')}</span>}
+              tools={<span style={{ display: 'inline-flex', gap: 4 }}>
+                {issue.analysisRequestedAt && <>
+                  <span className={`pill ${stalled ? 'stalled' : 'ai'}`} title={stalled ? t('No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.') : undefined}>
+                    <Icon.sparkle size={12} /> {stalled ? t('Stalled') : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(issue.analysisRequestedAt)}</span>
+                  <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
+                </>}
+                {(!issue.analysisRequestedAt || stalled) && <>
+                    {!issue.analysisRequestedAt && issue.analysisDeep && issue.analysisUpdatedAt && <span className="pill ai done" title={t('Deeper analysis with a stronger model: slower and more expensive')}>{t('Deep')}</span>}
                     <button className="btn sm ai-btn" data-tour="analyze" title={local ? t('Runs Claude (Sonnet) on your computer, read-only') : t('Marks the issue for analysis by Claude')}
                       onClick={(e) => { e.stopPropagation(); void analyze(); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
                     {demo && <button className="btn sm ai-btn" disabled title={t('Disabled in the demo')} onClick={(e) => e.stopPropagation()}>{t('Deep')}</button>}
                     {!demo && local && <button className="btn sm ai-btn" title={t('Deeper analysis with a stronger model: slower and more expensive')} onClick={(e) => { e.stopPropagation(); void analyze(true); }}>{t('Deep')}</button>}
+                </>}
                   </span>}>
               <div className="panel ai">
                 {issue.analysisData

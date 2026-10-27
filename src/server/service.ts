@@ -364,6 +364,13 @@ export async function requestAnalysis(p: Project, actor: Actor, number: number, 
   await publish({ type: 'issue', projectKey: p.key, number });
 }
 
+/** Anulowanie zlecenia, które utknęło (agent nie ruszył albo padł): pasek wraca do przycisku Analyze. */
+export async function cancelAnalysis(p: Project, number: number) {
+  const cur = await requireIssue(p, number);
+  await db.update(issues).set({ analysisRequestedAt: null }).where(eq(issues.id, cur.id));
+  await publish({ type: 'issue', projectKey: p.key, number });
+}
+
 /** Analiza od agenta w sekcjach. Wybory z poprzedniej analizy zostają przy tych samych pytaniach. */
 export async function setAnalysis(p: Project, actor: Actor, number: number, input: AnalysisInput) {
   const cur = await requireIssue(p, number);

@@ -22,6 +22,8 @@ export const pl: Record<string, string> = {
 
   // Ogólne
   'Cancel': 'Anuluj',
+  'Stalled': 'Utknęła',
+  'No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.': 'Brak analizy po 15 minutach: agent nie ruszył albo przerwał. Zleć ponownie albo anuluj.',
   'Save': 'Zapisz',
   'Saved': 'Zapisano',
   'Delete': 'Usuń',
