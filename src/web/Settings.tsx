@@ -78,8 +78,69 @@ export function Settings() {
         <div className="settings-inner">
           <h3 className="settings-title">{current.name}</h3>
           {current.render()}
+          <SettingsHints current={current.id} groups={groups} isAdmin={!!me?.isAdmin} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * "Szukasz może?" (jak w Androidzie): ustawienia dzielą się na moje i projektowe, więc łatwo szukać w złym miejscu.
+ * Na dole sekcji linki do powiązanych ustawień gdzie indziej; klik przenosi i na chwilę podświetla kartę (target = id karty).
+ */
+type Hint = { label: string; to: string; target?: string; adminOnly?: boolean };
+const HINTS: Record<string, Hint[]> = {
+  claude: [
+    { label: t('Team queue'), to: 'prompts', target: 'team-queue' },
+    { label: t('Analysis models'), to: 'prompts', target: 'agent-prompts' },
+  ],
+  prompts: [
+    { label: t('Connect this computer'), to: 'claude', target: 'claude-connect' },
+    { label: t('Your computers'), to: 'claude', target: 'your-computers' },
+  ],
+  notifications: [{ label: t('Project Discord channel'), to: 'integrations', target: 'discord' }],
+  integrations: [{ label: t('Your notifications'), to: 'notifications' }],
+  people: [{ label: t('Who can log in to the workspace'), to: 'accounts', adminOnly: true }],
+};
+
+function SettingsHints({ current, groups, isAdmin }: { current: string; groups: { name: ReactNode; items: Section[] }[]; isAdmin: boolean }) {
+  const hints = HINTS[current];
+  if (!hints?.length) return null;
+  // Ścieżka "Ty › Powiadomienia": grupa projektu ma w menu nazwę projektu, tu wystarczy "Projekt".
+  const where = (id: string) => {
+    const gi = groups.findIndex((g) => g.items.some((s) => s.id === id));
+    const sec = groups[gi]?.items.find((s) => s.id === id);
+    const group = gi === 0 ? t('You') : gi === 1 ? t('Project') : t('Workspace');
+    return sec ? `${group} › ${sec.name}` : null;
+  };
+  const go = (h: Hint) => {
+    history.replaceState(null, '', `#${h.to}`);
+    dispatchEvent(new HashChangeEvent('hashchange'));
+    if (!h.target) return;
+    // Po przełączeniu sekcji karta jest w DOM w następnej klatce.
+    setTimeout(() => {
+      const el = document.getElementById(h.target!);
+      if (!el) return;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.classList.add('flash');
+      setTimeout(() => el.classList.remove('flash'), 1600);
+    }, 50);
+  };
+  return (
+    <div className="settings-hints">
+      <div className="hint">{t('Looking for something else?')}</div>
+      {hints.map((h) => {
+        const path = where(h.to) ?? (h.adminOnly ? `${t('Workspace')} › ${t('Accounts')}` : '');
+        const locked = h.adminOnly && !isAdmin;
+        return (
+          <Tooltip key={h.label} text={locked ? t('Only workspace admins can open this') : null}>
+            <button className="settings-hint" disabled={locked} onClick={() => go(h)}>
+              <span>→ {h.label}</span><span className="hint">{path}</span>
+            </button>
+          </Tooltip>
+        );
+      })}
     </div>
   );
 }
@@ -119,7 +180,7 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; lastError: string; lastErrorAt: string | null }[]>('/api/agents'), enabled: !!me && !me.demo && !!me.localAgentAt });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; lastError: string; lastErrorAt: string | null }[]>('/api/agents'), enabled: !!me && !me.demo && !!me.localAgentAt });
   // Przełącznik "ten komputer ma agenta": tylko ta przeglądarka (localStorage), dla laptopów z dotykiem, gdzie wykrycie telefonu myli.
   const [, setTick] = useState(0);
   const here = agentHere(me);
@@ -150,7 +211,7 @@ function ClaudeConnect() {
   return (
     <>
       <p className="hint settings-lead">{t('One PowerShell command connects this computer to Exponential, for every Claude Code account: AI skills, work log in issues and Analyze in the background.')}</p>
-      <div className="s-card">
+      <div className="s-card" id="claude-connect">
         <div className="s-row">
           <span className={`step-dot${installed ? ' done' : ''}`}>{installed ? <Icon.check size={12} /> : <Icon.sparkle size={12} />}</span>
           <span className="grow">
@@ -197,11 +258,20 @@ function ClaudeConnect() {
         )}
       </div>
       {installed && !demo && (
-        <div className="s-card" style={{ marginTop: 12 }}>
+        <div className="s-card" id="your-computers" style={{ marginTop: 12 }}>
           <div className="s-row s-row-head"><b>{t('Your computers')}</b><span className="hint">{t('A computer with the agent picks up analyses requested from your phone.')}</span></div>
           {(agentList.data ?? []).map((a) => (
             <div key={a.id} className="s-row">
-              <span className="grow">{a.name || t('Unnamed computer')}{a.outdated && <> <span className="pill stalled" title={t('Old version of the PC scripts. Run the update command above on this computer.')}>{t('Update needed')}</span></>}
+              <span className="grow">
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {/* Własna nazwa (jak login GitHub w Kontach): zapis po wyjściu z pola, pusta wraca do nazwy z Windowsa. */}
+                  <input className="input" style={{ width: 180 }} key={a.label} defaultValue={a.label} placeholder={a.computerName || t('Unnamed computer')} aria-label={t('Computer name')}
+                    title={t('Your name for this computer. Empty: the Windows name.')}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    onBlur={(e) => { const v = e.target.value.trim(); if (v !== a.label) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { label: v } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); }); }} />
+                  {a.outdated && <span className="pill stalled" title={t('Old version of the PC scripts. Run the update command above on this computer.')}>{t('Update needed')}</span>}
+                </span>
+                {a.label && a.computerName && <div className="hint">{t('Windows name: {name}', { name: a.computerName })}</div>}
                 {a.lastError && <div className="hint">{t('Last error {when}: {error}', { when: a.lastErrorAt ? timeAgo(a.lastErrorAt) : '', error: a.lastError })}</div>}</span>
               <span className="hint">{a.online ? (a.busy ? t('running an analysis') : t('online')) : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>
               <button className="btn sm danger" onClick={() => void askConfirm({
@@ -236,7 +306,6 @@ type ProjectDetail = {
   sprintLengthDays: number; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
   githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; agentTeamQueue: boolean;
-  defaultPrompts: { start: string; analyze: string; close: string; deep: string };
   defaultModels: { analyze: string; deep: string };
   role: 'admin' | 'member'; canEdit: boolean;
   members: { id: number; login: string; name: string; avatarUrl: string | null; active: boolean; role: 'admin' | 'member' }[];
@@ -360,7 +429,7 @@ function ProjectIntegrations() {
             : t('Pick where deploys are reported from. None: no deploy tracking.')}
         </span>
       </div>
-      <div className="s-row">
+      <div className="s-row" id="discord">
         <span className="s-label">Discord webhook</span>
         <Tooltip text={ro}>
           <input className="input grow" key={p.discordWebhookUrl ?? ''} disabled={!!ro} placeholder={ro ? t('Set by a project admin') : 'https://discord.com/api/webhooks/…'}
@@ -484,14 +553,13 @@ function ProjectLabelsStatuses() {
 
 const MODELS = ['haiku', 'sonnet', 'opus', 'fable'] as const;
 
+// Polecenia dla Claude Code są stałe w kodzie (prompts.ts), treść i format analizy ustala skill; projekt wybiera tylko model.
 const PROMPTS = [
-  { kind: 'start', field: 'promptStart', name: t('Start work'), hint: t('Opens a new Claude Code tab in VS Code with this text typed in.') },
-  { kind: 'analyze', field: 'promptAnalyze', name: t('Analyze'), hint: t('Runs in the background on the computer of whoever clicks it (local runner), read-only.'), model: 'analyzeModel' },
-  { kind: 'deep', field: 'promptDeep', name: t('Deep'), hint: t('Added to the end of Analyze when someone clicks Deep.'), model: 'deepModel' },
-  { kind: 'close', field: 'promptClose', name: t('Close'), hint: t('"Close in Claude" in the Move to Done dialog.') },
+  { kind: 'analyze', name: t('Analyze'), hint: t('Runs in the background on the computer of whoever clicks it (local runner), read-only.'), model: 'analyzeModel' },
+  { kind: 'deep', name: t('Deep'), hint: t('Analyze with a deeper look at the code: checks more causes and lists risks.'), model: 'deepModel' },
 ] as const;
 
-/** Polecenia dla Claude Code z guzików trackera: szablony projektu, edytuje admin projektu. */
+/** Modele analiz z guzików trackera, edytuje admin projektu. */
 function ProjectPrompts() {
   const c = useProject();
   const demo = !!useMe().data?.demo;
@@ -502,38 +570,21 @@ function ProjectPrompts() {
     .then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['project'] }); });
   return (
     <>
-      <p className="hint settings-lead">{t('What the Exponential buttons type into Claude Code for this project. The agent fetches the full issue (description, analysis, decisions) by itself. What it may do is fixed in the local script, not here.')}</p>
-      <div className="s-card">
-        {PROMPTS.map((x) => {
-          const value = p[x.field];
-          const def = p.defaultPrompts[x.kind];
-          return (
-            <div key={x.kind} className="s-row" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <b>{x.name}</b><span className="hint grow">{x.hint}</span>
-                {'model' in x && (
-                  // Aliasy Claude Code: zawsze najnowsza wersja danego modelu. Wybór równy domyślnemu zapisujemy jako pusty.
-                  <Tooltip text={ro ?? t('Model for this analysis')}>
-                    <div className="seg" aria-label={t('Model')}>
-                      {MODELS.map((m) => (
-                        <button key={m} disabled={!!ro} className={(p[x.model] || p.defaultModels[x.kind]) === m ? 'on' : ''}
-                          onClick={() => { const v = m === p.defaultModels[x.kind] ? '' : m; if (v !== p[x.model]) void save(x.model, v); }}>{m[0].toUpperCase() + m.slice(1)}</button>
-                      ))}
-                    </div>
-                  </Tooltip>
-                )}
-                {value && <Tooltip text={ro}><button className="btn sm" disabled={!!ro} onClick={() => void save(x.field, '')}>{t('Reset to default')}</button></Tooltip>}
+      <div className="s-card" id="agent-prompts">
+        {PROMPTS.map((x) => (
+          <div key={x.kind} className="s-row">
+            <b>{x.name}</b><span className="hint grow">{x.hint}</span>
+            {/* Aliasy Claude Code: zawsze najnowsza wersja danego modelu. Wybór równy domyślnemu zapisujemy jako pusty. */}
+            <Tooltip text={ro ?? t('Model for this analysis')}>
+              <div className="seg" aria-label={t('Model')}>
+                {MODELS.map((m) => (
+                  <button key={m} disabled={!!ro} className={(p[x.model] || p.defaultModels[x.kind]) === m ? 'on' : ''}
+                    onClick={() => { const v = m === p.defaultModels[x.kind] ? '' : m; if (v !== p[x.model]) void save(x.model, v); }}>{m[0].toUpperCase() + m.slice(1)}</button>
+                ))}
               </div>
-              <Tooltip text={ro}>
-                <textarea className="input" key={value} disabled={!!ro} rows={Math.min(12, (value || def).split('\n').length + 1)}
-                  defaultValue={value || def} style={{ width: '100%', height: 'auto', padding: '8px 10px', lineHeight: 1.45, fontFamily: 'var(--font-mono, monospace)', fontSize: 12, resize: 'vertical' }}
-                  onBlur={(e) => { const v = e.target.value.trim() === def.trim() ? '' : e.target.value; if (v !== value) void save(x.field, v); }} />
-              </Tooltip>
-            </div>
-          );
-        })}
-        {/* {description} {analysis} {comments} dalej działają w starych szablonach, ale nie podpowiadamy ich: agent pobiera zgłoszenie sam. */}
-        <div className="s-row"><span className="hint">{t('Placeholders:')} <code>{'{id}'}</code> <code>{'{title}'}</code></span></div>
+            </Tooltip>
+          </div>
+        ))}
       </div>
       {/* Kolejka zespołu to ustawienie projektu (kto uruchamia analizy), więc tutaj, a nie w osobistej sekcji Claude Code. */}
       <TeamQueue />
@@ -597,7 +648,7 @@ function TeamQueue() {
   const { p, ro: roBase, patch } = c;
   const ro = roBase ?? (demo ? t('Disabled in the demo') : null);
   return (
-    <div className="s-card" style={{ marginTop: 12 }}>
+    <div className="s-card" id="team-queue" style={{ marginTop: 12 }}>
       <div className="s-row">
         <span className="grow">{t('Team queue')} · {p.name}
           <div className="hint">{t("An online teammate's PC runs analyses for everyone in this project, on that person's Claude subscription limits. The prompt comes from the project template.")}</div>

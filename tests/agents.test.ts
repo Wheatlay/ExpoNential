@@ -276,6 +276,19 @@ describe('heartbeat', () => {
   });
 });
 
+describe('rename', () => {
+  it('own label survives heartbeats, empty label falls back to the Windows name, others cannot rename', async () => {
+    const id = '88888888-8888-4888-8888-888888888888';
+    await ag.heartbeat(bob, id, { name: 'DESKTOP-X', busy: false, repoKeys: [] });
+    await ag.renameAgent(bob, id, '  Laptop w domu ');
+    await ag.heartbeat(bob, id, { name: 'DESKTOP-X', busy: false, repoKeys: [] });
+    expect((await ag.myAgents(bob)).find((a) => a.id === id)).toMatchObject({ name: 'Laptop w domu', computerName: 'DESKTOP-X', label: 'Laptop w domu' });
+    expect(await code(ag.renameAgent(alice, id, 'mine'))).toBe('not_found');
+    await ag.renameAgent(bob, id, '');
+    expect((await ag.myAgents(bob)).find((a) => a.id === id)?.name).toBe('DESKTOP-X');
+  });
+});
+
 describe('script version', () => {
   it('an agent reporting an old version is outdated, the current one is not', async () => {
     const id = '66666666-6666-4666-8666-666666666666';

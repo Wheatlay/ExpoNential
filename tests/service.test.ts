@@ -75,14 +75,16 @@ describe('issues', () => {
     const d = await svc.getIssueDetail(P, 4);
     expect(d.analysisDeep).toBe(true);
     expect(d.activity.some((a) => a.payload.kind === 'analysis_requested' && a.payload.deep)).toBe(true);
-    expect(await prompts.renderPrompt(P, 4, 'analyze', false, true)).toContain(prompts.DEEP_PROMPT);
-    expect(await prompts.renderPrompt(P, 4, 'analyze')).not.toContain(prompts.DEEP_PROMPT);
+    expect(await prompts.renderPrompt(P, 4, 'analyze', false, true)).toMatch(/\bdeep\b/);
+    expect(await prompts.renderPrompt(P, 4, 'analyze')).not.toMatch(/\bdeep\b/);
     await svc.requestAnalysis(P, null, 4);
     expect((await svc.getIssueDetail(P, 4)).analysisDeep).toBe(false);
-    // Projekt może zmienić blok Deep i modele.
+    // Projekt zmienia tylko modele; stare własne szablony w bazie są ignorowane, a skill rozpoznaje tryb po "deep".
     expect([prompts.analysisModel(P, false), prompts.analysisModel(P, true)]).toEqual(['sonnet', 'opus']);
-    const custom = { ...P, promptDeep: 'Extra care for {id}', deepModel: 'haiku' };
-    expect(await prompts.renderPrompt(custom, 4, 'analyze', false, true)).toMatch(/Extra care for [A-Z]+-4$/);
+    const custom = { ...P, promptAnalyze: 'Custom {id}', promptDeep: 'Extra care for {id}', deepModel: 'haiku' };
+    const deepText = await prompts.renderPrompt(custom, 4, 'analyze', false, true);
+    expect(deepText).toMatch(/[A-Z]+-4.*deep/);
+    expect(deepText).not.toMatch(/Custom|Extra care/);
     expect(prompts.analysisModel(custom, true)).toBe('haiku');
   });
 

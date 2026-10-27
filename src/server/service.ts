@@ -453,7 +453,8 @@ export async function upsertWorklog(p: Project, actor: Actor, number: number, w:
     updatedAt: new Date().toISOString(),
   };
   if (row) await db.update(activity).set({ payload }).where(eq(activity.id, row.id));
-  else await db.insert(activity).values({ issueId: cur.id, actorId: actor?.id ?? null, payload });
+  // Ślad pracy przysyła hook sesji Claude Code: znacznik AI, jak inne akcje agenta.
+  else await db.insert(activity).values({ issueId: cur.id, actorId: actor?.id ?? null, viaAi: true, payload });
   await publish({ type: 'issue', projectKey: p.key, number });
 }
 

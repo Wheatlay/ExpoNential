@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { askConfirm } from './Confirm.tsx';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
+import { Markdown } from './Markdown.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api, useIssue, useMe, useMeta, useSprints, useUpdateIssue, type IssueDetail, type IssuePatch, type Meta,
@@ -24,21 +22,6 @@ import { enterToSubmit } from './keys.ts';
 import { rememberIssue } from './SidebarExtras.tsx';
 import { ident } from './project.ts';
 import { t, tn } from './i18n.ts';
-
-export function Markdown({ text, empty }: { text: string; empty?: string }) {
-  if (!text.trim()) return <div className="md empty">{empty ?? ''}</div>;
-  return (
-    <div className="md">
-      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={{
-        // Linki do innych zadań (/issue/ACME-…) nawigują w aplikacji, zewnętrzne w nowej karcie.
-        img: ({ node: _n, src, alt }) => <ImageBlock src={typeof src === 'string' ? src : undefined} alt={alt} />,
-        a: ({ node: _n, href, ...p }) => (href?.startsWith('/') ? <a {...p} {...linkProps(href)} /> : <a {...p} href={href} target="_blank" rel="noreferrer" />),
-      }}>
-        {text}
-      </ReactMarkdown>
-    </div>
-  );
-}
 
 export function MarkdownField({ value, onSave, placeholder, minHeight }: {
   value: string; onSave: (v: string) => void; placeholder: string; minHeight?: number;

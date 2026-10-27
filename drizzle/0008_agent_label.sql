@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ADD COLUMN "label" text DEFAULT '' NOT NULL;

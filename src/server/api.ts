@@ -10,7 +10,7 @@ import * as pr from './projects.ts';
 import * as ag from './agents.ts';
 import { addRelation, removeRelation } from './relations.ts';
 import { RuleError, parseIdentifier } from './rules.ts';
-import { DEEP_PROMPT, DEFAULT_MODELS, DEFAULT_PROMPTS, MODELS, PROMPT_KINDS, analysisModel, renderPrompt } from './prompts.ts';
+import { DEFAULT_MODELS, DEFAULT_PROMPTS, MODELS, PROMPT_KINDS, analysisModel, renderPrompt } from './prompts.ts';
 
 export const issueInputSchema = z.object({
   title: z.string().max(500).optional(),
@@ -108,6 +108,8 @@ export async function registerApi(app: FastifyInstance) {
     });
     r.get('/api/agents', async (req) => ag.myAgents(req.user!));
     r.delete<{ Params: { id: string } }>('/api/agents/:id', async (req) => ag.removeAgent(req.user!, req.params.id));
+    r.patch<{ Params: { id: string } }>('/api/agents/:id', async (req) =>
+      ag.renameAgent(req.user!, req.params.id, z.object({ label: z.string().max(60) }).parse(req.body).label));
     // Instalator lokalnej analizy zgłasza się tu tokenem MCP, deinstalator kasuje znacznik.
     r.post('/api/me/local-agent', async (req) => { await db.update(users).set({ localAgentAt: new Date() }).where(eq(users.id, req.user!.id)); return { ok: true }; });
     r.delete('/api/me/local-agent', async (req) => { await db.update(users).set({ localAgentAt: null }).where(eq(users.id, req.user!.id)); return { ok: true }; });
@@ -137,15 +139,14 @@ export async function registerApi(app: FastifyInstance) {
       const { project, role } = await ctx(req, req.params.key);
       const canEdit = pr.canManage(req.user!, role);
       // Webhook to sekret: widzi go tylko admin projektu.
-      return { ...project, discordWebhookUrl: canEdit ? project.discordWebhookUrl : null, role, canEdit, members: await pr.listMembers(project.id), defaultPrompts: { ...DEFAULT_PROMPTS, deep: DEEP_PROMPT }, defaultModels: DEFAULT_MODELS };
+      return { ...project, discordWebhookUrl: canEdit ? project.discordWebhookUrl : null, role, canEdit, members: await pr.listMembers(project.id), defaultModels: DEFAULT_MODELS };
     });
     r.patch<{ Params: { key: string } }>('/api/projects/:key', async (req) => {
       const p = await manage(req, req.params.key);
       const body = z.object({
         name: z.string().optional(), color: z.string().optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).optional(),
         sprintLengthDays: z.number().int().optional(), reviewTime: z.string().optional(), reviewMinutes: z.number().int().optional(),
-        promptStart: z.string().max(8000).optional(), promptAnalyze: z.string().max(8000).optional(), promptClose: z.string().max(8000).optional(), promptDeep: z.string().max(8000).optional(),
-        analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
+                analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
         githubRepo: z.string().max(200).optional(), deployBranch: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(), deploySourceRef: z.string().max(200).optional(),
         agentTeamQueue: z.boolean().optional(),
       }).parse(req.body);

@@ -50,6 +50,20 @@
       "when": 1793106104412,
       "tag": "0006_surface_errors",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793109277054,
+      "tag": "0007_activity_ai_badge",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793109458678,
+      "tag": "0008_agent_label",
+      "breakpoints": true
     }
   ]
 }

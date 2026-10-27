@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import { Markdown } from './Markdown.tsx';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, type AnalysisData, type IssueDetail } from './api.ts';
 import { ident } from './project.ts';
@@ -23,7 +23,7 @@ export function AnalysisView({ issue, data }: { issue: IssueDetail; data: Analys
       {SECTIONS.map(([key, name]) => data.sections[key] && (
         <div key={key} className="analysis-section">
           <div className="desc-label">{t(name)}</div>
-          <div className="md analysis-text"><ReactMarkdown>{data.sections[key]!}</ReactMarkdown></div>
+          <Markdown className="analysis-text" text={data.sections[key]!} />
         </div>
       ))}
       {data.decisions.length > 0 && (

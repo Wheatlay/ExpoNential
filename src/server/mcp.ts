@@ -166,6 +166,8 @@ function buildServer(user: SessionUser) {
         id: identifier(p.key, x.number),
         title: x.title,
         status: r.meta.statuses.find((s) => s.id === x.statusId)?.name,
+        // Nazwy statusów są dowolne; typ mówi agentowi, czy zgłoszenie jest zrobione (completed) albo porzucone.
+        statusType: r.meta.statuses.find((s) => s.id === x.statusId)?.type,
         assignee: r.meta.users.find((u) => u.id === x.assigneeId)?.name ?? null,
         priority: PRIORITIES[x.priority],
         labels: x.labelIds.map((id) => r.meta.labels.find((l) => l.id === id)?.name),

@@ -56,13 +56,38 @@ Sekcje dla każdego typu:
   z tego samego i co zmiana w nich poruszy ("ten sam status widzi karta podpisującego i raport").
 - `after`: jak to działa dla użytkownika po zmianie. Stan docelowy, nie plan pracy.
 - `risk` (opcjonalnie): jedno nieoczywiste ryzyko, np. istniejące dane.
-- `related` (opcjonalnie): inne zgłoszenia o tym samym miejscu albo duplikat
-  (`mcp__tracker__list_issues` z `query`), z identyfikatorem.
+- `related` (opcjonalnie): inne zgłoszenia o tym samym miejscu (`mcp__tracker__list_issues`
+  z `query`), najwyżej 3, każde w osobnej linii `- ACME-12 tytuł: dlaczego`, bez innego tekstu.
+  Liczy się `statusType`:
+  - otwarte (`backlog`, `unstarted`, `started`): duplikat albo ryzyko kolizji, napisz które;
+  - zrobione (`completed`): tylko gdy zmieniało to samo miejsce, z dopiskiem „zrobione”
+    (Start czyta wtedy jego notatki zmian);
+  - `canceled` i `duplicate` pomiń.
+  Limit słów sekcji nie obejmuje `related`.
 
 **Decyzje** (`decisions`): tylko pytania, od których zależy zakres, najwyżej 3. Każde ma 2-3
 opcje: `label` 1-4 słowa, `desc` najwyżej 8 słów (skutek dla produktu, nie technika),
 `recommended: true` na tej jednej, którą polecasz, ustawionej jako pierwsza. Brak decyzji =
 pusta lista.
+
+### Tryb Deep
+
+Gdy polecenie zawiera słowo „deep” („tryb deep”, „deep mode”), obowiązują poniższe zmiany. Reszta
+skilla bez zmian.
+
+- **Szukanie bez limitu „nie więcej”.** Celem jest pewny werdykt, nie dłuższy tekst:
+  - prześledź cały przepływ od początku do końca (ekran → serwer → baza),
+  - rozważ co najmniej 2 hipotezy przyczyny, sprawdź obie w kodzie i ustal, czemu słabsza odpada,
+  - sprawdź powiązane ścieżki, testy i podobne wzorce,
+  - szukaj ryzyk, przypadków brzegowych i tego, co poprawka może zepsuć.
+- **Limit sekcji: ok. 500 słów razem** zamiast 180, nadal bez wstępów i powtórzeń. `related`
+  najwyżej 5 zgłoszeń zamiast 3.
+- `verdict` / `answer`: po przyczynie jedno zdanie o odrzuconej hipotezie i czemu odpada.
+  Twierdzenia niesprawdzone w kodzie oznacz „(założenie)”.
+- `risk` jest obowiązkowy i może być listą: każde ryzyko i przypadek brzegowy od nowej linii
+  zaczynającej się od „- ”.
+- Zasada „bez nazw plików i funkcji” dalej obowiązuje: dowody sprawdzasz w kodzie, a w analizie
+  opisujesz je nazwami z interfejsu.
 
 Typ sam ustawia etykietę zgłoszenia (Bug / Feature / Investigate), nie podawaj jej osobno.
 

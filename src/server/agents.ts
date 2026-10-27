@@ -67,7 +67,8 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
     .returning({ deep: issues.analysisDeep });
   if (!rows.length) throw new RuleError('Already taken or no longer requested', 'conflict');
   if (!already) {
-    await db.transaction((tx) => log(tx, cur.id, user as Actor, { kind: 'analysis_claimed', device: agent.name || 'PC' }));
+    // Zajęcie robi skrypt na PC, nie człowiek: w aktywności ze znacznikiem AI, jak inne akcje agenta.
+    await db.transaction((tx) => log(tx, cur.id, { ...user, ai: true } as Actor, { kind: 'analysis_claimed', device: agent.label || agent.name || 'PC' }));
     await publish({ type: 'issue', projectKey: p.key, number });
   }
   return { ok: true, deep: rows[0].deep, model: analysisModel(p, rows[0].deep) };
@@ -97,8 +98,8 @@ export async function analysisRunner(p: Project, issue: { analysisRequestedBy: n
     ) as can`);
   let claimedDeviceName: string | null = null;
   if (issue.analysisClaimedDevice) {
-    const [a] = await db.select({ name: agents.name }).from(agents).where(eq(agents.id, issue.analysisClaimedDevice));
-    claimedDeviceName = a?.name || null;
+    const [a] = await db.select({ name: agents.name, label: agents.label }).from(agents).where(eq(agents.id, issue.analysisClaimedDevice));
+    claimedDeviceName = a?.label || a?.name || null;
   }
   return { canRun: !!r?.can, claimedDeviceName };
 }
@@ -188,9 +189,16 @@ export async function claimStartJob(user: User, jobId: number, deviceId: string)
 /** Moje komputery do Ustawień. */
 export async function myAgents(user: User) {
   const rows = await db.select().from(agents).where(eq(agents.userId, user.id)).orderBy(dsql`${agents.lastSeenAt} desc nulls last`);
-  return rows.map((a) => ({ id: a.id, name: a.name, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: a.version !== agentScriptsVersion(),
+  return rows.map((a) => ({ id: a.id, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: a.version !== agentScriptsVersion(),
     // Błąd starszy niż 24 h już nie jest istotny.
     lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 ? a.lastError : '', lastErrorAt: a.lastErrorAt }));
+}
+
+/** Własna nazwa komputera (pusta = nazwa z Windowsa). Tylko właściciel. */
+export async function renameAgent(user: User, id: string, label: string) {
+  const rows = await db.update(agents).set({ label: label.trim().slice(0, 60) }).where(and(eq(agents.id, id), eq(agents.userId, user.id))).returning({ id: agents.id });
+  if (!rows.length) throw new RuleError('Computer not found', 'not_found');
+  return { ok: true };
 }
 
 export async function removeAgent(user: User, id: string) {
@@ -200,7 +208,7 @@ export async function removeAgent(user: User, id: string) {
 
 /** Komputery online należące do członków projektu (kolejka zespołu). */
 export async function projectAgents(p: Project) {
-  const rows = await db.select({ name: agents.name, owner: users.name, busy: agents.busy })
+  const rows = await db.select({ name: dsql<string>`coalesce(nullif(${agents.label}, ''), ${agents.name})`, owner: users.name, busy: agents.busy })
     .from(agents).innerJoin(users, eq(users.id, agents.userId))
     .innerJoin(projectMembers, and(eq(projectMembers.userId, agents.userId), eq(projectMembers.projectId, p.id)))
     .where(gt(agents.lastSeenAt, ago(ONLINE_MS))).orderBy(asc(agents.name));

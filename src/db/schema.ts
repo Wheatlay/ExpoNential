@@ -341,6 +341,8 @@ export const agents = pgTable('agents', {
   id: text('id').primaryKey(),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull().default(''),
+  // Nazwa nadana przez właściciela w Ustawieniach. Osobno od name, bo agent co obieg nadpisuje name nazwą Windowsa.
+  label: text('label').notNull().default(''),
   busy: boolean('busy').notNull().default(false),
   repoKeys: jsonb('repo_keys').$type<string[]>().notNull().default([]),
   // Wersja skryptów na PC (skrót treści z install.ps1). Inna niż na serwerze = Ustawienia proszą o ponowną instalację.
