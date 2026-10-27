@@ -2,7 +2,8 @@ const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
 import { locale, t } from './i18n.ts';
 
 export function timeAgo(iso: string) {
-  const s = (new Date(iso).getTime() - Date.now()) / 1000;
+  // Zawsze przeszłość: zegar telefonu spóźniony względem serwera dawał "za 1 minutę" przy właśnie zleconej analizie.
+  const s = Math.min(0, (new Date(iso).getTime() - Date.now()) / 1000);
   const abs = Math.abs(s);
   if (abs < 45) return t('just now');
   if (abs < 3600) return rtf.format(Math.round(s / 60), 'minute');

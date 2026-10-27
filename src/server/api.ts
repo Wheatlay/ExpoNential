@@ -209,6 +209,11 @@ export async function registerApi(app: FastifyInstance) {
       await svc.requestAnalysis(p, req.user, number, b.deep);
       return { ok: true };
     });
+    r.delete<{ Params: { id: string } }>('/api/issues/:id/analyze', async (req) => {
+      const { p, number } = await issueRef(req, req.params.id);
+      await svc.cancelAnalysis(p, number);
+      return { ok: true };
+    });
 
     // Wybór w decyzji z analizy AI: opcja albo własna odpowiedź; oba puste cofają wybór.
     r.post<{ Params: { id: string } }>('/api/issues/:id/analysis/decision', async (req) => {

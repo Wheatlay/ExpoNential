@@ -252,6 +252,7 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
     if (patch.analysis !== undefined && patch.analysis !== cur.analysis) {
       set.analysisUpdatedAt = new Date();
       set.analysisRequestedAt = null;
+      if (cur.analysisRequestedAt) set.analysisResultDeep = cur.analysisDeep;
       // Ręcznie poprawiony tekst nie zgadza się już z sekcjami: zostaje sam tekst.
       if (patch.analysisData === undefined) set.analysisData = null;
     }
@@ -259,6 +260,7 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
       set.analysisData = patch.analysisData;
       set.analysisUpdatedAt = new Date();
       set.analysisRequestedAt = null;
+      if (cur.analysisRequestedAt) set.analysisResultDeep = cur.analysisDeep;
     }
 
     if (patch.statusId !== undefined && patch.statusId !== cur.statusId) {
@@ -361,6 +363,13 @@ export async function requestAnalysis(p: Project, actor: Actor, number: number, 
     await tx.update(issues).set({ analysisRequestedAt: new Date(), analysisDeep: deep, updatedAt: new Date() }).where(eq(issues.id, cur.id));
     await log(tx, cur.id, actor, deep ? { kind: 'analysis_requested', deep } : { kind: 'analysis_requested' });
   });
+  await publish({ type: 'issue', projectKey: p.key, number });
+}
+
+/** Anulowanie zlecenia, które utknęło (agent nie ruszył albo padł): pasek wraca do przycisku Analyze. */
+export async function cancelAnalysis(p: Project, number: number) {
+  const cur = await requireIssue(p, number);
+  await db.update(issues).set({ analysisRequestedAt: null }).where(eq(issues.id, cur.id));
   await publish({ type: 'issue', projectKey: p.key, number });
 }
 

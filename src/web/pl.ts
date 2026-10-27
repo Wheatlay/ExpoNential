@@ -22,6 +22,8 @@ export const pl: Record<string, string> = {
 
   // Ogólne
   'Cancel': 'Anuluj',
+  'Stalled': 'Utknęła',
+  'No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.': 'Brak analizy po 15 minutach: agent nie ruszył albo przerwał. Zleć ponownie albo anuluj.',
   'Save': 'Zapisz',
   'Saved': 'Zapisano',
   'Delete': 'Usuń',
@@ -29,6 +31,9 @@ export const pl: Record<string, string> = {
   'Add': 'Dodaj',
   'Close': 'Zamknij',
   'Open': 'Otwórz',
+  'Assign to me': 'Przypisz do mnie',
+  'No issues in {name}': 'Brak zgłoszeń w {name}',
+  'Select an issue to see it here': 'Wybierz zgłoszenie, żeby je tu zobaczyć',
   'Edit': 'Edytuj',
   'Copy': 'Kopiuj',
   'Copied': 'Skopiowano',

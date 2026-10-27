@@ -21,6 +21,7 @@ import { sortBetween } from './sort.ts';
 import { InlineCode } from './InlineCode.tsx';
 import { ident } from './project.ts';
 import { t, tn } from './i18n.ts';
+import { PhoneBoard, SplitBoard } from './MobileBoard.tsx';
 
 type Display = {
   rows: RowsBy;
@@ -477,27 +478,10 @@ export function Board() {
         {displayOpen && <DisplayPanel at={displayOpen} display={display} setDisplay={setDisplay} onClose={() => setDisplayOpen(null)} />}
       </div>
       {narrow ? (
-        // Telefon: lista pogrupowana po statusie zamiast tablicy, jak w mobilnym Linearze.
-        <div className="board mobile-list">
-          {columns.map((s) => {
-            const list = visible.filter((i) => i.statusId === s.id).sort(sorter);
-            if (!list.length) return null;
-            return (
-              <section key={s.id}>
-                <div className="col-head mobile">
-                  <StatusIcon status={s} fraction={startedFraction(meta.statuses, s)} />
-                  <span className="name">{s.name}</span>
-                  <span className="n">{list.length}</span>
-                </div>
-                {list.map((i) => (
-                  <div key={i.id} role="button" onClick={() => navigate(`/issue/${ident(i.number)}`)}>
-                    <CardView issue={i} meta={meta} />
-                  </div>
-                ))}
-              </section>
-            );
-          })}
-        </div>
+        // Telefon: złożony = zakładki statusów, rozłożony (Fold) = lista + otwarte zgłoszenie.
+        narrow === 'split'
+          ? <SplitBoard columns={columns} visible={visible} sorter={sorter} meta={meta} />
+          : <PhoneBoard columns={columns} visible={visible} sorter={sorter} meta={meta} />
       ) : (
       <CardPropsContext.Provider value={{ ...ALL_PROPS, ...display.props }}>
       <CardActionsContext.Provider value={cardAction}>
@@ -764,14 +748,17 @@ export function SubProgress({ done, total, size = 12 }: { done: number; total: n
   );
 }
 
-function useNarrow() {
-  const q = '(max-width: 760px)';
-  const [narrow, setNarrow] = useState(() => window.matchMedia(q).matches);
+// Rozłożony składak (np. Fold 6, ok. 700 px) dostaje listę z podglądem; wąskie okno przeglądarki na komputerze zostaje przy zakładkach.
+const SPLIT_Q = '(min-width: 600px) and (max-width: 1100px) and (pointer: coarse)';
+const PHONE_Q = '(max-width: 760px)';
+function useNarrow(): 'phone' | 'split' | null {
+  const get = (): 'phone' | 'split' | null => (window.matchMedia(SPLIT_Q).matches ? 'split' : window.matchMedia(PHONE_Q).matches ? 'phone' : null);
+  const [narrow, setNarrow] = useState(get);
   useEffect(() => {
-    const m = window.matchMedia(q);
-    const on = () => setNarrow(m.matches);
-    m.addEventListener('change', on);
-    return () => m.removeEventListener('change', on);
+    const ms = [window.matchMedia(SPLIT_Q), window.matchMedia(PHONE_Q)];
+    const on = () => setNarrow(get());
+    ms.forEach((m) => m.addEventListener('change', on));
+    return () => ms.forEach((m) => m.removeEventListener('change', on));
   }, []);
   return narrow;
 }

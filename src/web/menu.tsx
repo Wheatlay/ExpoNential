@@ -25,7 +25,8 @@ export type MenuItem =
 export type MenuSpec = { items: MenuItem[]; searchable?: boolean; placeholder?: string };
 
 /** flipX: lewa krawędź pozycji nadrzędnej; podmenu bez miejsca po prawej otwiera się przy niej. */
-type Anchor = { x: number; y: number; alignRight?: boolean; flipX?: number };
+/** sheet: arkusz przy dolnej krawędzi (telefon, przytrzymanie wiersza) zamiast menu przy kursorze. */
+type Anchor = { x: number; y: number; alignRight?: boolean; flipX?: number; sheet?: boolean };
 type State = { anchor: Anchor; spec: MenuSpec; id: number } | null;
 
 let state: State = null;
@@ -87,7 +88,7 @@ function Menu({ anchor, spec: initialSpec, onCloseAll, onCloseSelf, root }: {
   // Menu nie może wyjść poza ekran; podmenu bez miejsca po prawej otwiera się po lewej.
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || anchor.sheet) return;
     const r = el.getBoundingClientRect();
     let left = anchor.alignRight ? anchor.x - r.width : anchor.x;
     let top = anchor.y;
@@ -142,7 +143,7 @@ function Menu({ anchor, spec: initialSpec, onCloseAll, onCloseSelf, root }: {
   useEffect(() => { if (!searchable) ref.current?.focus(); }, [searchable]);
 
   return (
-    <div ref={ref} className="popover" style={pos} tabIndex={-1} onKeyDown={onKey} onContextMenu={(e) => e.preventDefault()}>
+    <div ref={ref} className={anchor.sheet ? 'popover sheet' : 'popover'} style={anchor.sheet ? undefined : pos} tabIndex={-1} onKeyDown={onKey} onContextMenu={(e) => e.preventDefault()}>
       {searchable && (
         <input className="search" autoFocus placeholder={spec.placeholder ?? t('Filter…')} value={q}
           onChange={(e) => { setQ(e.target.value); setHl(0); }} />
