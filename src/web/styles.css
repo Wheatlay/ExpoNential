@@ -1044,6 +1044,9 @@ a.sub-row > button { display: inline-flex; }
 .landing-hero { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; padding-top: 24px; }
 .landing-hero h1 { font-size: clamp(28px, 4vw, 42px); }
 .landing-dim { color: var(--text-tertiary); }
+/* Motto: "exponential" w kolorze marki, "linear" przygaszone i przekreślone (to, od czego odchodzimy). */
+.landing-exp { color: var(--accent-text); }
+.landing-lin { color: var(--text-tertiary); text-decoration: line-through; text-decoration-thickness: 2px; }
 .landing-hero .hint { margin: 0; }
 .lp-wrap { position: relative; width: 100%; max-width: 1000px; max-height: max(520px, calc(100vh - 300px)); overflow: hidden; }
 .lp-wrap::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 80px; background: linear-gradient(to top, var(--bg-app), transparent); pointer-events: none; }

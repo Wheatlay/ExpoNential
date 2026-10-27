@@ -42,7 +42,7 @@ export function Landing() {
         </nav>
       </header>
       <div className="landing-hero">
-        <h1>{t('AI agents do the legwork.')} <span className="landing-dim">{t('You make the calls.')}</span></h1>
+        <h1>{t('Because your progress should be')} <span className="landing-exp">{t('exponential')}</span>, {t('not')} <span className="landing-lin">{t('linear')}</span>.</h1>
         <a className="btn primary landing-cta" href="/auth/demo?tour=1">{t('Try the live demo')}</a>
         <p className="hint">{t('No sign-up · resets every hour · the agent in the demo is a replay')}</p>
       </div>
