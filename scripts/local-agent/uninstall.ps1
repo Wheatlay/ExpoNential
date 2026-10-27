@@ -23,5 +23,5 @@ try {
   $auth = @{ Authorization = $mcp.headers.Authorization }
   if ($deviceId) { Invoke-RestMethod -Method Delete -Uri "$base/api/agents/$deviceId" -Headers $auth | Out-Null }
   Invoke-RestMethod -Method Delete -Uri "$base/api/me/local-agent" -ContentType application/json -Body "{}" -Headers $auth | Out-Null
-} catch { Write-Host 'Nie udalo sie powiadomic trackera; analiza i tak jest usunieta z tego komputera.' }
+} catch { Write-Host 'Nie udalo sie powiadomic Exponential; analiza i tak jest usunieta z tego komputera.' }
 Write-Host 'Usunieto lokalna analize.'

@@ -97,7 +97,7 @@ export function NotifyPrompt() {
         <span className="notify-icon"><Icon.bell size={16} /></span>
         <div>
           <div style={{ fontWeight: 600, fontSize: 15 }}>{t('Turn on notifications?')}</div>
-          <div className="hint" style={{ lineHeight: 1.5, marginTop: 4 }}>{t("So you don't miss things even with the tracker closed:")}</div>
+          <div className="hint" style={{ lineHeight: 1.5, marginTop: 4 }}>{t("So you don't miss things even with Exponential closed:")}</div>
         </div>
       </div>
       <div className="notify-list">
@@ -149,8 +149,8 @@ export function NotificationSettings() {
   return (
     <>
       <div className="s-card">
-        {row(t('In the tracker'), t('Banner when a meeting starts in 15 minutes or a poll waits for your vote.'), s.inApp, (v) => save({ inApp: v }))}
-        {row(t('Browser notifications'), t('Also when the tracker tab is closed (the browser must be running). Per browser.'), s.push && perm === 'granted', togglePush, pushBlocked)}
+        {row(t('In Exponential'), t('Banner when a meeting starts in 15 minutes or a poll waits for your vote.'), s.inApp, (v) => save({ inApp: v }))}
+        {row(t('Browser notifications'), t('Also when the Exponential tab is closed (the browser must be running). Per browser.'), s.push && perm === 'granted', togglePush, pushBlocked)}
         {row('Discord', t('Post my polls and meetings to the project channel with @here. Everyone in the channel sees them.'), s.discord, (v) => save({ discord: v }))}
       </div>
     </>

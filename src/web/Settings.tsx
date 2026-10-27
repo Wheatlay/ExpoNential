@@ -142,14 +142,14 @@ function ClaudeConnect() {
     void qc.invalidateQueries({ queryKey: ['tokens'] });
   };
   const download = (file: string) => (
-    <a className="btn" href={`/agent/${file}`} download>{file === 'install-tracker.cmd' ? t('Download installer') : t('Download uninstaller')}</a>
+    <a className="btn" href={`/agent/${file}`} download>{file.startsWith('exponential-install') ? t('Download installer') : t('Download uninstaller')}</a>
   );
   const demo = !!me?.demo;
   const installed = !!me?.localAgentAt;
   const update = agentInstallCommand();
   return (
     <>
-      <p className="hint settings-lead">{t('One PowerShell command connects this computer to the tracker, for every Claude Code account: AI skills, work log in issues and Analyze in the background.')}</p>
+      <p className="hint settings-lead">{t('One PowerShell command connects this computer to Exponential, for every Claude Code account: AI skills, work log in issues and Analyze in the background.')}</p>
       <div className="s-card">
         <div className="s-row">
           <span className={`step-dot${installed ? ' done' : ''}`}>{installed ? <Icon.check size={12} /> : <Icon.sparkle size={12} />}</span>
@@ -158,7 +158,7 @@ function ClaudeConnect() {
             <span className="hint">{installed ? t('Installed {when}.', { when: timeAgo(me!.localAgentAt!) }) : t('Analyze only marks issues until this computer is connected.')}</span>
           </span>
           {installed
-            ? <button className="btn" disabled={demo} onClick={() => void createCmd()} title={demo ? t('Disabled in the demo') : t('A new computer, or Claude Code without the tracker connection')}>{t('Connect another computer')}</button>
+            ? <button className="btn" disabled={demo} onClick={() => void createCmd()} title={demo ? t('Disabled in the demo') : t('A new computer, or Claude Code without the Exponential connection')}>{t('Connect another computer')}</button>
             : <button className="btn primary" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void createCmd()}>{t('Create install command')}</button>}
         </div>
         {cmd && token && (
@@ -166,7 +166,7 @@ function ClaudeConnect() {
             <span className="hint">{t("1. Download the installer and run it (double-click). 2. Paste this token when it asks; it is already in your clipboard. The token won't be shown again.")}</span>
             <div className="token-box">{token}</div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {download('install-tracker.cmd')}
+              {download('exponential-install.cmd?first=1')}
               <button className="btn" onClick={() => copyText(token, t('Token copied'))}><Icon.copy size={13} /> {t('Copy token')}</button>
             </div>
             <span className="hint">{t('Or paste this into PowerShell (select and copy it by hand if a blocker such as uBlock refuses the copy):')}</span>
@@ -177,12 +177,12 @@ function ClaudeConnect() {
           <div className="s-row">
             {/* Skrypty na PC nie aktualizują się same (kod z serwera nie podmienia się po cichu): mówimy wprost, że trzeba. */}
             <span className="hint grow">{me?.agentOutdated
-              ? <><span className="pill stalled">{t('Update needed')}</span> {t('The tracker has newer PC scripts. Run this on your computer.')}</>
+              ? <><span className="pill stalled">{t('Update needed')}</span> {t('Exponential has newer PC scripts. Run this on your computer.')}</>
               : t('Update or new project/clone: run this again.')}</span>
-            {download('install-tracker.cmd')}
+            {download('exponential-install.cmd')}
             <code className="input" title={t('Or paste this into PowerShell (select and copy it by hand if a blocker such as uBlock refuses the copy):')} style={{ display: 'flex', alignItems: 'center', height: 30, overflowX: 'auto', whiteSpace: 'nowrap', maxWidth: '100%' }}>{update}</code>
             <button className="btn" onClick={() => copy(update)}><Icon.copy size={13} /> {t('Copy')}</button>
-            <span title={t('Removes it from this computer')} style={{ display: 'inline-flex' }}>{download('uninstall-tracker.cmd')}</span>
+            <span title={t('Removes it from this computer')} style={{ display: 'inline-flex' }}>{download('exponential-uninstall.cmd')}</span>
           </div>
         )}
       </div>
@@ -493,7 +493,7 @@ function ProjectPrompts() {
     .then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['project'] }); });
   return (
     <>
-      <p className="hint settings-lead">{t('What the tracker buttons type into Claude Code for this project. The agent fetches the full issue (description, analysis, decisions) by itself. What it may do is fixed in the local script, not here.')}</p>
+      <p className="hint settings-lead">{t('What the Exponential buttons type into Claude Code for this project. The agent fetches the full issue (description, analysis, decisions) by itself. What it may do is fixed in the local script, not here.')}</p>
       <div className="s-card">
         {PROMPTS.map((x) => {
           const value = p[x.field];

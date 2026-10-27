@@ -245,7 +245,7 @@ window.addEventListener('unhandledrejection', (e) => {
     if (r.code !== 'demo' && r.code !== 'rate') toast(r.message || t('Something went wrong'), 'err');
   } else if (r instanceof TypeError && /Failed to fetch|NetworkError|Load failed/i.test(r.message)) {
     e.preventDefault();
-    toast(t('No connection to the tracker. The change was not saved.'), 'err');
+    toast(t('No connection to Exponential. The change was not saved.'), 'err');
   }
 });
 

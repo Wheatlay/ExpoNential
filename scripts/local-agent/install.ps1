@@ -43,8 +43,8 @@ if ($env:TRACKER_TOKEN) {
     if ($d -eq $env:USERPROFILE) { Remove-Item Env:CLAUDE_CONFIG_DIR -ErrorAction SilentlyContinue } else { $env:CLAUDE_CONFIG_DIR = $d }
     & $claudeExe mcp add --transport http --scope user tracker "$base/mcp" --header "Authorization: Bearer $($env:TRACKER_TOKEN)" 2>&1 | Out-Null
     # claude.exe potrafi zakonczyc sie po cichu bez zapisu, wiec sprawdzamy konfiguracje po fakcie.
-    if (Read-Mcp $d) { Say "Serwer MCP trackera dodany: $d" Green }
-    else { Say "Nie udalo sie dodac serwera MCP trackera dla $d. Recznie: claude mcp add --transport http --scope user tracker $base/mcp --header `"Authorization: Bearer <token>`"" Yellow }
+    if (Read-Mcp $d) { Say "Serwer MCP Exponential dodany: $d" Green }
+    else { Say "Nie udalo sie dodac serwera MCP Exponential dla $d. Recznie: claude mcp add --transport http --scope user tracker $base/mcp --header `"Authorization: Bearer <token>`"" Yellow }
   }
   $ErrorActionPreference = 'Stop'
   $env:CLAUDE_CONFIG_DIR = $prevDir
@@ -55,7 +55,7 @@ foreach ($d in $accountDirs) { $r = Read-Mcp $d; if ($r) { $cfg = $r.cfg; $mcp =
 # Domyślny katalog (~/.claude.json) nie jest kontem z CLAUDE_CONFIG_DIR: wtedy niczego nie wymuszamy.
 if ($configDir -eq $env:USERPROFILE) { $configDir = $null }
 if (-not $mcp) {
-  Say 'Brak polaczenia z trackerem. Skopiuj polecenie instalacji z trackera (Ustawienia > Claude Code > Utworz polecenie) i uruchom je.' Yellow
+  Say 'Brak polaczenia z Exponential. W Exponential: Ustawienia > Claude Code > Utworz polecenie instalacji, potem pobierz instalator i wklej token.' Yellow
   return
 }
 
@@ -156,7 +156,7 @@ $ErrorActionPreference = 'Continue'   # claude.exe pisze ostrzeżenia na stderr,
 $pluginOk = (& $claudeExe plugin list 2>&1 | Out-String) -match 'tracker@tracker'
 $ErrorActionPreference = 'Stop'
 $env:CLAUDE_CONFIG_DIR = $prevConfigDir
-if ($pluginOk) { Say 'Plugin Claude Code "tracker" zainstalowany (skille analizy i zamykania, slad pracy).' Green }
+if ($pluginOk) { Say 'Plugin Claude Code Exponential ("tracker") zainstalowany (skille analizy i zamykania, slad pracy).' Green }
 else { Say "Nie udalo sie zainstalowac pluginu. Recznie: claude plugin marketplace add $base/agent/marketplace.json; claude plugin install tracker@tracker" Yellow }
 
 # 6. Tracker zapamiętuje, że masz lokalną analizę: Analyze odpala ją od razu.
@@ -167,6 +167,6 @@ foreach ($k in $repos.Keys) { Say "  $k -> $($repos[$k])" Green }
 $skipped = $projects | Where-Object { -not $repos.ContainsKey($_.key) }
 if ($skipped) { Say "Bez repo na tym komputerze: $(($skipped | ForEach-Object { $_.key }) -join ', '). Analyze w nich sam poszuka klonu albo zapyta o folder." Yellow }
 Say 'Nowy projekt albo nowy klon: Analyze sam go znajdzie albo zapyta o folder, bez ponownej instalacji.'
-Say 'Analyze w trackerze uruchamia teraz Claude w tle na tym komputerze. Przy pierwszym kliknieciu przegladarka zapyta o otwarcie aplikacji: zaznacz "zawsze".'
+Say 'Analyze w Exponential uruchamia teraz Claude w tle na tym komputerze. Przy pierwszym kliknieciu przegladarka zapyta o otwarcie aplikacji: zaznacz "zawsze".'
 Say 'Agent w tle odbiera analizy zlecone z telefonu i "Start on my PC" (rusza przy logowaniu do Windows).'
 Say "Log: $dir\log.txt"

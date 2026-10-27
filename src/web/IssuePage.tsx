@@ -166,13 +166,13 @@ export function IssuePage({ number }: { number: number }) {
   const local = !!me?.localAgentAt;
   // Stare skrypty na PC: serwer i tak nie wyda im zlecenia, więc nie dajemy go złożyć (powód + skrót do aktualizacji obok).
   const outdated = !!me?.agentOutdated && local && !me?.demo;
-  const outdatedReason = t('Your PC has old tracker scripts. Update them first: Settings > Claude Code (or click Update needed).');
+  const outdatedReason = t('Your PC has old Exponential scripts. Update them first: Settings > Claude Code (or click Update needed).');
   // Bez podłączonego Claude Code link vscode:// albo nic nie otworzy, albo otworzy Claude bez dostępu do zgłoszenia:
   // zamiast udawać, że działa, prowadzimy do jednorazowego podłączenia.
   const connectFirst = async () => {
     const ok = await askConfirm({
       title: t('Connect Claude Code first?'),
-      body: t('This account has no computer connected to the tracker yet. One PowerShell command in Settings > Claude Code connects it; without it Claude cannot read the issue.'),
+      body: t('This account has no computer connected to Exponential yet. One PowerShell command in Settings > Claude Code connects it; without it Claude cannot read the issue.'),
       action: t('Open settings'), danger: false,
     });
     if (ok) navigate('/settings#claude');
@@ -267,7 +267,7 @@ export function IssuePage({ number }: { number: number }) {
                 {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in Settings > Claude Code.")}>{t('Team queue')}</span>}
                 {/* Czeka, a mój PC ma stare skrypty: to zwykle prawdziwa przyczyna, więc mówimy o niej tutaj, nie tylko w Ustawieniach. */}
                 {outdated && !issue.analysisClaimedAt && (
-                  <span className="pill stalled" role="button" title={t('Your PC has old tracker scripts, so it may not pick this up. Click to open Settings > Claude Code and run the update command.')}
+                  <span className="pill stalled" role="button" title={t('Your PC has old Exponential scripts, so it may not pick this up. Click to open Settings > Claude Code and run the update command.')}
                     onClick={(e) => { e.stopPropagation(); navigate('/settings#claude'); }}>{t('Update needed')}</span>
                 )}
                 {issue.analysisRequestedAt && <>
