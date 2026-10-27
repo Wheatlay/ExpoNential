@@ -2,7 +2,7 @@
 
 The same code runs a small team's day-to-day tracker and the public demo (with `DEMO_MODE=1`).
 
-> Your issue tracker where AI agents do the legwork and humans make the calls.
+> Because your progress should be exponential, not linear.
 
 - Live demo: https://exponential-demo.onrender.com
 - Live site of author: https://wheatlay.is-a.dev
