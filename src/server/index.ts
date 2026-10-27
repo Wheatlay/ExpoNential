@@ -53,7 +53,7 @@ app.get('/health', async () => ({ ok: true }));
 
 // Skrypty lokalnej analizy do "irm <adres> | iex": bez sekretów, więc publiczne. Adres trackera wstawiany
 // tutaj, żeby instalator nie wymagał parametrów; repo projektów instalator pobiera z /api/projects.
-const AGENT_FILES = ['install.ps1', 'uninstall.ps1', 'tracker-handler.ps1'];
+const AGENT_FILES = ['install.ps1', 'uninstall.ps1', 'tracker-handler.ps1', 'tracker-agent.ps1'];
 app.get<{ Params: { file: string } }>('/agent/:file', async (req, reply) => {
   // Plugin Claude Code (skille + hook śladu pracy), patrz src/server/plugin.ts. Bez sekretów, więc publiczny.
   if (req.params.file === 'plugin.zip') return reply.type('application/zip').header('Cache-Control', 'no-store').send(pluginArchive().zip);

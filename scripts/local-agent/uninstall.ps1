@@ -1,5 +1,11 @@
 # Usuwa lokalną analizę (odwrotność install.ps1):  irm __TRACKER_URL__/agent/uninstall.ps1 | iex
 $base = '__TRACKER_URL__'
+# deviceId czytamy PRZED usunięciem folderu: tracker ma zapomnieć ten komputer.
+$deviceId = $null
+try { $deviceId = (Get-Content (Join-Path $env:LOCALAPPDATA 'tracker-agent/config.json') -Raw -Encoding utf8 | ConvertFrom-Json).deviceId } catch { }
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -like '*tracker-agent.ps1*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'TrackerAgent' -ErrorAction SilentlyContinue
 Remove-Item 'HKCU:\Software\Classes\tracker' -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $env:LOCALAPPDATA 'tracker-agent') -Recurse -Force -ErrorAction SilentlyContinue
 try {
@@ -14,6 +20,8 @@ try {
     $f = Join-Path $d '.claude.json'
     if ((-not $mcp) -and (Test-Path $f)) { $mcp = $json.DeserializeObject((Get-Content $f -Raw -Encoding utf8)).mcpServers.tracker }
   }
-  Invoke-RestMethod -Method Delete -Uri "$base/api/me/local-agent" -ContentType application/json -Body "{}" -Headers @{ Authorization = $mcp.headers.Authorization } | Out-Null
+  $auth = @{ Authorization = $mcp.headers.Authorization }
+  if ($deviceId) { Invoke-RestMethod -Method Delete -Uri "$base/api/agents/$deviceId" -Headers $auth | Out-Null }
+  Invoke-RestMethod -Method Delete -Uri "$base/api/me/local-agent" -ContentType application/json -Body "{}" -Headers $auth | Out-Null
 } catch { Write-Host 'Nie udalo sie powiadomic trackera; analiza i tak jest usunieta z tego komputera.' }
 Write-Host 'Usunieto lokalna analize.'

@@ -105,7 +105,20 @@ $code = (Invoke-WebRequest "$base/agent/tracker-handler.ps1" -UseBasicParsing).C
 if ($code -is [byte[]]) { $code = [Text.Encoding]::UTF8.GetString($code) }
 # BOM, bo PowerShell 5.1 czyta pliki bez niego w stronie kodowej systemu (psuje polskie znaki).
 [IO.File]::WriteAllText($handler, $code, (New-Object Text.UTF8Encoding $true))
-[IO.File]::WriteAllText((Join-Path $dir 'config.json'), (@{ repos = $repos } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+# Agent w tle (tracker-agent.ps1): podejmuje analizy zlecone z telefonu i "Start on my PC".
+$agent = Join-Path $dir 'tracker-agent.ps1'
+$agentCode = (Invoke-WebRequest "$base/agent/tracker-agent.ps1" -UseBasicParsing).Content
+if ($agentCode -is [byte[]]) { $agentCode = [Text.Encoding]::UTF8.GetString($agentCode) }
+# Najpierw zatrzymujemy starego agenta, żeby nie trzymał skryptu w trakcie podmiany.
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" | Where-Object { $_.CommandLine -like '*tracker-agent.ps1*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+[IO.File]::WriteAllText($agent, $agentCode, (New-Object Text.UTF8Encoding $true))
+# Tożsamość tego komputera dla trackera: zachowujemy przy ponownej instalacji.
+$deviceId = $null
+$cfgFile = Join-Path $dir 'config.json'
+if (Test-Path $cfgFile) { try { $deviceId = (Get-Content $cfgFile -Raw -Encoding utf8 | ConvertFrom-Json).deviceId } catch { } }
+if (-not $deviceId) { $deviceId = [guid]::NewGuid().ToString() }
+[IO.File]::WriteAllText($cfgFile, (@{ repos = $repos; deviceId = $deviceId } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
 
 # 5. Protokół tracker:// tylko dla tego użytkownika. conhost --headless: bez okna (Windows Terminal ignoruje -WindowStyle Hidden).
 $root = 'HKCU:\Software\Classes\tracker'
@@ -114,6 +127,11 @@ Set-ItemProperty -Path $root -Name '(default)' -Value 'URL:Tracker local agent'
 Set-ItemProperty -Path $root -Name 'URL Protocol' -Value ''
 Set-ItemProperty -Path "$root\shell\open\command" -Name '(default)' `
   -Value "conhost.exe --headless powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$handler`" `"%1`""
+
+# 5a. Agent w tle startuje przy logowaniu (HKCU Run, bez admina) i od razu teraz.
+Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'TrackerAgent' `
+  -Value "conhost.exe --headless powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$agent`""
+Start-Process conhost.exe -ArgumentList '--headless', 'powershell.exe', '-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', "`"$agent`""
 
 # 5b. Plugin "tracker" w Claude Code (skille analizy i zamykania, hook śladu pracy) dla każdego repo i projektu.
 #     Ponowne uruchomienie instalacji aktualizuje go do wersji z serwera.
@@ -139,4 +157,5 @@ $skipped = $projects | Where-Object { -not $repos.ContainsKey($_.key) }
 if ($skipped) { Say "Bez repo na tym komputerze: $(($skipped | ForEach-Object { $_.key }) -join ', '). Analyze w nich sam poszuka klonu albo zapyta o folder." Yellow }
 Say 'Nowy projekt albo nowy klon: Analyze sam go znajdzie albo zapyta o folder, bez ponownej instalacji.'
 Say 'Analyze w trackerze uruchamia teraz Claude w tle na tym komputerze. Przy pierwszym kliknieciu przegladarka zapyta o otwarcie aplikacji: zaznacz "zawsze".'
+Say 'Agent w tle odbiera analizy zlecone z telefonu i "Start on my PC" (rusza przy logowaniu do Windows).'
 Say "Log: $dir\log.txt"

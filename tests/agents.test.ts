@@ -164,3 +164,81 @@ describe('claim lifecycle', () => {
     expect((await row(n)).analysisRequestedAt).not.toBeNull();
   });
 });
+
+describe('pendingWork', () => {
+  const clearAll = async () => { await dbmod.sql`update issues set analysis_requested_at = null, analysis_claimed_at = null, analysis_claimed_device = null, analysis_claimed_by = null`; };
+  const agentOf = async (id: string) => (await dbmod.db.select().from(schema.agents).where(dz.eq(schema.agents.id, id)))[0];
+  const keys = (jobs: { kind: string; key?: string }[]) => jobs.filter((j) => j.kind === 'analyze').map((j) => j.key);
+
+  it('returns my request but not a teammate\'s unless the team queue is on', async () => {
+    await clearAll();
+    const n = await newIssue();
+    await svc.requestAnalysis(P, alice, n);
+    const id = `AGT-${n}`;
+    expect(keys(await ag.pendingWork(alice, await agentOf(DEV_A1)))).toContain(id);
+    await setTeamQueue(false);
+    expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B1)))).not.toContain(id);
+    await setTeamQueue(true);
+    expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B1)))).toContain(id);
+    await setTeamQueue(false);
+  });
+
+  it('never lists an issue from a project the user is not a member of', async () => {
+    await clearAll();
+    const n = await newIssue();
+    await svc.requestAnalysis(P, alice, n);
+    await setTeamQueue(true);
+    expect(keys(await ag.pendingWork(outsider, await agentOf(DEV_O1)))).toEqual([]);
+    await setTeamQueue(false);
+  });
+
+  it('is filtered by the repos on the PC and empty for a busy agent', async () => {
+    await clearAll();
+    const n = await newIssue();
+    await svc.requestAnalysis(P, alice, n);
+    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: ['OTHER'] }))).toEqual([]);
+    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: [] }))).toEqual([]);
+    expect(await ag.pendingWork(alice, { busy: true, repoKeys: ['AGT'] })).toEqual([]);
+  });
+
+  it('skips an issue that is already claimed (fresh) and offers it again once stale', async () => {
+    await clearAll();
+    const n = await newIssue();
+    await svc.requestAnalysis(P, alice, n);
+    await ag.claimAnalysis(P, alice, n, DEV_A1);
+    expect(keys(await ag.pendingWork(alice, await agentOf(DEV_A2)))).toEqual([]);
+    await dbmod.sql`update issues set analysis_claimed_at = now() - interval '31 minutes' where id = ${(await row(n)).id}`;
+    expect(keys(await ag.pendingWork(alice, await agentOf(DEV_A2)))).toEqual([`AGT-${n}`]);
+  });
+});
+
+describe('heartbeat', () => {
+  it('registers a device and refreshes the claim of a busy device', async () => {
+    const n = await newIssue();
+    await svc.requestAnalysis(P, alice, n);
+    await ag.claimAnalysis(P, alice, n, DEV_A1);
+    await dbmod.sql`update issues set analysis_claimed_at = now() - interval '20 minutes' where id = ${(await row(n)).id}`;
+    const before = (await row(n)).analysisClaimedAt!.getTime();
+    // Nieobciążony agent nie odświeża claima, zajęty tak.
+    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['agt'] });
+    expect((await row(n)).analysisClaimedAt!.getTime()).toBe(before);
+    const a = await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: true, repoKeys: ['agt', 'bad key'] });
+    expect(a.repoKeys).toEqual(['AGT']);
+    expect((await row(n)).analysisClaimedAt!.getTime()).toBeGreaterThan(before + 19 * 60_000);
+    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'] });
+  });
+
+  it('refuses a device id that belongs to another user', async () => {
+    expect(await code(ag.heartbeat(bob, DEV_A1, { name: 'x', busy: false, repoKeys: [] }))).toBe('forbidden');
+  });
+
+  it('creates a new device row for a first heartbeat', async () => {
+    const id = '66666666-6666-4666-8666-666666666666';
+    await ag.heartbeat(bob, id, { name: 'NEW-PC', busy: false, repoKeys: ['AGT'] });
+    expect((await ag.myAgents(bob)).find((a) => a.id === id)).toMatchObject({ name: 'NEW-PC', online: true });
+    await ag.removeAgent(alice, id);
+    expect((await ag.myAgents(bob)).some((a) => a.id === id)).toBe(true);
+    await ag.removeAgent(bob, id);
+    expect((await ag.myAgents(bob)).some((a) => a.id === id)).toBe(false);
+  });
+});

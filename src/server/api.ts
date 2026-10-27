@@ -80,8 +80,27 @@ export async function registerApi(app: FastifyInstance) {
 
     r.get('/api/me', async (req) => {
       const [u] = await db.select({ localAgentAt: users.localAgentAt }).from(users).where(eq(users.id, req.user!.id));
-      return { ...req.user, localAgentAt: u?.localAgentAt ?? null, demo: process.env.DEMO_MODE === '1' };
+      const mine = await ag.myAgents(req.user!);
+      const lastSeen = mine.map((a) => a.lastSeenAt).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+      return { ...req.user, localAgentAt: u?.localAgentAt ?? null, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen, demo: process.env.DEMO_MODE === '1' };
     });
+
+    // Agent na PC (tracker-agent.ps1): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
+    r.get<{ Querystring: Record<string, string> }>('/api/agent/work', async (req) => {
+      const q = z.object({
+        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(1000).default(''),
+      }).parse(req.query);
+      // Zamknięte połączenie przerywa czekanie, żeby pętla nie trzymała zapytań do bazy po odejściu agenta.
+      const ac = new AbortController();
+      req.raw.on('close', () => ac.abort());
+      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys: q.repos.split(',').filter(Boolean) }, ac.signal);
+    });
+    r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
+      const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);
+      return ag.claimStartJob(req.user!, intParam(req.params.id), deviceId);
+    });
+    r.get('/api/agents', async (req) => ag.myAgents(req.user!));
+    r.delete<{ Params: { id: string } }>('/api/agents/:id', async (req) => ag.removeAgent(req.user!, req.params.id));
     // Instalator lokalnej analizy zgłasza się tu tokenem MCP, deinstalator kasuje znacznik.
     r.post('/api/me/local-agent', async (req) => { await db.update(users).set({ localAgentAt: new Date() }).where(eq(users.id, req.user!.id)); return { ok: true }; });
     r.delete('/api/me/local-agent', async (req) => { await db.update(users).set({ localAgentAt: null }).where(eq(users.id, req.user!.id)); return { ok: true }; });
