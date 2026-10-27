@@ -152,7 +152,11 @@ export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('
 export const useMeta = () => useQuery({ queryKey: ['meta'], queryFn: () => api<Meta>('/api/meta') });
 export const useIssues = () => useQuery({ queryKey: ['issues'], queryFn: () => api<IssueRow[]>('/api/issues') });
 export const useIssue = (number: number) =>
-  useQuery({ queryKey: ['issue', number], queryFn: () => api<IssueDetail>(`/api/issues/${ident(number)}`) });
+  useQuery({
+    queryKey: ['issue', number], queryFn: () => api<IssueDetail>(`/api/issues/${ident(number)}`),
+    // Zlecenie czeka na PC: to, czy jakiś komputer jest online, nie przychodzi zdarzeniem, więc co 30 s pytamy ponownie.
+    refetchInterval: (q) => (q.state.data?.analysisRequestedAt && !q.state.data.analysisClaimedAt ? 30_000 : false),
+  });
 export const useSprints = () => useQuery({ queryKey: ['sprints'], queryFn: () => api<{ sprints: Sprint[]; lengthDays: number }>('/api/sprints') });
 
 /** Optymistyczna zmiana zadania: board i szczegóły zmieniają się od razu, błąd cofa zmianę. */
