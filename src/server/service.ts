@@ -124,7 +124,7 @@ export async function getIssueDetail(p: Project, number: number) {
 
 // ---------- zapis ----------
 
-async function log(tx: Tx, issueId: number, actor: Actor, payload: ActivityPayload, at?: Date) {
+export async function log(tx: Tx, issueId: number, actor: Actor, payload: ActivityPayload, at?: Date) {
   await tx.insert(activity).values({ issueId, actorId: actor?.id ?? null, viaAi: !!actor?.ai, payload, ...(at ? { createdAt: at } : {}) });
 }
 
@@ -252,6 +252,7 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
     if (patch.analysis !== undefined && patch.analysis !== cur.analysis) {
       set.analysisUpdatedAt = new Date();
       set.analysisRequestedAt = null;
+      Object.assign(set, NO_CLAIM);
       if (cur.analysisRequestedAt) set.analysisResultDeep = cur.analysisDeep;
       // Ręcznie poprawiony tekst nie zgadza się już z sekcjami: zostaje sam tekst.
       if (patch.analysisData === undefined) set.analysisData = null;
@@ -260,6 +261,7 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
       set.analysisData = patch.analysisData;
       set.analysisUpdatedAt = new Date();
       set.analysisRequestedAt = null;
+      Object.assign(set, NO_CLAIM);
       if (cur.analysisRequestedAt) set.analysisResultDeep = cur.analysisDeep;
     }
 
@@ -357,10 +359,16 @@ export async function deleteIssue(p: Project, number: number) {
   await publish({ type: 'issue', projectKey: p.key, number });
 }
 
-export async function requestAnalysis(p: Project, actor: Actor, number: number, deep = false) {
+// Zlecenie znika (analiza zapisana, Cancel) albo wraca na początek (nowe): claim agenta przepada razem z nim.
+const NO_CLAIM = { analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, analysisLocalUntil: null };
+
+export async function requestAnalysis(p: Project, actor: Actor, number: number, deep = false, local = false) {
   const cur = await requireIssue(p, number);
   await db.transaction(async (tx) => {
-    await tx.update(issues).set({ analysisRequestedAt: new Date(), analysisDeep: deep, updatedAt: new Date() }).where(eq(issues.id, cur.id));
+    await tx.update(issues).set({
+      analysisRequestedAt: new Date(), analysisDeep: deep, updatedAt: new Date(), analysisRequestedBy: actor?.id ?? null,
+      ...NO_CLAIM, analysisLocalUntil: local ? new Date(Date.now() + 60_000) : null,
+    }).where(eq(issues.id, cur.id));
     await log(tx, cur.id, actor, deep ? { kind: 'analysis_requested', deep } : { kind: 'analysis_requested' });
   });
   await publish({ type: 'issue', projectKey: p.key, number });
@@ -369,7 +377,7 @@ export async function requestAnalysis(p: Project, actor: Actor, number: number, 
 /** Anulowanie zlecenia, które utknęło (agent nie ruszył albo padł): pasek wraca do przycisku Analyze. */
 export async function cancelAnalysis(p: Project, number: number) {
   const cur = await requireIssue(p, number);
-  await db.update(issues).set({ analysisRequestedAt: null }).where(eq(issues.id, cur.id));
+  await db.update(issues).set({ analysisRequestedAt: null, ...NO_CLAIM }).where(eq(issues.id, cur.id));
   await publish({ type: 'issue', projectKey: p.key, number });
 }
 

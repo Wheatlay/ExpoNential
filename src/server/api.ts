@@ -7,6 +7,7 @@ import { createApiToken, requireAdmin, requireUser } from './auth.ts';
 import * as svc from './service.ts';
 import * as sp from './sprints.ts';
 import * as pr from './projects.ts';
+import * as ag from './agents.ts';
 import { addRelation, removeRelation } from './relations.ts';
 import { RuleError, parseIdentifier } from './rules.ts';
 import { DEEP_PROMPT, DEFAULT_MODELS, DEFAULT_PROMPTS, MODELS, PROMPT_KINDS, analysisModel, renderPrompt } from './prompts.ts';
@@ -66,7 +67,7 @@ async function manage(req: FastifyRequest, key?: string | null) {
 export async function registerApi(app: FastifyInstance) {
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof RuleError) {
-      const code = err.code === 'not_found' ? 404 : err.code === 'forbidden' ? 403 : 422;
+      const code = err.code === 'not_found' ? 404 : err.code === 'forbidden' ? 403 : err.code === 'conflict' ? 409 : 422;
       return reply.code(code).send({ error: err.message, code: err.code });
     }
     if (err instanceof z.ZodError) return reply.code(400).send({ error: 'Invalid input', issues: err.issues });
@@ -184,7 +185,8 @@ export async function registerApi(app: FastifyInstance) {
       // Poprzednia wizyta: komentarze innych po niej podświetlamy jako nowe.
       const lastSeenAt = await svc.lastSeen(req.user!.id, d.id);
       await svc.markSeen(req.user!.id, d.id);
-      return { ...d, projectKey: p.key, lastSeenAt };
+      const runner = await ag.analysisRunner(p, d);
+      return { ...d, projectKey: p.key, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName };
     });
 
     r.post('/api/issues', async (req) => {
@@ -205,9 +207,19 @@ export async function registerApi(app: FastifyInstance) {
     });
     r.post<{ Params: { id: string } }>('/api/issues/:id/analyze', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
-      const b = z.object({ deep: z.boolean().default(false) }).parse(req.body ?? {});
-      await svc.requestAnalysis(p, req.user, number, b.deep);
+      const b = z.object({ deep: z.boolean().default(false), local: z.boolean().default(false) }).parse(req.body ?? {});
+      await svc.requestAnalysis(p, req.user, number, b.deep, b.local);
       return { ok: true };
+    });
+    // Agent na PC przejmuje zlecenie przed uruchomieniem (409, gdy zajęte albo nieaktualne) i oddaje je po błędzie.
+    const deviceBody = z.object({ deviceId: z.string().uuid() });
+    r.post<{ Params: { id: string } }>('/api/issues/:id/analyze/claim', async (req) => {
+      const { p, number } = await issueRef(req, req.params.id);
+      return ag.claimAnalysis(p, req.user!, number, deviceBody.parse(req.body).deviceId);
+    });
+    r.delete<{ Params: { id: string } }>('/api/issues/:id/analyze/claim', async (req) => {
+      const { p, number } = await issueRef(req, req.params.id);
+      return ag.releaseClaim(p, req.user!, number, deviceBody.parse(req.body).deviceId);
     });
     r.delete<{ Params: { id: string } }>('/api/issues/:id/analyze', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);

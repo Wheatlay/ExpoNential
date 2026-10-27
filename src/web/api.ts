@@ -41,6 +41,7 @@ export type ActivityPayload =
   | { kind: 'labels'; added: string[]; removed: string[] }
   | { kind: 'field'; field: string }
   | { kind: 'analysis_requested'; deep?: boolean }
+  | { kind: 'analysis_claimed'; device: string }
   | { kind: 'decision'; question: string; answer: string | null }
   | { kind: 'sprint'; to: string | null }
   | { kind: 'parent'; to: number | null }

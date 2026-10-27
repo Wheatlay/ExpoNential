@@ -4,13 +4,15 @@
 # Bezpieczeństwo: link może podsunąć dowolna strona, więc z linku bierzemy tylko akcję i numer
 # zgłoszenia. Treść polecenia przychodzi z trackera (szablon projektu, zalogowany tokenem), a to,
 # co agentowi wolno, jest ustalone TUTAJ (--allowedTools) i szablon tego nie zmieni.
-param([string]$Url)
+param([string]$Url, [switch]$Background)
 
 $ErrorActionPreference = 'Stop'
 $dir = Join-Path $env:LOCALAPPDATA 'tracker-agent'
 $log = Join-Path $dir 'log.txt'
 function Log($m) { Add-Content -Path $log -Value "$(Get-Date -Format s) $m" -Encoding utf8 }
 
+$claimed = $false
+$failed = $false
 try {
   if ($Url -notmatch '^tracker://analyze/([A-Za-z]{2,10}-\d{1,6})/?(\?deep)?$') { Log "odrzucony link: $Url"; exit 1 }
   $key = $Matches[1].ToUpper()
@@ -51,6 +53,18 @@ try {
   Log "konto: $(if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { 'domyslne' })"
   $base = $mcp.url -replace '/mcp/?$', ''
   $headers = @{ Authorization = $mcp.headers.Authorization }
+
+  # Claim przed uruchomieniem: ten sam link może obsłużyć agent w tle albo drugi komputer, wygrywa jeden.
+  # Bez deviceId (stara instalacja) działamy jak dawniej.
+  if ($cfg.deviceId) {
+    $claimBody = @{ deviceId = $cfg.deviceId } | ConvertTo-Json
+    try { $claim = Invoke-RestMethod -Method Post -Uri "$base/api/issues/$key/analyze/claim" -Headers $headers -ContentType 'application/json' -Body $claimBody }
+    catch { if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 409) { Log "$key zajete albo juz nieaktualne, pomijam"; exit 0 } else { throw } }
+    $claimed = $true
+    # Deep z serwera wygrywa z linkiem: analiza zlecona z telefonu jako Deep leci jako Deep.
+    $deep = [bool]$claim.deep
+    if ($claim.model -in 'haiku', 'sonnet', 'opus', 'fable') { $model = $claim.model } elseif ($deep) { $model = 'opus' }
+  }
 
   $deepQuery = if ($deep) { '?deep=1' } else { '' }
   $res = Invoke-RestMethod -Uri "$base/api/issues/$key/prompt/analyze$deepQuery" -Headers $headers
@@ -95,6 +109,8 @@ try {
     $isClone = { param($d) $d -and ((Get-Content (Join-Path $d '.git/config') -Raw -ErrorAction SilentlyContinue) -match "[/:]$([regex]::Escape($full))(\.git)?\s") }
     $repoDir = $candidates | Where-Object { & $isClone $_ } | Select-Object -First 1
     if (-not $repoDir) {
+      # Agent w tle nie ma kto kliknąć okna wyboru folderu.
+      if ($Background) { throw "Brak repo projektu $projectKey na tym komputerze (analiza w tle nie pyta o folder)" }
       Add-Type -AssemblyName System.Windows.Forms
       $owner = New-Object Windows.Forms.Form -Property @{ TopMost = $true }
       $pick = New-Object Windows.Forms.FolderBrowserDialog -Property @{ Description = "Tracker: wskaz klon repo $full (projekt $projectKey)" }
@@ -106,7 +122,9 @@ try {
     $repos = @{}
     if ($cfg.repos) { $cfg.repos.PSObject.Properties | ForEach-Object { $repos[$_.Name] = $_.Value } }
     $repos[$projectKey] = $repoDir
-    [IO.File]::WriteAllText((Join-Path $dir 'config.json'), (@{ repos = $repos } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+    $newCfg = @{ repos = $repos }
+    if ($cfg.deviceId) { $newCfg.deviceId = $cfg.deviceId }   # nie gubimy tożsamości urządzenia
+    [IO.File]::WriteAllText((Join-Path $dir 'config.json'), ($newCfg | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
     Log "repo $projectKey -> $repoDir"
   }
   Set-Location $repoDir
@@ -118,11 +136,19 @@ try {
   # Skille z pluginu trackera (zawsze aktualne z serwera), niezależnie od tego, co jest w repo i u użytkownika.
   $prompt | & $claude -p --model $model --plugin-url "$base/agent/plugin.zip" --allowedTools $allowed --disallowedTools $denied --setting-sources project --strict-mcp-config --mcp-config $mcpFile 2>&1 |
     ForEach-Object { "$_" } | Out-File -FilePath $log -Append -Encoding utf8   # *>> w PS 5.1 pisze UTF-16
+  if ($LASTEXITCODE -ne 0) { $failed = $true }
   Log "koniec $key (kod $LASTEXITCODE)"
 } catch {
+  $failed = $true
   Log "blad: $($_.Exception.Message)"
 } finally {
   if ($lock) { Remove-Item $lock -ErrorAction SilentlyContinue }
+  # Oddajemy zlecenie tylko po bledzie. Po kodzie 0 NIE: jesli Claude przebiegl, ale nic nie zapisal, zlecenie ma
+  # przejsc w Stalled, a nie wracac do kolejki w nieskonczonosc (kazdy przebieg to platne uzycie).
+  if ($claimed -and $failed) {
+    try { Invoke-RestMethod -Method Delete -Uri "$base/api/issues/$key/analyze/claim" -Headers $headers -ContentType 'application/json' -Body $claimBody | Out-Null }
+    catch { Log "zwolnienie: $($_.Exception.Message)" }
+  }
   # Bez samoaktualizacji: kod z serwera nie nadpisuje skryptu po cichu. Aktualizacja = ponowne install.ps1.
   try {
     $cmdKey = 'HKCU:\Software\Classes\tracker\shell\open\command'

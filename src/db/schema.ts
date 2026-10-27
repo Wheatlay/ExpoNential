@@ -56,6 +56,8 @@ export const projects = pgTable('projects', {
   defaultView: jsonb('default_view').$type<Record<string, unknown>>(),
   // Ostatnio nadany numer zgłoszenia: numer usuniętego zgłoszenia nie wraca do obiegu.
   issueSeq: integer('issue_seq').notNull().default(0),
+  // Pierwszy agent online w projekcie bierze analizy wszystkich.
+  agentTeamQueue: boolean('agent_team_queue').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -118,6 +120,13 @@ export const issues = pgTable('issues', {
   analysisDeep: boolean('analysis_deep').notNull().default(false),
   // Zapisana analiza powstała ze zlecenia Deep. Osobno od zlecenia: anulowane albo nowe zlecenie nie przemalowuje starej analizy.
   analysisResultDeep: boolean('analysis_result_deep').notNull().default(false),
+  // Kto zlecił analizę (do kolejki agentów) i kto ją przejął: claim przed uruchomieniem, żeby dwa komputery nie robiły tego samego.
+  analysisRequestedBy: integer('analysis_requested_by').references(() => users.id, { onDelete: 'set null' }),
+  analysisClaimedAt: timestamp('analysis_claimed_at', { withTimezone: true }),
+  analysisClaimedBy: integer('analysis_claimed_by').references(() => users.id, { onDelete: 'set null' }),
+  analysisClaimedDevice: text('analysis_claimed_device'),
+  // Kliknięte w przeglądarce na PC z agentem; przez 60 s bierze je tylko PC zlecającego (link tracker:// zaraz ruszy).
+  analysisLocalUntil: timestamp('analysis_local_until', { withTimezone: true }),
   changeHuman: text('change_human').notNull().default(''),
   changeAi: text('change_ai').notNull().default(''),
   // Need Info: kogo pytamy i o co. Czyszczone, gdy zadanie wychodzi z Need Info.
@@ -161,6 +170,7 @@ export type ActivityPayload =
   | { kind: 'labels'; added: string[]; removed: string[] }
   | { kind: 'field'; field: 'title' | 'description' | 'analysis' | 'change_human' | 'change_ai' }
   | { kind: 'analysis_requested'; deep?: boolean }
+  | { kind: 'analysis_claimed'; device: string }
   | { kind: 'decision'; question: string; answer: string | null }
   | { kind: 'sprint'; to: string | null }
   | { kind: 'parent'; to: number | null }
@@ -316,5 +326,27 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
   endpoint: text('endpoint').notNull().unique(),
   p256dh: text('p256dh').notNull(),
   auth: text('auth').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Komputer z agentem (tracker-agent.ps1): id to deviceId (GUID) z config.json na tym PC. */
+export const agents = pgTable('agents', {
+  id: text('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull().default(''),
+  busy: boolean('busy').notNull().default(false),
+  repoKeys: jsonb('repo_keys').$type<string[]>().notNull().default([]),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Zlecenia dla agenta inne niż analiza (kind 'start': otwórz VS Code z poleceniem). Wygasają po godzinie. */
+export const agentJobs = pgTable('agent_jobs', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  issueId: integer('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull().default('start'),
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  claimedDevice: text('claimed_device'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

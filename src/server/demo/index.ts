@@ -14,9 +14,9 @@ import { isBusy, simulate } from './simulate.ts';
 const isDemo = () => process.env.DEMO_MODE === '1';
 
 // Całe API poza GET-ami jest w demo ograniczone; blokady zwracają 403 { code: 'demo' }.
-const BLOCKED_ALL = [/^\/api\/tokens(\/|$)/, /^\/mcp(\/|$)/, /^\/agent\//, /^\/hooks\//, /^\/api\/admin\/users(\/|$)/, /^\/api\/me\/local-agent$/, /^\/api\/push\//, /^\/api\/calendar-link$/];
+const BLOCKED_ALL = [/^\/api\/agents?(\/|$)/, /\/analyze\/claim$/, /\/start-on-pc$/, /^\/api\/tokens(\/|$)/, /^\/mcp(\/|$)/, /^\/agent\//, /^\/hooks\//, /^\/api\/admin\/users(\/|$)/, /^\/api\/me\/local-agent$/, /^\/api\/push\//, /^\/api\/calendar-link$/];
 const BLOCKED_WRITE: [string, RegExp][] = [['POST', /^\/api\/projects$/], ['POST', /^\/api\/projects\/[^/]+\/members$/], ['DELETE', /^\/api\/projects\/[^/]+\/members\//]];
-const LOCKED_PROJECT_FIELDS = ['discordWebhookUrl', 'githubRepo', 'deployBranch', 'deploySource', 'deploySourceRef', 'promptStart', 'promptAnalyze', 'promptClose', 'promptDeep', 'analyzeModel', 'deepModel'];
+const LOCKED_PROJECT_FIELDS = ['discordWebhookUrl', 'githubRepo', 'deployBranch', 'deploySource', 'deploySourceRef', 'promptStart', 'promptAnalyze', 'promptClose', 'promptDeep', 'analyzeModel', 'deepModel', 'agentTeamQueue'];
 const MAX_UPLOAD = 1024 * 1024;
 const WRITES_PER_MIN = 120;
 
