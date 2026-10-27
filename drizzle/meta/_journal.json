@@ -36,6 +36,13 @@
       "when": 1793103954767,
       "tag": "0004_analysis_failed",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793104687481,
+      "tag": "0005_agent_version",
+      "breakpoints": true
     }
   ]
 }

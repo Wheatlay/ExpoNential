@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { and, asc, eq, gt, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { agentJobs, agents, issues, projectMembers, projects, statuses, users } from '../db/schema.ts';
@@ -12,6 +15,19 @@ export const START_JOB_TTL_MIN = 60;
 export const LOCAL_RESERVE_S = 60;
 
 type User = { id: number };
+
+/**
+ * Wersja skryptów PC = skrót ich treści na serwerze. Bez samoaktualizacji (kod z serwera nie podmienia się po cichu na PC
+ * całego zespołu): agent zgłasza swoją wersję, a Ustawienia pokazują, że trzeba ponownie uruchomić instalację.
+ */
+export const AGENT_SCRIPTS = ['tracker-agent.ps1', 'tracker-handler.ps1'];
+let scriptsVersion: string | null = null;
+export function agentScriptsVersion() {
+  scriptsVersion ??= createHash('sha256')
+    .update(AGENT_SCRIPTS.map((f) => readFileSync(path.join(process.cwd(), 'scripts/local-agent', f), 'utf8')).join('\n'))
+    .digest('hex').slice(0, 12);
+  return scriptsVersion;
+}
 
 /** Urządzenie musi istnieć (install.ps1 zgłasza je pierwszym heartbeatem) i należeć do wołającego. */
 export async function requireOwnAgent(user: User, deviceId: string) {
@@ -87,11 +103,11 @@ const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && lastSeenAt.getTime
  * Sygnał życia agenta (też rejestracja nowego urządzenia). Urządzenie jednego użytkownika nie może przejąć cudze id.
  * Gdy agent jest zajęty, odświeżamy claim jego analizy: długi przebieg Deep nie wraca do kolejki ani nie wygląda na zawieszony.
  */
-export async function heartbeat(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[] }) {
+export async function heartbeat(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[]; version?: string }) {
   const [existing] = await db.select({ userId: agents.userId }).from(agents).where(eq(agents.id, deviceId));
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
-  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date() };
+  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, version: (info.version ?? '').slice(0, 40), lastSeenAt: new Date() };
   const [row] = await db.insert(agents).values({ id: deviceId, userId: user.id, ...values })
     .onConflictDoUpdate({ target: agents.id, set: values }).returning();
   if (info.busy) {
@@ -136,7 +152,7 @@ const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) =
 });
 
 /** Long poll agenta: jeden heartbeat na żądanie, potem do 25 s sprawdzamy co 2 s, czy jest praca. */
-export async function waitForWork(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[] }, signal: AbortSignal) {
+export async function waitForWork(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[]; version?: string }, signal: AbortSignal) {
   const agent = await heartbeat(user, deviceId, info);
   const until = Date.now() + 25_000;
   for (;;) {
@@ -160,7 +176,7 @@ export async function claimStartJob(user: User, jobId: number, deviceId: string)
 /** Moje komputery do Ustawień. */
 export async function myAgents(user: User) {
   const rows = await db.select().from(agents).where(eq(agents.userId, user.id)).orderBy(dsql`${agents.lastSeenAt} desc nulls last`);
-  return rows.map((a) => ({ id: a.id, name: a.name, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt) }));
+  return rows.map((a) => ({ id: a.id, name: a.name, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: a.version !== agentScriptsVersion() }));
 }
 
 export async function removeAgent(user: User, id: string) {

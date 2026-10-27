@@ -164,6 +164,16 @@ export function IssuePage({ number }: { number: number }) {
   const subDone = issue.children.filter((c) => ['completed', 'canceled', 'duplicate'].includes(meta.statuses.find((s) => s.id === c.statusId)?.type ?? '')).length;
 
   const local = !!me?.localAgentAt;
+  // Bez podłączonego Claude Code link vscode:// albo nic nie otworzy, albo otworzy Claude bez dostępu do zgłoszenia:
+  // zamiast udawać, że działa, prowadzimy do jednorazowego podłączenia.
+  const connectFirst = async () => {
+    const ok = await askConfirm({
+      title: t('Connect Claude Code first?'),
+      body: t('This account has no computer connected to the tracker yet. One PowerShell command in Settings > Claude Code connects it; without it Claude cannot read the issue.'),
+      action: t('Open settings'), danger: false,
+    });
+    if (ok) navigate('/settings#claude');
+  };
   const demo = !!me?.demo;
   const analyze = async (deep = false) => {
     if (demo) { await simulateAgent(number, 'analyze'); return; }
@@ -209,7 +219,7 @@ export function IssuePage({ number }: { number: number }) {
                 </button>
               </Tooltip>
             ) : (
-              <button className="btn sm start-btn" data-tour="start-work" onClick={() => (demo ? setStartOpen(true) : void startWork(number))} title={t('Opens Claude Code in VS Code with this issue, assigns you and moves it to In Progress')}>
+              <button className="btn sm start-btn" data-tour="start-work" onClick={() => (demo ? setStartOpen(true) : local ? void startWork(number) : void connectFirst())} title={t('Opens Claude Code in VS Code with this issue, assigns you and moves it to In Progress')}>
                 <Icon.play size={12} /> {t('Start work in Claude')}
               </button>
             )}

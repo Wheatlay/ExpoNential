@@ -340,6 +340,8 @@ export const agents = pgTable('agents', {
   name: text('name').notNull().default(''),
   busy: boolean('busy').notNull().default(false),
   repoKeys: jsonb('repo_keys').$type<string[]>().notNull().default([]),
+  // Wersja skryptów na PC (skrót treści z install.ps1). Inna niż na serwerze = Ustawienia proszą o ponowną instalację.
+  version: text('version').notNull().default(''),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

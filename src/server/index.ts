@@ -21,6 +21,7 @@ import { ensureSprintReviews, runReminders } from './meetings.ts';
 import { onSprintsEnsured } from './sprints.ts';
 import { maskUrl } from './rules.ts';
 import { marketplace, pluginArchive } from './plugin.ts';
+import { agentScriptsVersion } from './agents.ts';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const webDir = path.join(root, 'dist/web');
@@ -58,6 +59,8 @@ app.get<{ Params: { file: string } }>('/agent/:file', async (req, reply) => {
   // Plugin Claude Code (skille + hook śladu pracy), patrz src/server/plugin.ts. Bez sekretów, więc publiczny.
   if (req.params.file === 'plugin.zip') return reply.type('application/zip').header('Cache-Control', 'no-store').send(pluginArchive().zip);
   if (req.params.file === 'marketplace.json') return reply.header('Cache-Control', 'no-store').send(marketplace(process.env.BASE_URL ?? 'http://localhost:3000'));
+  // Wersja skryptów PC: instalator zapisuje ją w config.json, agent zgłasza ją serwerowi (Ustawienia proszą o aktualizację).
+  if (req.params.file === 'version') return reply.type('text/plain').header('Cache-Control', 'no-store').send(agentScriptsVersion());
   if (!AGENT_FILES.includes(req.params.file)) return reply.code(404).send('Not found');
   const body = readFileSync(path.join(process.cwd(), 'scripts/local-agent', req.params.file), 'utf8')
     .replaceAll('__TRACKER_URL__', process.env.BASE_URL ?? 'http://localhost:3000');

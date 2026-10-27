@@ -55,7 +55,7 @@ while ($true) {
     # Zajęty: nasz potomek żyje albo trwa przebieg uruchomiony z przeglądarki (tracker://), co widać po pliku .lock.
     $busy = ($child -and -not $child.HasExited) -or [bool](Get-ChildItem $dir -Filter '*.lock' -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-30) })
     $repos = ($cfg.repos.PSObject.Properties.Name) -join ','
-    $res = Invoke-RestMethod -Uri "$base/api/agent/work?deviceId=$($cfg.deviceId)&name=$([uri]::EscapeDataString($env:COMPUTERNAME))&busy=$([int][bool]$busy)&repos=$repos" -Headers $headers -TimeoutSec 60
+    $res = Invoke-RestMethod -Uri "$base/api/agent/work?deviceId=$($cfg.deviceId)&name=$([uri]::EscapeDataString($env:COMPUTERNAME))&busy=$([int][bool]$busy)&repos=$repos&version=$($cfg.version)" -Headers $headers -TimeoutSec 60
     $delay = 2
     $errLogged = $false
 

@@ -266,6 +266,16 @@ describe('heartbeat', () => {
   });
 });
 
+describe('script version', () => {
+  it('an agent reporting an old version is outdated, the current one is not', async () => {
+    const id = '66666666-6666-4666-8666-666666666666';
+    await ag.heartbeat(bob, id, { name: 'OLD-PC', busy: false, repoKeys: [], version: 'old' });
+    expect((await ag.myAgents(bob)).find((a) => a.id === id)?.outdated).toBe(true);
+    await ag.heartbeat(bob, id, { name: 'OLD-PC', busy: false, repoKeys: [], version: ag.agentScriptsVersion() });
+    expect((await ag.myAgents(bob)).find((a) => a.id === id)?.outdated).toBe(false);
+  });
+});
+
 describe('projectAgents', () => {
   it('lists online computers of project members only', async () => {
     await dbmod.sql`update agents set last_seen_at = now() where id in (${DEV_A1}, ${DEV_O1})`;

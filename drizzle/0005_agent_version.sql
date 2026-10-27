@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ADD COLUMN "version" text DEFAULT '' NOT NULL;

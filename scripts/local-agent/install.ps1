@@ -118,7 +118,9 @@ $deviceId = $null
 $cfgFile = Join-Path $dir 'config.json'
 if (Test-Path $cfgFile) { try { $deviceId = (Get-Content $cfgFile -Raw -Encoding utf8 | ConvertFrom-Json).deviceId } catch { } }
 if (-not $deviceId) { $deviceId = [guid]::NewGuid().ToString() }
-[IO.File]::WriteAllText($cfgFile, (@{ repos = $repos; deviceId = $deviceId } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
+# Wersja pobranych skryptów: agent zgłasza ją serwerowi, a Ustawienia pokazują, gdy na serwerze jest nowsza.
+$version = ([string](Invoke-WebRequest "$base/agent/version" -UseBasicParsing).Content).Trim()
+[IO.File]::WriteAllText($cfgFile, (@{ repos = $repos; deviceId = $deviceId; version = $version } | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
 
 # 5. Protokół tracker:// tylko dla tego użytkownika. conhost --headless: bez okna (Windows Terminal ignoruje -WindowStyle Hidden).
 $root = 'HKCU:\Software\Classes\tracker'

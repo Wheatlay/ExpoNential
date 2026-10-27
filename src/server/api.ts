@@ -82,18 +82,20 @@ export async function registerApi(app: FastifyInstance) {
       const [u] = await db.select({ localAgentAt: users.localAgentAt }).from(users).where(eq(users.id, req.user!.id));
       const mine = await ag.myAgents(req.user!);
       const lastSeen = mine.map((a) => a.lastSeenAt).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
-      return { ...req.user, localAgentAt: u?.localAgentAt ?? null, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen, demo: process.env.DEMO_MODE === '1' };
+      return { ...req.user, localAgentAt: u?.localAgentAt ?? null, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
+        // Stara wersja skryptów na którymś PC, albo instalacja sprzed agenta w tle (jest znacznik, nie ma żadnego komputera).
+        agentOutdated: !!u?.localAgentAt && (!mine.length || mine.some((a) => a.outdated)), demo: process.env.DEMO_MODE === '1' };
     });
 
     // Agent na PC (tracker-agent.ps1): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
     r.get<{ Querystring: Record<string, string> }>('/api/agent/work', async (req) => {
       const q = z.object({
-        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(1000).default(''),
+        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(1000).default(''), version: z.string().max(40).default(''),
       }).parse(req.query);
       // Zamknięte połączenie przerywa czekanie, żeby pętla nie trzymała zapytań do bazy po odejściu agenta.
       const ac = new AbortController();
       req.raw.on('close', () => ac.abort());
-      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys: q.repos.split(',').filter(Boolean) }, ac.signal);
+      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys: q.repos.split(',').filter(Boolean), version: q.version }, ac.signal);
     });
     r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
       const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);

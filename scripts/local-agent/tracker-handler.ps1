@@ -89,7 +89,10 @@ try {
   # poza nim (~/.claude.json z tokenem, ~/.ssh) w trybie -p dostaje odmowę. Sprawdzone 2026-10-20.
   # --setting-sources project: bez uprawnień z ustawień użytkownika, które bywają szerokie.
   $allowed = 'Skill,mcp__tracker__get_issue,mcp__tracker__list_comments,mcp__tracker__list_issues,mcp__tracker__set_analysis'
-  $denied = 'Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch'
+  # Lokalne sekrety w repo (.env, klucze, certyfikaty) też poza zasięgiem: analiza bywa zlecona przez kogoś innego
+  # (kolejka zespołu), a jej treść widzi cały projekt. Read() blokuje też Grep/Glob; sprawdzone w -p 27.10.2026.
+  $secrets = '**/.env*', '**/*.pem', '**/*.key', '**/*.pfx', '**/*.p12'
+  $denied = 'Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,' + (($secrets | ForEach-Object { "Read($_),Grep($_)" }) -join ',')
   $env:TRACKER_HOOKS = '0'   # sesja w tle nie zostawia worklogu w zgłoszeniu
   # Repo projektu z klucza zgłoszenia (WEB-3 -> WEB); stara instalacja miała jedno repoDir.
   $projectKey = $key -replace '-\d+$', ''
@@ -125,6 +128,7 @@ try {
     $repos[$projectKey] = $repoDir
     $newCfg = @{ repos = $repos }
     if ($cfg.deviceId) { $newCfg.deviceId = $cfg.deviceId }   # nie gubimy tożsamości urządzenia
+    if ($cfg.version) { $newCfg.version = $cfg.version }
     [IO.File]::WriteAllText((Join-Path $dir 'config.json'), ($newCfg | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
     Log "repo $projectKey -> $repoDir"
   }

@@ -119,7 +119,7 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; lastSeenAt: string | null; busy: boolean; online: boolean }[]>('/api/agents'), enabled: !!me && !me.demo && !!me.localAgentAt });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean }[]>('/api/agents'), enabled: !!me && !me.demo && !!me.localAgentAt });
   // Przełącznik "ten komputer ma agenta": tylko ta przeglądarka (localStorage), dla laptopów z dotykiem, gdzie wykrycie telefonu myli.
   const [, setTick] = useState(0);
   const here = agentHere(me);
@@ -164,7 +164,10 @@ function ClaudeConnect() {
         )}
         {installed && (
           <div className="s-row">
-            <span className="hint grow">{t('Update or new project/clone: run this again.')}</span>
+            {/* Skrypty na PC nie aktualizują się same (kod z serwera nie podmienia się po cichu): mówimy wprost, że trzeba. */}
+            <span className="hint grow">{me?.agentOutdated
+              ? <><span className="pill stalled">{t('Update needed')}</span> {t('The tracker has newer PC scripts. Run this on your computer.')}</>
+              : t('Update or new project/clone: run this again.')}</span>
             <code className="input" style={{ display: 'flex', alignItems: 'center', height: 30, overflowX: 'auto', whiteSpace: 'nowrap', maxWidth: '100%' }}>{update}</code>
             <button className="btn" onClick={() => copy(update)}><Icon.copy size={13} /> {t('Copy')}</button>
             <button className="btn" title={t('Removes it from this computer')} onClick={() => void navigator.clipboard.writeText(update.replace('install.ps1', 'uninstall.ps1')).then(() => toast(t('Uninstall command copied. Paste it into PowerShell.')))}>{t('Uninstall')}</button>
@@ -176,7 +179,7 @@ function ClaudeConnect() {
           <div className="s-row s-row-head"><b>{t('Your computers')}</b><span className="hint">{t('A computer with the agent picks up analyses requested from your phone.')}</span></div>
           {(agentList.data ?? []).map((a) => (
             <div key={a.id} className="s-row">
-              <span className="grow">{a.name || t('Unnamed computer')}</span>
+              <span className="grow">{a.name || t('Unnamed computer')}{a.outdated && <> <span className="pill stalled" title={t('Old version of the PC scripts. Run the update command above on this computer.')}>{t('Update needed')}</span></>}</span>
               <span className="hint">{a.online ? (a.busy ? t('running an analysis') : t('online')) : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>
               <button className="btn sm danger" onClick={() => void askConfirm({
                 title: t('Remove "{name}"?', { name: a.name || t('Unnamed computer') }), body: t('This computer stops picking up work until the install command is run on it again.'), action: t('Remove'), danger: true,
