@@ -66,6 +66,8 @@ export const projects = pgTable('projects', {
   issueSeq: integer('issue_seq').notNull().default(0),
   // Pierwszy agent online w projekcie bierze analizy wszystkich.
   agentTeamQueue: boolean('agent_team_queue').notNull().default(false),
+  // Agent bez repo projektu na tym PC może go sklonować (wtedy dostaje analizy tego projektu).
+  agentsMayClone: boolean('agents_may_clone').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -402,6 +404,17 @@ export const agents = pgTable('agents', {
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Gdzie na danym komputerze leży repo projektu. Analizy trafiają tylko na komputery z działającym repo (status ok). */
+export const agentRepos = pgTable('agent_repos', {
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  path: text('path').notNull().default(''),
+  source: text('source').$type<'hook' | 'manual' | 'clone' | 'install'>().notNull().default('hook'),
+  status: text('status').$type<'ok' | 'error'>().notNull().default('ok'),
+  error: text('error'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.agentId, t.projectId] })]);
 
 /** Zlecenia dla agenta inne niż analiza (kind 'start': otwórz VS Code z poleceniem). Wygasają po godzinie. */
 export const agentJobs = pgTable('agent_jobs', {

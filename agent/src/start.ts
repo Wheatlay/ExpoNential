@@ -2,10 +2,10 @@ import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync,
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { getAuth, HttpError, listProjects, request, type Auth } from './api';
-import { AGENT_VERSION, dataDir, loadConfig } from './config';
+import { AGENT_VERSION, dataDir, loadConfig, updateConfig } from './config';
 import { findEngine, MODELS, runEngine, type Engine } from './engine';
 import { log } from './log';
-import { prepareWorkdir, validateRepo } from './repos';
+import { cloneProject, prepareWorkdir, validateRepo } from './repos';
 import { openUrl, pidAlive } from './util';
 
 const KEY_RE = /^[A-Z]{2,10}-\d{1,6}$/;
@@ -13,7 +13,9 @@ const LOCK_MIN = 30;
 const hhmm = () => new Date().toTimeString().slice(0, 5);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+type ServerRepo = { project: string; path?: string; source?: string; status?: string; error?: string };
 let running = false;
+let cloneAllowed: string[] = [];   // project keys the server lets this agent clone on its own
 let lastErr = '';   // goes to the tracker with the next successful poll (Settings shows it next to the computer)
 
 function activeAccount(): string | undefined {
@@ -39,6 +41,22 @@ function singleInstance(): boolean {
   process.on('exit', drop);
   for (const s of ['SIGINT', 'SIGTERM'] as const) process.on(s, () => { drop(); process.exit(0); });
   return true;
+}
+
+/** Server mapping wins for manually set entries; local hook/clone entries stay (they are reported with each poll). */
+function mergeServerRepos(list: ServerRepo[]) {
+  const cur = loadConfig().repos;
+  const changes = list.filter((r) => {
+    if (!r || !/^[A-Z]{2,10}$/.test(r.project) || !r.path) return false;
+    const have = cur[r.project];
+    if (r.source === 'manual' || r.source === 'set') return !have || have.path !== r.path || have.source !== 'manual';
+    return !have && existsSync(r.path);   // hook/clone entry known only to the server (e.g. config was lost)
+  });
+  if (!changes.length) return;
+  updateConfig((c) => {
+    for (const r of changes) c.repos[r.project] = { path: r.path!, source: r.source === 'manual' || r.source === 'set' ? 'manual' : r.source === 'clone' ? 'clone' : 'hook' };
+  });
+  log(`mapping from server: ${changes.map((r) => r.project).join(', ')}`);
 }
 
 async function analyze(a: Auth, job: { key: string; deep: boolean }, deviceId: string) {
@@ -67,9 +85,14 @@ async function analyze(a: Auth, job: { key: string; deep: boolean }, deviceId: s
 
     // Never run in a folder that was not validated against the project's repo.
     const projectKey = key.replace(/-\d+$/, '');
-    const entry = cfg.repos[projectKey];
-    if (!entry) throw new Error(`no repo mapped for ${projectKey} (exponential-agent repos set ${projectKey} <path>)`);
     const project = (await listProjects(a)).find((p) => p.key === projectKey);
+    let entry = cfg.repos[projectKey];
+    if (!entry && cloneAllowed.includes(projectKey)) {
+      log(`${projectKey}: no mapping, cloning (allowed by the server)`);
+      await cloneProject(projectKey, project?.githubRepo);
+      entry = loadConfig().repos[projectKey];
+    }
+    if (!entry) throw new Error(`no repo mapped for ${projectKey} (exponential-agent repos set ${projectKey} <path>)`);
     const problem = await validateRepo(entry.path, project?.githubRepo);
     if (problem) throw new Error(problem);
     const bin = findEngine(engine);
@@ -79,7 +102,7 @@ async function analyze(a: Auth, job: { key: string; deep: boolean }, deviceId: s
     const res = await request<{ prompt: string; model?: string }>(a, 'GET', `/api/issues/${key}/prompt/analyze${q}`);
     if (res.model && MODELS.includes(res.model)) model = res.model;
     log(`start ${key} (${engine}, ${model})`);
-    const wd = await prepareWorkdir(projectKey, entry);
+    const wd = await prepareWorkdir(projectKey, entry, engine);
     cleanup = wd.cleanup;
     const code = await runEngine({ engine, bin, prompt: res.prompt, model, cwd: wd.dir, base: a.base, auth: a.auth, activeAccount: activeAccount() });
     log(`end ${key} (code ${code})`);
@@ -129,11 +152,15 @@ export async function cmdStart() {
       if (!a) throw new Error('not logged in (run: exponential-agent login)');
       const busy = running || freshLocks();
       const qs = new URLSearchParams({
-        deviceId: cfg.deviceId, name: hostname(), busy: busy ? '1' : '0', repos: Object.keys(cfg.repos).join(','), version: cfg.version ?? AGENT_VERSION,
+        deviceId: cfg.deviceId, name: hostname(), busy: busy ? '1' : '0', version: cfg.version ?? AGENT_VERSION,
+        // Mapping with paths and sources ({KEY: {path, source}}), so the server can show and route by it.
+        repos: JSON.stringify(Object.fromEntries(Object.entries(cfg.repos).map(([k, r]) => [k, { path: r.path, source: r.source }]))),
       });
       if (lastErr) qs.set('error', lastErr.slice(0, 300));
-      const res = await request<{ jobs?: Array<{ kind: string; key: string; deep?: boolean; id?: number }> }>(a, 'GET', `/api/agent/work?${qs}`);
+      const res = await request<{ jobs?: Array<{ kind: string; key: string; deep?: boolean; id?: number }>; repos?: ServerRepo[]; cloneAllowed?: string[] }>(a, 'GET', `/api/agent/work?${qs}`);
       lastErr = '';   // the server received it
+      cloneAllowed = Array.isArray(res.cloneAllowed) ? res.cloneAllowed.filter((k) => typeof k === 'string') : [];
+      if (Array.isArray(res.repos)) mergeServerRepos(res.repos);
       delay = 2; errLogged = false;
       const job = busy ? undefined : res.jobs?.[0];
       if (job?.kind === 'analyze') {

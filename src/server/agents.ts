@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { and, asc, eq, gt, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { agentJobs, agents, issues, projectMembers, projects, statuses, users } from '../db/schema.ts';
+import { agentJobs, agentRepos, agents, issues, projectMembers, projects, statuses, users } from '../db/schema.ts';
 import { RuleError, identifier } from './rules.ts';
 import { analysisModel } from './prompts.ts';
 import { log, publish, requireIssue, updateIssue, type Actor, type Project } from './service.ts';
@@ -66,6 +66,11 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
   }
   // Stare skrypty nie dostają pracy: poprawki (np. blokada .env) działają dopiero po aktualizacji, więc nie puszczamy ich bez niej.
   if (!agentUpToDate(agent.version)) throw new RuleError('PC scripts are outdated: run the install command again (Settings > Claude Code)', 'outdated');
+  // Analizę bierze tylko komputer z działającym repo projektu (chyba że projekt pozwala agentom klonować).
+  if (!p.agentsMayClone) {
+    const [m] = await db.select({ s: agentRepos.status }).from(agentRepos).where(and(eq(agentRepos.agentId, deviceId), eq(agentRepos.projectId, p.id)));
+    if (m?.s !== 'ok') throw new RuleError(`This PC has no repo for ${p.key}`, 'conflict');
+  }
   const [cur] = await db.select().from(issues).where(and(eq(issues.projectId, p.id), eq(issues.number, number)));
   if (!cur) throw new RuleError(`Issue ${identifier(p.key, number)} not found`, 'not_found');
   const already = cur.analysisClaimedDevice === deviceId && cur.analysisClaimedAt != null;
@@ -101,7 +106,7 @@ export async function releaseClaim(p: Project, user: User, number: number, devic
 }
 
 /** Dla szczegółu zgłoszenia: czy jakiś komputer online może to zlecenie wziąć i na którym ono biegnie. */
-export async function analysisRunner(p: Project, issue: { analysisRequestedBy: number | null; analysisClaimedDevice: string | null }) {
+export async function analysisRunner(p: Project, issue: { analysisRequestedBy: number | null; analysisClaimedDevice: string | null; analysisRequestedAt?: Date | string | null; analysisClaimedAt?: Date | string | null }) {
   const [r] = await db.execute<{ can: boolean }>(dsql`
     select exists (
       select 1 from agents a
@@ -114,7 +119,18 @@ export async function analysisRunner(p: Project, issue: { analysisRequestedBy: n
     const [a] = await db.select({ name: agents.name, label: agents.label }).from(agents).where(eq(agents.id, issue.analysisClaimedDevice));
     claimedDeviceName = a?.label || a?.name || null;
   }
-  return { canRun: !!r?.can, claimedDeviceName };
+  // Czeka zlecenie, nikt go nie wziął i żaden komputer online (aktualny, z repo albo z prawem klonowania) nie może go wziąć.
+  let noCapablePc = false;
+  if (issue.analysisRequestedAt && !issue.analysisClaimedAt) {
+    const cands = await db.execute<{ version: string }>(dsql`
+      select a.version from agents a
+      where a.last_seen_at > now() - make_interval(secs => ${ONLINE_MS / 1000})
+        and (a.user_id = ${issue.analysisRequestedBy}::int
+          or (${p.agentTeamQueue}::boolean and exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id)))
+        and (${p.agentsMayClone}::boolean or exists (select 1 from agent_repos r where r.agent_id = a.id and r.project_id = ${p.id} and r.status = 'ok'))`);
+    noCapablePc = !cands.some((c) => agentUpToDate(c.version));
+  }
+  return { canRun: !!r?.can, claimedDeviceName, noCapablePc };
 }
 
 const ago = (ms: number) => new Date(Date.now() - ms);
@@ -124,7 +140,10 @@ const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && lastSeenAt.getTime
  * Sygnał życia agenta (też rejestracja nowego urządzenia). Urządzenie jednego użytkownika nie może przejąć cudze id.
  * Gdy agent jest zajęty, odświeżamy claim jego analizy: długi przebieg Deep nie wraca do kolejki ani nie wygląda na zawieszony.
  */
-export async function heartbeat(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[]; version?: string; error?: string }) {
+export type RepoReport = { path?: string; source?: string; status?: string; error?: string | null };
+type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string };
+
+export async function heartbeat(user: User, deviceId: string, info: HeartbeatInfo) {
   const [existing] = await db.select({ userId: agents.userId }).from(agents).where(eq(agents.id, deviceId));
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
@@ -139,17 +158,83 @@ export async function heartbeat(user: User, deviceId: string, info: { name: stri
     await db.update(issues).set({ analysisClaimedAt: new Date() })
       .where(and(eq(issues.analysisClaimedDevice, deviceId), dsql`${issues.analysisRequestedAt} is not null`));
   }
+  await syncRepos(user, deviceId, info.repos ?? {}, repoKeys);
   return row;
+}
+
+const SOURCES = ['hook', 'manual', 'clone', 'install'] as const;
+
+/**
+ * Mapowanie repo na urządzeniu z tego, co zgłasza agent: {KEY: ścieżka} (stary format), {KEY: {path, source, status, error}}
+ * albo same klucze (skrypty PS: bez ścieżki, ścieżka zostaje jak była). Tylko projekty, w których użytkownik jest członkiem.
+ * Wiersze, których agent już nie zgłasza, znikają, poza ręcznymi (te ustawia człowiek w Ustawieniach, agent ich nie zna).
+ */
+async function syncRepos(user: User, deviceId: string, repos: Record<string, RepoReport | string>, legacyKeys: string[]) {
+  const norm = new Map<string, RepoReport>();
+  for (const [k, v] of Object.entries(repos)) {
+    const key = k.trim().toUpperCase();
+    if (!/^[A-Z]{2,10}$/.test(key) || norm.size >= 50) continue;
+    norm.set(key, typeof v === 'string' ? { path: v } : v ?? {});
+  }
+  for (const k of legacyKeys) if (!norm.has(k)) norm.set(k, {});
+  const mine = await db.select({ id: projects.id, key: projects.key }).from(projects)
+    .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)));
+  const sent = new Set<number>();
+  for (const pr of mine) {
+    const r = norm.get(pr.key);
+    if (!r) continue;
+    sent.add(pr.id);
+    const status = r.status === 'error' ? 'error' : 'ok';
+    const source = (SOURCES as readonly string[]).includes(r.source ?? '') ? (r.source as (typeof SOURCES)[number]) : 'hook';
+    const error = status === 'error' ? (r.error ?? '').slice(0, 300) || null : null;
+    const hasPath = typeof r.path === 'string';
+    await db.insert(agentRepos).values({ agentId: deviceId, projectId: pr.id, path: hasPath ? r.path!.slice(0, 500) : '', source, status, error })
+      .onConflictDoUpdate({ target: [agentRepos.agentId, agentRepos.projectId], set: { ...(hasPath ? { path: r.path!.slice(0, 500), source } : {}), status, error, updatedAt: new Date() } });
+  }
+  const existing = await db.select({ projectId: agentRepos.projectId, source: agentRepos.source }).from(agentRepos).where(eq(agentRepos.agentId, deviceId));
+  const stale = existing.filter((e) => e.source !== 'manual' && !sent.has(e.projectId)).map((e) => e.projectId);
+  if (stale.length) await db.delete(agentRepos).where(and(eq(agentRepos.agentId, deviceId), inArray(agentRepos.projectId, stale)));
+}
+
+/** Mapowanie tego urządzenia i projekty, w których agent może klonować repo. */
+export async function repoState(user: User, deviceId: string) {
+  const repos = await db.select({ project: projects.key, path: agentRepos.path, source: agentRepos.source, status: agentRepos.status, error: agentRepos.error })
+    .from(agentRepos).innerJoin(projects, eq(projects.id, agentRepos.projectId)).where(eq(agentRepos.agentId, deviceId)).orderBy(asc(projects.key));
+  const clone = await db.select({ key: projects.key }).from(projects)
+    .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
+    .where(eq(projects.agentsMayClone, true)).orderBy(asc(projects.key));
+  return { repos, cloneAllowed: clone.map((c) => c.key) };
+}
+
+/** Ręczne ustawienie ścieżki repo na moim komputerze (z Ustawień). */
+export async function setAgentRepo(user: User, deviceId: string, projectKey: string, repoPath: string) {
+  await requireOwnAgent(user, deviceId);
+  const clean = repoPath.trim();
+  if (!clean || clean.length > 500) throw new RuleError('Path cannot be empty', 'invalid');
+  const [pr] = await db.select({ id: projects.id }).from(projects)
+    .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
+    .where(eq(projects.key, projectKey.toUpperCase()));
+  if (!pr) throw new RuleError('Project not found', 'not_found');
+  await db.insert(agentRepos).values({ agentId: deviceId, projectId: pr.id, path: clean, source: 'manual', status: 'ok', error: null })
+    .onConflictDoUpdate({ target: [agentRepos.agentId, agentRepos.projectId], set: { path: clean, source: 'manual', status: 'ok', error: null, updatedAt: new Date() } });
+  return { ok: true };
+}
+
+export async function removeAgentRepo(user: User, deviceId: string, projectKey: string) {
+  await requireOwnAgent(user, deviceId);
+  const [pr] = await db.select({ id: projects.id }).from(projects).where(eq(projects.key, projectKey.toUpperCase()));
+  if (pr) await db.delete(agentRepos).where(and(eq(agentRepos.agentId, deviceId), eq(agentRepos.projectId, pr.id)));
+  return { ok: true };
 }
 
 export type AgentJob = { kind: 'analyze'; key: string; deep: boolean } | { kind: 'start'; id: number; key: string };
 
 /** Co ten agent może teraz wziąć: moje zlecenia (i kolejka zespołu w projektach z włączonym przełącznikiem) oraz zlecenia Start. */
-export async function pendingWork(user: User, agent: { busy: boolean; repoKeys: string[]; version: string }): Promise<AgentJob[]> {
+export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string }): Promise<AgentJob[]> {
   // Stara wersja skryptów: nic nie dostaje (Ustawienia i pasek analizy pokazują "Update needed").
   if (agent.busy || !agentUpToDate(agent.version)) return [];
   const jobs: AgentJob[] = [];
-  if (agent.repoKeys.length) {
+  {
     const rows = await db.select({ key: projects.key, number: issues.number, deep: issues.analysisDeep })
       .from(issues).innerJoin(projects, eq(projects.id, issues.projectId))
       .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
@@ -157,7 +242,7 @@ export async function pendingWork(user: User, agent: { busy: boolean; repoKeys: 
         dsql`${issues.analysisRequestedAt} is not null`,
         isNull(issues.analysisFailedAt),
         dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}))`,
-        inArray(projects.key, agent.repoKeys),
+        dsql`(${projects.agentsMayClone} or exists (select 1 from agent_repos r where r.agent_id = ${agent.id ?? ''} and r.project_id = ${projects.id} and r.status = 'ok'))`,
         dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
       ))
       .orderBy(asc(issues.analysisRequestedAt)).limit(5);
@@ -178,12 +263,12 @@ const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) =
 });
 
 /** Long poll agenta: jeden heartbeat na żądanie, potem do 25 s sprawdzamy co 2 s, czy jest praca. */
-export async function waitForWork(user: User, deviceId: string, info: { name: string; busy: boolean; repoKeys: string[]; version?: string; error?: string }, signal: AbortSignal) {
+export async function waitForWork(user: User, deviceId: string, info: HeartbeatInfo, signal: AbortSignal) {
   const agent = await heartbeat(user, deviceId, info);
   const until = Date.now() + 25_000;
   for (;;) {
     const jobs = await pendingWork(user, agent);
-    if (jobs.length || signal.aborted || Date.now() >= until) return { jobs };
+    if (jobs.length || signal.aborted || Date.now() >= until) return { jobs, ...(await repoState(user, deviceId)) };
     await sleep(2000, signal);
   }
 }
@@ -202,7 +287,11 @@ export async function claimStartJob(user: User, jobId: number, deviceId: string)
 /** Moje komputery do Ustawień. */
 export async function myAgents(user: User) {
   const rows = await db.select().from(agents).where(eq(agents.userId, user.id)).orderBy(dsql`${agents.lastSeenAt} desc nulls last`);
+  const repos = rows.length ? await db.select({ agentId: agentRepos.agentId, project: projects.key, path: agentRepos.path, source: agentRepos.source, status: agentRepos.status, error: agentRepos.error })
+    .from(agentRepos).innerJoin(projects, eq(projects.id, agentRepos.projectId))
+    .where(inArray(agentRepos.agentId, rows.map((a) => a.id))).orderBy(asc(projects.key)) : [];
   return rows.map((a) => ({ id: a.id, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: !agentUpToDate(a.version),
+    repos: repos.filter((r) => r.agentId === a.id).map(({ agentId: _, ...r }) => r),
     // Błąd starszy niż 24 h już nie jest istotny.
     lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 ? a.lastError : '', lastErrorAt: a.lastErrorAt }));
 }

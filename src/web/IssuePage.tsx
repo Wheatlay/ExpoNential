@@ -181,6 +181,7 @@ export function IssuePage({ number }: { number: number }) {
   // Nieudany przebieg nie wraca sam do kolejki: pokazujemy błąd i dajemy zlecić ponownie albo anulować.
   const failed = !!issue.analysisRequestedAt && !!issue.analysisFailedAt;
   const waitingForPc = !!issue.analysisRequestedAt && !claimedAt && !failed && !issue.analysisCanRun && !demo;
+  const noRepoPc = !!issue.analysisRequestedAt && !claimedAt && !failed && !waitingForPc && issue.analysisNoCapablePc && !demo;
   const cancelAnalysis = async () => {
     await api(`/api/issues/${ident(number)}/analyze`, { method: 'DELETE' });
     void qc.invalidateQueries({ queryKey: ['issue', number] });
@@ -255,11 +256,11 @@ export function IssuePage({ number }: { number: number }) {
                     onClick={(e) => { e.stopPropagation(); navigate('/settings#claude'); }}>{t('Update needed')}</span>
                 )}
                 {issue.analysisRequestedAt && <>
-                  <span className={`pill ${failed || stalled || waitingForPc ? 'stalled' : 'ai'}`}
+                  <span className={`pill ${failed || stalled || waitingForPc || noRepoPc ? 'stalled' : 'ai'}`}
                     title={failed ? t('The analysis failed on the PC: {error}. Analyze again or cancel.', { error: issue.analysisError || '?' })
                       : stalled ? t('No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.')
-                      : waitingForPc ? t('No computer with the agent is online for this request. It runs when one is on.') : undefined}>
-                    <Icon.sparkle size={12} /> <span className="pill-text">{failed ? t('Failed') : stalled ? t('Stalled') : waitingForPc ? t('Waiting for a PC')
+                      : waitingForPc ? t('No computer with the agent is online for this request. It runs when one is on.') : noRepoPc ? t('Waiting for a PC with this project\'s repo') : undefined}>
+                    <Icon.sparkle size={12} /> <span className="pill-text">{failed ? t('Failed') : stalled ? t('Stalled') : waitingForPc ? t('Waiting for a PC') : noRepoPc ? t('Waiting for a PC with this project\'s repo')
                       : claimedAt ? t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') }) : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(failed ? issue.analysisFailedAt! : claimedAt ?? issue.analysisRequestedAt)}</span></span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
                 </>}

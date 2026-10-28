@@ -1,6 +1,6 @@
 import { and, asc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { projectMembers, projects, statuses, users, type StatusType } from '../db/schema.ts';
+import { agentRepos, projectMembers, projects, statuses, users, type StatusType } from '../db/schema.ts';
 import { RuleError, isEmail, isProjectKey } from './rules.ts';
 
 export type Project = typeof projects.$inferSelect;
@@ -89,7 +89,7 @@ export async function createProject(creatorId: number, input: { key: string; nam
 export type ProjectPatch = Partial<{
   name: string; color: string; discordWebhookUrl: string | null; meetingLocationUrl: string; sprintLengthDays: number; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
-  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; agentTeamQueue: boolean;
+  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; agentTeamQueue: boolean; agentsMayClone: boolean;
 }>;
 
 export async function updateProject(projectId: number, patch: ProjectPatch) {
@@ -109,6 +109,11 @@ export async function updateProject(projectId: number, patch: ProjectPatch) {
   }
   if (patch.deployBranch !== undefined && !patch.deployBranch.trim()) throw new RuleError('Deploy branch cannot be empty', 'invalid');
   if (patch.deploySourceRef !== undefined) patch.deploySourceRef = patch.deploySourceRef.trim();
+  // Inne repo = inne ścieżki na komputerach: zapisane mapowania tracą sens.
+  if (patch.githubRepo !== undefined) {
+    const [old] = await db.select({ githubRepo: projects.githubRepo }).from(projects).where(eq(projects.id, projectId));
+    if (old && old.githubRepo !== patch.githubRepo) await db.delete(agentRepos).where(eq(agentRepos.projectId, projectId));
+  }
   const [p] = await db.update(projects).set({ ...patch, ...(patch.name ? { name: patch.name.trim() } : {}) }).where(eq(projects.id, projectId)).returning();
   return p;
 }

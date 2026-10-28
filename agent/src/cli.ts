@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs';
 import { getAuth, request } from './api';
-import { autostartState, cmdAutostart } from './autostart';
+import { autostartState, cmdAutostart, startDetached } from './autostart';
 import { AGENT_VERSION, dataDir, loadConfig, updateConfig } from './config';
 import { findEngine, type Engine } from './engine';
 import { runHook } from './hook';
@@ -10,7 +10,7 @@ import { cmdStart } from './start';
 
 const HELP = `exponential-agent ${AGENT_VERSION}
   login [--url URL] [--token TOKEN]   sign in (device flow when no token)
-  start                               run the poll loop
+  start [--detach]                    run the poll loop (--detach: hidden, in the background)
   status                              show url, account, engine, repos, autostart
   engine claude|codex                 choose the AI engine
   repos | repos set <KEY> <path> | repos clone <KEY>
@@ -42,7 +42,7 @@ async function main() {
   const [cmd, ...args] = process.argv.slice(2);
   switch (cmd) {
     case 'login': return cmdLogin(args);
-    case 'start': return cmdStart();
+    case 'start': return args.includes('--detach') ? startDetached() : cmdStart();
     case 'status': return status();
     case 'engine': {
       const e = args[0];

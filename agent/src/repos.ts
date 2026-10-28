@@ -1,8 +1,9 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { getAuth, listProjects, type Project } from './api';
 import { dataDir, loadConfig, updateConfig, type RepoEntry } from './config';
+import type { Engine } from './engine';
+import { log } from './log';
 import { git, gitSafe, slug } from './util';
 
 /** Error text when `path` is not a git clone of `githubRepo`; null when it is. */
@@ -15,25 +16,66 @@ export async function validateRepo(path: string, githubRepo: string | null | und
   return ok ? null : `${path} is not a clone of ${githubRepo} (git remote -v does not list it)`;
 }
 
-/** Working directory for an analysis. Own clones run in a fresh detached worktree of the up-to-date branch; user folders in place. */
-export async function prepareWorkdir(key: string, entry: RepoEntry): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  if (entry.source !== 'clone') return { dir: entry.path, cleanup: async () => {} };
-  await git(['-C', entry.path, 'fetch', '--prune', 'origin'], { timeout: 300000 });
-  // TODO: /api/projects does not expose a deploy branch; the remote default branch is used.
-  let ref = await gitSafe(['-C', entry.path, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
-  for (const c of ['origin/main', 'origin/master']) if (!ref && await gitSafe(['-C', entry.path, 'rev-parse', '--verify', c])) ref = c;
-  if (!ref) throw new Error('cannot determine the default branch of the clone');
+// Same patterns as the Claude denylist (engine.ts), as basename regexes.
+const SECRET_FILES = [/^\.env/i, /\.pem$/i, /\.key$/i, /^id_rsa/i, /\.pfx$/i, /\.p12$/i, /^secrets\./i, /^credentials/i];
+
+/** Deletes secret-looking files inside a worktree (skips .git). Returns how many were removed. */
+function scrubSecrets(root: string): number {
+  let n = 0;
+  const walk = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name === '.git') continue;
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (SECRET_FILES.some((re) => re.test(e.name))) { try { rmSync(p, { force: true }); n++; } catch { /* best effort */ } }
+    }
+  };
+  walk(root);
+  return n;
+}
+
+/**
+ * Working directory for an analysis. Own clones run in a fresh detached worktree of the up-to-date branch.
+ * Codex has no file denylist, so it NEVER runs in a user folder: always a temp worktree of the local HEAD (no fetch),
+ * with secret-looking files deleted. Claude on a user folder runs in place.
+ */
+export async function prepareWorkdir(key: string, entry: RepoEntry, engine: Engine = 'claude'): Promise<{ dir: string; cleanup: () => Promise<void> }> {
+  const isClone = entry.source === 'clone';
+  if (!isClone && engine !== 'codex') return { dir: entry.path, cleanup: async () => {} };
+  let ref = 'HEAD';
+  if (isClone) {
+    await git(['-C', entry.path, 'fetch', '--prune', 'origin'], { timeout: 300000 });
+    // TODO: /api/projects does not expose a deploy branch; the remote default branch is used.
+    ref = await gitSafe(['-C', entry.path, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD']);
+    for (const c of ['origin/main', 'origin/master']) if (!ref && await gitSafe(['-C', entry.path, 'rev-parse', '--verify', c])) ref = c;
+    if (!ref) throw new Error('cannot determine the default branch of the clone');
+  }
   const tmp = join(dataDir(), 'tmp', `${key}-${Date.now()}`);
   mkdirSync(join(dataDir(), 'tmp'), { recursive: true });
-  await git(['-C', entry.path, 'worktree', 'add', '--detach', tmp, ref], { timeout: 120000 });
-  return {
-    dir: tmp,
-    cleanup: async () => {
-      await gitSafe(['-C', entry.path, 'worktree', 'remove', '--force', tmp]);
-      try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
-      await gitSafe(['-C', entry.path, 'worktree', 'prune']);
-    },
+  const cleanup = async () => {
+    await gitSafe(['-C', entry.path, 'worktree', 'remove', '--force', tmp]);
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+    await gitSafe(['-C', entry.path, 'worktree', 'prune']);
   };
+  try {
+    await git(['-C', entry.path, 'worktree', 'add', '--detach', tmp, ref], { timeout: 120000 });
+    if (engine === 'codex') log(`${key}: removed ${scrubSecrets(tmp)} secret-looking files from the worktree`);
+  } catch (e) { await cleanup(); throw e; }
+  return { dir: tmp, cleanup };
+}
+
+/** Clones the project's GitHub repo into the data folder and maps the key to it (source clone). */
+export async function cloneProject(key: string, githubRepo: string | null | undefined): Promise<string> {
+  if (!githubRepo) throw new Error('the project has no GitHub repo set');
+  const target = join(dataDir(), 'repos', githubRepo.replace('/', '-'));
+  if (!existsSync(target)) {
+    mkdirSync(join(dataDir(), 'repos'), { recursive: true });
+    await git(['clone', `https://github.com/${githubRepo}.git`, target], { timeout: 900000 });
+  }
+  const problem = await validateRepo(target, githubRepo);
+  if (problem) throw new Error(problem);
+  updateConfig((c) => { c.repos[key] = { path: target, source: 'clone' }; });
+  return target;
 }
 
 async function projectOf(key: string): Promise<Project> {
@@ -61,18 +103,9 @@ export async function cmdRepos(args: string[]) {
     const full = resolve(path);
     const problem = await validateRepo(full, p.githubRepo);
     if (problem) throw new Error(problem);
-    updateConfig((c) => { c.repos[key] = { path: full, source: 'set' }; });
+    updateConfig((c) => { c.repos[key] = { path: full, source: 'manual' }; });
     console.log(`${key} -> ${full}`);
   } else if (sub === 'clone') {
-    if (!p.githubRepo) throw new Error('the project has no GitHub repo set');
-    const target = join(dataDir(), 'repos', p.githubRepo.replace('/', '-'));
-    if (!existsSync(target)) {
-      mkdirSync(join(dataDir(), 'repos'), { recursive: true });
-      execFileSync('git', ['clone', `https://github.com/${p.githubRepo}.git`, target], { stdio: 'inherit' });
-    }
-    const problem = await validateRepo(target, p.githubRepo);
-    if (problem) throw new Error(problem);
-    updateConfig((c) => { c.repos[key] = { path: target, source: 'clone' }; });
-    console.log(`${key} -> ${target}`);
+    console.log(`${key} -> ${await cloneProject(key, p.githubRepo)}`);
   } else throw new Error('usage: repos set <KEY> <path> | repos clone <KEY>');
 }

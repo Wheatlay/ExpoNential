@@ -78,6 +78,13 @@
       "when": 1793222769678,
       "tag": "0010_oauth",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1793223179442,
+      "tag": "0011_agent_repos",
+      "breakpoints": true
     }
   ]
 }

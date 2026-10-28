@@ -124,12 +124,18 @@ export async function registerApi(app: FastifyInstance) {
     // Agent na PC (tracker-agent.ps1): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
     r.get<{ Querystring: Record<string, string> }>('/api/agent/work', async (req) => {
       const q = z.object({
-        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(1000).default(''), version: z.string().max(40).default(''), error: z.string().max(300).default(''),
+        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(300).default(''),
       }).parse(req.query);
       // Zamknięte połączenie przerywa czekanie, żeby pętla nie trzymała zapytań do bazy po odejściu agenta.
       const ac = new AbortController();
       req.raw.on('close', () => ac.abort());
-      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys: q.repos.split(',').filter(Boolean), version: q.version, error: q.error }, ac.signal);
+      // repos: lista kluczy "ACME,WEB" (skrypty PS, nowy agent) albo JSON {KEY: ścieżka} / {KEY: {path, source, status, error}}.
+      let repoKeys: string[] = [], repos: Record<string, ag.RepoReport | string> | undefined;
+      if (q.repos.trim().startsWith('{')) {
+        try { repos = z.record(z.string(), z.union([z.string(), z.object({ path: z.string().optional(), source: z.string().optional(), status: z.string().optional(), error: z.string().nullable().optional() })])).parse(JSON.parse(q.repos)); } catch { repos = {}; }
+        repoKeys = Object.keys(repos);
+      } else repoKeys = q.repos.split(',').filter(Boolean);
+      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error }, ac.signal);
     });
     r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
       const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);
@@ -141,6 +147,11 @@ export async function registerApi(app: FastifyInstance) {
       return ag.createStartJob(p, req.user!, number);
     });
     r.get('/api/agents', async (req) => ag.myAgents(req.user!));
+    r.put<{ Params: { id: string } }>('/api/agents/:id/repos', async (req) => {
+      const body = z.object({ project: z.string().min(1).max(10), path: z.string().min(1).max(500) }).parse(req.body);
+      return ag.setAgentRepo(req.user!, req.params.id, body.project, body.path);
+    });
+    r.delete<{ Params: { id: string; project: string } }>('/api/agents/:id/repos/:project', async (req) => ag.removeAgentRepo(req.user!, req.params.id, req.params.project));
     r.delete<{ Params: { id: string } }>('/api/agents/:id', async (req) => ag.removeAgent(req.user!, req.params.id));
     r.patch<{ Params: { id: string } }>('/api/agents/:id', async (req) =>
       ag.renameAgent(req.user!, req.params.id, z.object({ label: z.string().max(60) }).parse(req.body).label));
@@ -158,6 +169,7 @@ export async function registerApi(app: FastifyInstance) {
       const askedBy = new Map(asked.map((a) => [a.projectId, a.n]));
       return (await pr.projectsOf(req.user!)).map(({ project, role, memberCount }) => ({
         id: project.id, key: project.key, name: project.name, color: project.color, role, memberCount, githubRepo: project.githubRepo,
+        deployBranch: project.deployBranch, agentsMayClone: project.agentsMayClone,
         askedMe: askedBy.get(project.id) ?? 0,
       }));
     });
@@ -181,7 +193,7 @@ export async function registerApi(app: FastifyInstance) {
         sprintLengthDays: z.number().int().optional(), reviewTime: z.string().optional(), reviewMinutes: z.number().int().optional(),
                 analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
         githubRepo: z.string().max(200).optional(), deployBranch: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(), deploySourceRef: z.string().max(200).optional(),
-        agentTeamQueue: z.boolean().optional(),
+        agentTeamQueue: z.boolean().optional(), agentsMayClone: z.boolean().optional(),
       }).parse(req.body);
       if (body.discordWebhookUrl === '') body.discordWebhookUrl = null;
       const next = await pr.updateProject(p.id, body);
@@ -273,7 +285,7 @@ export async function registerApi(app: FastifyInstance) {
       const lastSeenAt = await svc.lastSeen(req.user!.id, d.id);
       await svc.markSeen(req.user!.id, d.id);
       const runner = await ag.analysisRunner(p, d);
-      return { ...d, projectKey: p.key, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, teamQueue: p.agentTeamQueue };
+      return { ...d, projectKey: p.key, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, analysisNoCapablePc: runner.noCapablePc, teamQueue: p.agentTeamQueue };
     });
 
     r.post('/api/issues', async (req) => {

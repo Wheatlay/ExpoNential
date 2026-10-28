@@ -3,9 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export const AGENT_VERSION = '0.1.0';
+export const AGENT_VERSION = '0.1.1';
 
-export type RepoEntry = { path: string; source: 'set' | 'clone' | 'hook' };
+export type RepoEntry = { path: string; source: 'manual' | 'clone' | 'hook' };
 export type Config = {
   url?: string;
   token?: string;
