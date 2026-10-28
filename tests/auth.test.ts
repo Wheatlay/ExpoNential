@@ -163,13 +163,26 @@ describe('project invites', () => {
     await inv.consumeInvite(await newInvite('member'), owner.id);
     expect(await roleOf(owner.id)).toBe('admin');
   });
-  it('lists only pending invites, without tokens', async () => {
-    const used = await newInvite();
-    await inv.consumeInvite(used, (await mkUser('lister')).id);
+  it('lists invites with status (pending, accepted by whom), without tokens', async () => {
+    const used = await inv.createInvite(owner.id, P.id, 'member');
+    const lister = await mkUser('lister');
+    await inv.consumeInvite(tokenOf(used.url), lister.id);
     const pending = await inv.createInvite(owner.id, P.id, 'member');
     const list = await inv.listInvites(P.id);
-    expect(list.some((i) => i.id === pending.id)).toBe(true);
+    expect(list.find((i) => i.id === pending.id)?.status).toBe('pending');
+    const accepted = list.find((i) => i.id === used.id);
+    expect(accepted?.status).toBe('accepted');
+    expect(accepted?.usedByName).toBe(lister.name);
     expect(JSON.stringify(list)).not.toContain(tokenOf(pending.url));
+  });
+  it('renew replaces an unaccepted invite: same role, old link dead; accepted cannot be renewed', async () => {
+    const old = await inv.createInvite(owner.id, P.id, 'admin');
+    const fresh = await inv.renewInvite(owner.id, P.id, old.id);
+    expect(fresh.role).toBe('admin');
+    expect(await inv.inviteInfo(tokenOf(old.url))).toBeNull();
+    expect((await inv.inviteInfo(tokenOf(fresh.url)))?.role).toBe('admin');
+    await inv.consumeInvite(tokenOf(fresh.url), (await mkUser('renewed')).id);
+    await expect(inv.renewInvite(owner.id, P.id, fresh.id)).rejects.toThrow(/not found/);
   });
 });
 
@@ -292,6 +305,17 @@ describe('e-mail and password', () => {
     expect((await login('resetme@example.com', 'old-password-1')).statusCode).toBe(401);
     expect((await login('resetme@example.com', 'new-password-123')).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: `/auth/reset/${token}`, payload: { password: 'another-password-1' } })).statusCode).toBe(404);
+  });
+  it('no reset link for an account without a password', async () => {
+    const u = await mkUser('oauth-only');
+    expect((await app.inject({ method: 'POST', url: `/api/admin/users/${u.id}/reset-link`, headers: await bearer(owner.id) })).statusCode).toBe(422);
+  });
+  it('workspace "Allow" creates only the account, without project membership', async () => {
+    const asAdmin = await bearer(owner.id);
+    const res = await app.inject({ method: 'POST', url: '/api/admin/users', headers: { ...asAdmin, 'x-project': 'ACME' }, payload: { login: 'Only.Account@Example.com' } });
+    expect(res.statusCode).toBe(200);
+    const [u] = await dbmod.db.select().from(schema.users).where(eq(schema.users.login, 'Only.Account@Example.com'));
+    expect(await roleOf(u.id)).toBeNull();
   });
   it('changing your own password needs the current one when set', async () => {
     const u = await mkUser('changer', { email: 'changer@example.com', passwordHash: await pw.hashPassword('current-password') });

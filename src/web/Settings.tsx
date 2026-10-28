@@ -498,7 +498,10 @@ function ProjectPeople() {
   );
 }
 
-type PendingInvite = { id: number; role: 'admin' | 'member'; expiresAt: string; createdByName: string | null };
+type InviteRow = {
+  id: number; role: 'admin' | 'member'; expiresAt: string; usedAt: string | null; createdByName: string | null; usedByName: string | null;
+  status: 'pending' | 'expired' | 'accepted';
+};
 // Daty zawsze dd.mm.rrrr, niezależnie od języka przeglądarki.
 const plDate = (iso: string) => new Date(iso).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
@@ -511,9 +514,14 @@ function InviteLinks() {
   const [link, setLink] = useState('');
   const key = c?.p.key;
   const ro = c?.ro ?? (demo ? t('Disabled in the demo') : null);
-  const pending = useQuery({ queryKey: ['invites', key], queryFn: () => api<PendingInvite[]>(`/api/projects/${key}/invites`), enabled: !!key && !ro });
+  const invites = useQuery({ queryKey: ['invites', key], queryFn: () => api<InviteRow[]>(`/api/projects/${key}/invites`), enabled: !!key && !ro });
   if (!c) return null;
   const refresh = () => void qc.invalidateQueries({ queryKey: ['invites', key] });
+  const renew = (id: number) => void api<{ url: string }>(`/api/projects/${key}/invites/${id}/renew`, { method: 'POST' }).then((r) => { setLink(r.url); refresh(); });
+  const statusText = (i: InviteRow) => i.status === 'accepted'
+    ? t('accepted by {name}, {date}', { name: i.usedByName ?? '', date: plDate(i.usedAt!) })
+    : i.status === 'expired' ? t('expired {date}', { date: plDate(i.expiresAt) })
+    : t('by {name}, expires {date}', { name: i.createdByName ?? '', date: plDate(i.expiresAt) });
   return (
     <div className="s-card" id="invites" style={{ marginTop: 12 }}>
       <div className="s-row">
@@ -540,10 +548,15 @@ function InviteLinks() {
           <span className="hint s-hint">{t('Shown only once. Copy it now and send it to the person.')}</span>
         </div>
       )}
-      {(pending.data ?? []).map((i) => (
+      {(invites.data ?? []).map((i) => (
         <div key={i.id} className="s-row">
-          <span className="grow">{i.role === 'admin' ? t('Admin') : t('Member')} <span className="hint">{t('by {name}, expires {date}', { name: i.createdByName ?? '', date: plDate(i.expiresAt) })}</span></span>
-          <button className="btn sm danger" onClick={() => void api(`/api/projects/${key}/invites/${i.id}`, { method: 'DELETE' }).then(refresh)}>{t('Revoke')}</button>
+          <span className="grow">{i.role === 'admin' ? t('Admin') : t('Member')} <span className="hint">{statusText(i)}</span></span>
+          {i.status !== 'accepted' && (
+            <Tooltip text={t('Creates a new link with the same role; the old one stops working')}>
+              <button className="btn sm" onClick={() => renew(i.id)}>{t('New link')}</button>
+            </Tooltip>
+          )}
+          {i.status === 'pending' && <button className="btn sm danger" onClick={() => void api(`/api/projects/${key}/invites/${i.id}`, { method: 'DELETE' }).then(refresh)}>{t('Revoke')}</button>}
         </div>
       ))}
     </div>
@@ -685,7 +698,7 @@ function Accounts() {
   const me = useMe().data;
   const demo = !!me?.demo;
   const qc = useQueryClient();
-  const accounts = useQuery({ queryKey: ['admin-users'], queryFn: () => api<User[]>('/api/admin/users') });
+  const accounts = useQuery({ queryKey: ['admin-users'], queryFn: () => api<(User & { hasGithub: boolean; hasGoogle: boolean; hasPassword: boolean })[]>('/api/admin/users') });
   const [login, setLogin] = useState('');
   const refresh = () => { void qc.invalidateQueries({ queryKey: ['admin-users'] }); void qc.invalidateQueries({ queryKey: ['meta'] }); void qc.invalidateQueries({ queryKey: ['project'] }); };
   const saveUser = (body: object) => api('/api/admin/users', { method: 'POST', body }).then(refresh);
@@ -693,13 +706,15 @@ function Accounts() {
   return (
     <div className="s-card">
       <div className="s-row">
-        <input className="input grow" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} placeholder={t('GitHub login or e-mail to allow (joins the current project)')} value={login} onChange={(e) => setLogin(e.target.value)} />
+        <input className="input grow" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} placeholder={t('GitHub login or e-mail to allow')} value={login} onChange={(e) => setLogin(e.target.value)} />
         <button className="btn" disabled={demo || !login.trim()} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void saveUser({ login: login.trim() }).then(() => setLogin(''))}><Icon.plus size={13} /> {t('Allow')}</button>
       </div>
       {accounts.data?.map((u) => (
         <div key={u.id} className="s-row" style={u.active ? undefined : { opacity: 0.5 }}>
           <Avatar user={u} size={22} />
-          <span className="grow">{u.name}</span>
+          <span className="grow">{u.name} <span className="hint">{
+            [u.hasGithub && 'GitHub', u.hasGoogle && 'Google', u.hasPassword && t('password')].filter(Boolean).join(' · ') || t('not logged in yet')
+          }</span></span>
           {/* Login GitHub jest edytowalny, żeby poprawić mapowanie z importu bez dublowania osoby. */}
           <input className="input" style={{ width: 150 }} defaultValue={u.login} disabled={demo} title={demo ? t('Disabled in the demo') : t('GitHub login')}
             onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== u.login && void saveUser({ id: u.id, login: e.target.value.trim() })} />
@@ -708,9 +723,11 @@ function Accounts() {
               <input type="checkbox" checked={u.isAdmin} disabled={demo || u.id === me?.id} onChange={(e) => void saveUser({ id: u.id, login: u.login, isAdmin: e.target.checked })} /> {t('Admin')}
             </label>
           </Tooltip>
-          <Tooltip text={demo ? t('Disabled in the demo') : t('Creates a one-time link (24 h) to set a new password and copies it')}>
-            <button className="btn sm" disabled={demo} onClick={() => void api<{ url: string }>(`/api/admin/users/${u.id}/reset-link`, { method: 'POST' }).then((r) => copyText(r.url, t('Password link copied')))}>{t('Password link')}</button>
-          </Tooltip>
+          {u.hasPassword && (
+            <Tooltip text={demo ? t('Disabled in the demo') : t('Creates a one-time link (24 h) to set a new password and copies it')}>
+              <button className="btn sm" disabled={demo} onClick={() => void api<{ url: string }>(`/api/admin/users/${u.id}/reset-link`, { method: 'POST' }).then((r) => copyText(r.url, t('Password link copied')))}>{t('Reset password')}</button>
+            </Tooltip>
+          )}
           <Tooltip text={demo ? t('Disabled in the demo') : u.id === me?.id ? t('You cannot deactivate yourself') : null}>
             <button className="btn sm" disabled={demo || u.id === me?.id} onClick={() => void saveUser({ id: u.id, login: u.login, active: !u.active })}>{u.active ? t('Deactivate') : t('Activate')}</button>
           </Tooltip>

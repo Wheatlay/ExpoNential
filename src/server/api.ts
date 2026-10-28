@@ -221,6 +221,10 @@ export async function registerApi(app: FastifyInstance) {
       await inv.revokeInvite(p.id, intParam(req.params.id));
       return { ok: true };
     });
+    r.post<{ Params: { key: string; id: string } }>('/api/projects/:key/invites/:id/renew', async (req) => {
+      const p = await manage(req, req.params.key);
+      return inv.renewInvite(req.user!.id, p.id, intParam(req.params.id));
+    });
     // Zalogowany przyjmuje zaproszenie na swoje konto.
     r.post<{ Params: { token: string } }>('/api/invites/:token/accept', async (req) => {
       const joined = await inv.consumeInvite(req.params.token, req.user!.id);
@@ -452,6 +456,9 @@ export async function registerApi(app: FastifyInstance) {
     r.addHook('preHandler', requireAdmin);
     r.get('/api/admin/users', async () => db.select({
       id: users.id, login: users.login, name: users.name, avatarUrl: users.avatarUrl, isAdmin: users.isAdmin, active: users.active,
+      // Czym konto może się logować; żadne = jeszcze się nie zalogowało (konto z allowlisty).
+      hasGithub: dsql<boolean>`${users.githubId} is not null`, hasGoogle: dsql<boolean>`${users.googleId} is not null`,
+      hasPassword: dsql<boolean>`${users.passwordHash} is not null`,
     }).from(users).orderBy(asc(users.name)));
     r.post<{ Params: { id: string } }>('/api/admin/users/:id/reset-link', async (req) => inv.createResetLink(req.user!.id, intParam(req.params.id)));
     r.post('/api/admin/users', async (req) => {
@@ -459,8 +466,8 @@ export async function registerApi(app: FastifyInstance) {
         id: z.number().int().optional(), login: z.string().min(1), name: z.string().optional(),
         isAdmin: z.boolean().optional(), active: z.boolean().optional(),
       }).parse(req.body);
-      const p = body.id ? null : (await ctx(req).catch(() => null))?.project ?? null;
-      await svc.saveUser(p, body);
+      // Workspace zakłada samo konto; do projektu dodaje Projekt › Ludzie albo zaproszenie.
+      await svc.saveUser(null, body);
       return { ok: true };
     });
   });

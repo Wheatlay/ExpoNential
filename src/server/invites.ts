@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, desc, eq, gt, isNotNull, isNull, sql as dsql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db, type Tx } from '../db/index.ts';
 import { projectInvites, projectMembers, projects, users } from '../db/schema.ts';
 import { RuleError } from './rules.ts';
@@ -19,12 +20,33 @@ export async function createInvite(actorId: number, projectId: number, role: 'ad
   return { id: row.id, url: `${baseUrl()}/invite/${token}`, role, expiresAt };
 }
 
-/** Oczekujące zaproszenia projektu (bez tokenu). */
+const HISTORY_DAYS = 30;
+const usedBy = alias(users, 'used_by');
+
+/**
+ * Zaproszenia projektu z ostatnich 30 dni (bez tokenu) ze stanem: oczekujące, wygasłe, przyjęte (kto i kiedy).
+ * Cofnięte nie są pokazywane: admin cofa je świadomie albo zastępuje nowym linkiem.
+ */
 export async function listInvites(projectId: number) {
-  return db.select({ id: projectInvites.id, role: projectInvites.role, createdAt: projectInvites.createdAt, expiresAt: projectInvites.expiresAt, createdByName: users.name })
-    .from(projectInvites).leftJoin(users, eq(users.id, projectInvites.createdBy))
-    .where(and(eq(projectInvites.projectId, projectId), eq(projectInvites.kind, 'invite'), isNull(projectInvites.usedAt), isNull(projectInvites.revokedAt), gt(projectInvites.expiresAt, new Date())))
+  const rows = await db.select({
+    id: projectInvites.id, role: projectInvites.role, createdAt: projectInvites.createdAt, expiresAt: projectInvites.expiresAt,
+    usedAt: projectInvites.usedAt, createdByName: users.name, usedByName: usedBy.name,
+  })
+    .from(projectInvites).leftJoin(users, eq(users.id, projectInvites.createdBy)).leftJoin(usedBy, eq(usedBy.id, projectInvites.usedBy))
+    .where(and(eq(projectInvites.projectId, projectId), eq(projectInvites.kind, 'invite'), isNull(projectInvites.revokedAt),
+      gt(projectInvites.createdAt, new Date(Date.now() - HISTORY_DAYS * 864e5))))
     .orderBy(desc(projectInvites.createdAt));
+  const now = Date.now();
+  return rows.map((r) => ({ ...r, status: r.usedAt ? 'accepted' as const : r.expiresAt.getTime() <= now ? 'expired' as const : 'pending' as const }));
+}
+
+/** Nowy link w miejsce nieprzyjętego (oczekującego albo wygasłego): ta sama rola, stary cofnięty. */
+export async function renewInvite(actorId: number, projectId: number, id: number) {
+  const [old] = await db.update(projectInvites).set({ revokedAt: new Date() })
+    .where(and(eq(projectInvites.id, id), eq(projectInvites.projectId, projectId), eq(projectInvites.kind, 'invite'), isNull(projectInvites.usedAt), isNull(projectInvites.revokedAt)))
+    .returning();
+  if (!old) throw new RuleError('Invite not found', 'not_found');
+  return createInvite(actorId, projectId, old.role);
 }
 
 export async function revokeInvite(projectId: number, id: number) {
@@ -58,8 +80,10 @@ export async function consumeInvite(token: string, userId: number, exec: Exec = 
 
 /** Jednorazowy link do zmiany hasła (24 h), tworzy admin globalny. */
 export async function createResetLink(actorId: number, userId: number) {
-  const [u] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId));
+  const [u] = await db.select({ id: users.id, passwordHash: users.passwordHash }).from(users).where(eq(users.id, userId));
   if (!u) throw new RuleError('Account not found', 'not_found');
+  // Reset ma sens tylko dla konta z hasłem; konto z GitHubem albo Google loguje się bez niego.
+  if (!u.passwordHash) throw new RuleError('This account has no password to reset', 'invalid');
   const token = randomBytes(24).toString('base64url');
   const expiresAt = new Date(Date.now() + RESET_HOURS * 36e5);
   await db.insert(projectInvites).values({ kind: 'password_reset', tokenHash: hashToken(token), userId, createdBy: actorId, expiresAt });
