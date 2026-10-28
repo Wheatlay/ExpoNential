@@ -6,3 +6,4 @@ Mała etykieta stanu na karcie i w nagłówkach (22 px, `radius-full`, `text-sm`
 - Zawsze słowo lub liczba w środku; sama ikona tylko z `.icon-only` i `title`.
 - Neutralna `.pill` „Team queue” na pasku analizy zgłoszenia: widoczna tylko, gdy projekt ma włączoną kolejkę zespołu (domyślnie wyłączona), z wyjaśnieniem w `title`.
 - `.pill.stalled` „Update needed” z `role="button"` na pasku analizy, gdy mój PC ma stare skrypty; klik prowadzi do Ustawień > Claude Code. Analyze, Deep i Start on my PC są wtedy wyszarzone z powodem (serwer i tak nie wyda pracy starym skryptom).
+- Stan dostępu (Ustawienia: konta, zaproszenia), zatwierdzone 28.10.2026: `.ok` (success) gotowe, np. „Przyjęte” albo metoda logowania „GitHub” / „Google” / „Hasło”; `.waiting` (info) czeka na drugą stronę, np. „Oczekuje”, „Jeszcze się nie logował(a)”; `.ended` (`text-tertiary`, bez tła) zakończone bez skutku, np. „Wygasło”. Szczegóły (kto, kiedy) w `.hint` pod pigułką, nie w niej.

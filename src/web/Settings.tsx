@@ -474,7 +474,7 @@ function ProjectPeople() {
         return (
           <div key={u.id} className="s-row" style={u.active ? undefined : { opacity: 0.5 }}>
             <Avatar user={u} size={22} />
-            <span className="grow">{u.name} <span className="hint">@{u.login}</span></span>
+            <span className="grow">{u.name} {u.id === me?.id && <span className="badge me">{t('You')}</span>} <span className="hint">@{u.login}</span></span>
             <Tooltip text={ro ?? (lastAdmin ? t('A project needs at least one admin') : null)}>
               <div className="seg">
                 {(['member', 'admin'] as const).map((r) => (
@@ -518,14 +518,15 @@ function InviteLinks() {
   if (!c) return null;
   const refresh = () => void qc.invalidateQueries({ queryKey: ['invites', key] });
   const renew = (id: number) => void api<{ url: string }>(`/api/projects/${key}/invites/${id}/renew`, { method: 'POST' }).then((r) => { setLink(r.url); refresh(); });
+  const statusPill = { accepted: ['ok', t('Accepted')], pending: ['waiting', t('Pending')], expired: ['ended', t('Expired')] } as const;
   const statusText = (i: InviteRow) => i.status === 'accepted'
-    ? t('accepted by {name}, {date}', { name: i.usedByName ?? '', date: plDate(i.usedAt!) })
-    : i.status === 'expired' ? t('expired {date}', { date: plDate(i.expiresAt) })
+    ? t('{name}, {date}', { name: i.usedByName ?? '', date: plDate(i.usedAt!) })
+    : i.status === 'expired' ? t('by {name}, expired {date}', { name: i.createdByName ?? '', date: plDate(i.expiresAt) })
     : t('by {name}, expires {date}', { name: i.createdByName ?? '', date: plDate(i.expiresAt) });
   return (
     <div className="s-card" id="invites" style={{ marginTop: 12 }}>
-      <div className="s-row">
-        <span className="grow">{t('Invite link')}
+      <div className="s-row s-row-head">
+        <span className="grow"><b>{t('Invite link')}</b>
           <div className="hint">{t('One-time link, valid for 7 days. Whoever opens it creates an account and joins this project.')}</div>
         </span>
         <Tooltip text={ro}>
@@ -550,13 +551,16 @@ function InviteLinks() {
       )}
       {(invites.data ?? []).map((i) => (
         <div key={i.id} className="s-row">
-          <span className="grow">{i.role === 'admin' ? t('Admin') : t('Member')} <span className="hint">{statusText(i)}</span></span>
-          {i.status !== 'accepted' && (
-            <Tooltip text={t('Creates a new link with the same role; the old one stops working')}>
-              <button className="btn sm" onClick={() => renew(i.id)}>{t('New link')}</button>
-            </Tooltip>
-          )}
-          {i.status === 'pending' && <button className="btn sm danger" onClick={() => void api(`/api/projects/${key}/invites/${i.id}`, { method: 'DELETE' }).then(refresh)}>{t('Revoke')}</button>}
+          <span className="grow">{i.role === 'admin' ? t('Admin') : t('Member')} <span className={`pill ${statusPill[i.status][0]}`}>{statusPill[i.status][1]}</span>
+            <div className="hint">{statusText(i)}</div>
+          </span>
+          {/* Przyciski zawsze w tym samym miejscu, wyszarzone, gdy nie mają sensu (przyjęte, wygasłe). */}
+          <Tooltip text={i.status === 'accepted' ? t('Already accepted') : t('Creates a new link with the same role; the old one stops working')}>
+            <button className="btn sm" disabled={i.status === 'accepted'} onClick={() => renew(i.id)}>{t('New link')}</button>
+          </Tooltip>
+          <Tooltip text={i.status === 'pending' ? null : i.status === 'accepted' ? t('Already accepted') : t('Already expired')}>
+            <button className="btn sm danger" disabled={i.status !== 'pending'} onClick={() => void api(`/api/projects/${key}/invites/${i.id}`, { method: 'DELETE' }).then(refresh)}>{t('Revoke')}</button>
+          </Tooltip>
         </div>
       ))}
     </div>
@@ -705,16 +709,19 @@ function Accounts() {
 
   return (
     <div className="s-card">
-      <div className="s-row">
+      <div className="s-row s-row-head">
         <input className="input grow" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} placeholder={t('GitHub login or e-mail to allow')} value={login} onChange={(e) => setLogin(e.target.value)} />
         <button className="btn" disabled={demo || !login.trim()} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void saveUser({ login: login.trim() }).then(() => setLogin(''))}><Icon.plus size={13} /> {t('Allow')}</button>
       </div>
       {accounts.data?.map((u) => (
         <div key={u.id} className="s-row" style={u.active ? undefined : { opacity: 0.5 }}>
           <Avatar user={u} size={22} />
-          <span className="grow">{u.name} <span className="hint">{
-            [u.hasGithub && 'GitHub', u.hasGoogle && 'Google', u.hasPassword && t('password')].filter(Boolean).join(' · ') || t('not logged in yet')
-          }</span></span>
+          <span className="grow">{u.name} {u.id === me?.id && <span className="badge me">{t('You')}</span>}
+            <div className="s-meta">
+              {[u.hasGithub && 'GitHub', u.hasGoogle && 'Google', u.hasPassword && t('Password')].filter(Boolean).map((m) => <span key={m as string} className="pill ok">{m}</span>)}
+              {!u.hasGithub && !u.hasGoogle && !u.hasPassword && <span className="pill waiting">{t('Not logged in yet')}</span>}
+            </div>
+          </span>
           {/* Login GitHub jest edytowalny, żeby poprawić mapowanie z importu bez dublowania osoby. */}
           <input className="input" style={{ width: 150 }} defaultValue={u.login} disabled={demo} title={demo ? t('Disabled in the demo') : t('GitHub login')}
             onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== u.login && void saveUser({ id: u.id, login: e.target.value.trim() })} />
@@ -723,11 +730,10 @@ function Accounts() {
               <input type="checkbox" checked={u.isAdmin} disabled={demo || u.id === me?.id} onChange={(e) => void saveUser({ id: u.id, login: u.login, isAdmin: e.target.checked })} /> {t('Admin')}
             </label>
           </Tooltip>
-          {u.hasPassword && (
-            <Tooltip text={demo ? t('Disabled in the demo') : t('Creates a one-time link (24 h) to set a new password and copies it')}>
-              <button className="btn sm" disabled={demo} onClick={() => void api<{ url: string }>(`/api/admin/users/${u.id}/reset-link`, { method: 'POST' }).then((r) => copyText(r.url, t('Password link copied')))}>{t('Reset password')}</button>
-            </Tooltip>
-          )}
+          {/* Zawsze w tym samym miejscu (wyszarzony bez hasła), żeby wiersze się nie rozjeżdżały. */}
+          <Tooltip text={demo ? t('Disabled in the demo') : u.hasPassword ? t('Creates a one-time link (24 h) to set a new password and copies it') : t('This account logs in without a password')}>
+            <button className="btn sm" disabled={demo || !u.hasPassword} onClick={() => void api<{ url: string }>(`/api/admin/users/${u.id}/reset-link`, { method: 'POST' }).then((r) => copyText(r.url, t('Password link copied')))}>{t('Reset password')}</button>
+          </Tooltip>
           <Tooltip text={demo ? t('Disabled in the demo') : u.id === me?.id ? t('You cannot deactivate yourself') : null}>
             <button className="btn sm" disabled={demo || u.id === me?.id} onClick={() => void saveUser({ id: u.id, login: u.login, active: !u.active })}>{u.active ? t('Deactivate') : t('Activate')}</button>
           </Tooltip>

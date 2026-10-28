@@ -215,6 +215,10 @@ code, pre { font-family: 'Berkeley Mono', 'SFMono-Regular', Consolas, monospace;
 .pill.ai.done { border-color: var(--border-secondary); color: var(--text-tertiary); background: none; }
 .pill.stalled { border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning-text); }
 .pill.notes-missing { border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning-text); }
+/* Stan dostępu (konta, zaproszenia): gotowe / czeka / zakończone. */
+.pill.ok { border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); background: color-mix(in srgb, var(--success) 10%, transparent); }
+.pill.waiting { border-color: color-mix(in srgb, var(--info) 45%, transparent); color: var(--info-text); background: color-mix(in srgb, var(--info) 10%, transparent); }
+.pill.ended { color: var(--text-tertiary); }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
 /* ---------- avatary, ikony ---------- */
@@ -331,6 +335,7 @@ textarea.md-edit {
 .badge { font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.04em; padding: 2px 6px; border-radius: var(--radius-sm); }
 .badge.ai { background: color-mix(in srgb, var(--ai) 18%, transparent); color: var(--ai-text); }
 .badge.human { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success-text); }
+.badge.me { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-text); }
 .badge.tech { background: color-mix(in srgb, var(--tech) 18%, transparent); color: var(--tech-text); }
 .badge.req { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning-text); }
 .hint { color: var(--text-tertiary); font-size: var(--text-sm); }
@@ -416,7 +421,11 @@ textarea.md-edit {
 .settings-lead { margin: -6px 0 14px; }
 .s-label { width: 140px; flex-shrink: 0; }
 .s-hint { flex-basis: 100%; }
-.s-row-head { min-height: 40px; }
+/* Nagłówek karty ustawień: inne tło niż wiersze, żeby nie wyglądał jak kolejna pozycja listy. */
+.s-row-head { min-height: 40px; background: var(--bg-tertiary); }
+/* Druga linia wiersza ustawień: pigułki stanu tuż pod nazwą. */
+.s-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.s-row-head:first-child { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
 .step-dot { width: 20px; height: 20px; border-radius: var(--radius-full); display: inline-grid; place-items: center; flex-shrink: 0;
   font-size: var(--text-xs); font-weight: 600; background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-secondary); }
 .step-dot.done { background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success-text); border-color: transparent; }
