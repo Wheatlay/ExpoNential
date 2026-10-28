@@ -686,7 +686,7 @@ function FoldBar({ id, tour, badge, name, preview, meta, required, tools, childr
         <span className="fold-name">{name}</span>
         <span className="fold-preview">{open ? '' : preview}</span>
         {required && <span className="badge req" title={t('Expected before Done (not enforced)')}>{t('Missing')}</span>}
-        {meta && <span className="hint">{meta}</span>}
+        {meta && <span className="hint fold-meta">{meta}</span>}
         {tools}
       </div>
       {open && <div className="fold-body">{children}</div>}

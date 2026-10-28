@@ -661,6 +661,7 @@ textarea.md-edit {
 .fold-caret { color: var(--text-tertiary); display: inline-flex; transform: rotate(-90deg); transition: transform 0.15s; }
 .fold.open .fold-caret { transform: none; }
 .fold-name { font-weight: 500; white-space: nowrap; }
+.fold-meta { white-space: nowrap; }
 .fold-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); }
 .fold-body { padding: 10px 12px 12px; background: var(--bg-secondary); animation: fade-in 0.15s ease-out both; }
 .fold-body .panel { border: 0; padding: 4px 6px; background: none; }
