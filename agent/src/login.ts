@@ -24,8 +24,8 @@ export async function cmdLogin(args: string[]) {
   const dev = await oauthPost(url, '/oauth/device_authorization', { client_id: clientId });
   if (!dev.device_code) throw new Error(`device authorization failed: ${dev.error || 'no device_code'}`);
   console.log(`Your code: ${dev.user_code}`);
-  console.log(`Approve in the browser: ${dev.verification_uri_complete || dev.verification_uri}`);
-  openUrl(dev.verification_uri_complete || dev.verification_uri);
+  console.log(`Type this code in the browser: ${dev.verification_uri}`);
+  openUrl(dev.verification_uri);
 
   let interval = Number(dev.interval) || 5;
   const deadline = Date.now() + (Number(dev.expires_in) || 600) * 1000;

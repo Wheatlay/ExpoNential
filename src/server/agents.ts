@@ -30,7 +30,7 @@ export function agentScriptsVersion() {
 }
 
 /** Najstarszy agent z agent/ (exponential-agent.exe, wersja semver), który jeszcze dostaje pracę. */
-export const MIN_EXE_AGENT = '0.1.2';
+export const MIN_EXE_AGENT = '0.1.3';
 const semver = (v: string) => /^(\d+)\.(\d+)\.(\d+)$/.exec(v)?.slice(1).map(Number);
 /** Aktualny agent: skrypty PS w wersji z serwera albo agent .exe nie starszy niż MIN_EXE_AGENT. */
 export function agentUpToDate(version: string | null | undefined) {
@@ -54,7 +54,7 @@ export async function requireOwnAgent(user: User, deviceId: string) {
  * Przejęcie zlecenia analizy przed uruchomieniem. Jeden UPDATE z warunkami w WHERE daje wyłączność:
  * z dwóch równoczesnych wywołań wygra jedno, drugie dostaje 409. To samo urządzenie może przejąć ponownie (idempotentnie).
  */
-export async function claimAnalysis(p: Project, user: User & { name: string }, number: number, deviceId: string, version?: string) {
+export async function claimAnalysis(p: Project, user: User & { name: string }, number: number, deviceId: string, version?: string, ownOnly = false) {
   // Kliknięcie w przeglądarce może odpalić handler, zanim agent w tle zdąży się pierwszy raz zgłosić: wtedy rejestrujemy
   // urządzenie tutaj (należy do właściciela tokenu), zamiast wywracać analizę na "Unknown device".
   await db.insert(agents).values({ id: deviceId, userId: user.id }).onConflictDoNothing();
@@ -80,7 +80,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
       dsql`${issues.analysisRequestedAt} is not null`,
       isNull(issues.analysisFailedAt),
       dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}) or ${issues.analysisClaimedDevice} = ${deviceId})`,
-      dsql`(${issues.analysisRequestedBy} = ${user.id} or (${p.agentTeamQueue}::boolean and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
+      dsql`(${issues.analysisRequestedBy} = ${user.id} or (${p.agentTeamQueue && !ownOnly}::boolean and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
     ))
     .returning({ deep: issues.analysisDeep });
   if (!rows.length) throw new RuleError('Already taken or no longer requested', 'conflict');
@@ -141,7 +141,8 @@ const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && lastSeenAt.getTime
  * Gdy agent jest zajęty, odświeżamy claim jego analizy: długi przebieg Deep nie wraca do kolejki ani nie wygląda na zawieszony.
  */
 export type RepoReport = { path?: string; source?: string; status?: string; error?: string | null };
-type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string };
+/** ownOnly: agent z Codexem. Codex czyta cały dysk, więc nie dostaje zleceń innych osób z kolejki zespołu (prompt injection). */
+type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean };
 
 export async function heartbeat(user: User, deviceId: string, info: HeartbeatInfo) {
   const [existing] = await db.select({ userId: agents.userId }).from(agents).where(eq(agents.id, deviceId));
@@ -230,7 +231,7 @@ export async function removeAgentRepo(user: User, deviceId: string, projectKey: 
 export type AgentJob = { kind: 'analyze'; key: string; deep: boolean } | { kind: 'start'; id: number; key: string };
 
 /** Co ten agent może teraz wziąć: moje zlecenia (i kolejka zespołu w projektach z włączonym przełącznikiem) oraz zlecenia Start. */
-export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string }): Promise<AgentJob[]> {
+export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string; ownOnly?: boolean }): Promise<AgentJob[]> {
   // Stara wersja skryptów: nic nie dostaje (Ustawienia i pasek analizy pokazują "Update needed").
   if (agent.busy || !agentUpToDate(agent.version)) return [];
   const jobs: AgentJob[] = [];
@@ -243,7 +244,7 @@ export async function pendingWork(user: User, agent: { id?: string; busy: boolea
         isNull(issues.analysisFailedAt),
         dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}))`,
         dsql`(${projects.agentsMayClone} or exists (select 1 from agent_repos r where r.agent_id = ${agent.id ?? ''} and r.project_id = ${projects.id} and r.status = 'ok'))`,
-        dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
+        dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and ${!agent.ownOnly}::boolean and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
       ))
       .orderBy(asc(issues.analysisRequestedAt)).limit(5);
     for (const r of rows) jobs.push({ kind: 'analyze', key: identifier(r.key, r.number), deep: r.deep });
@@ -267,7 +268,7 @@ export async function waitForWork(user: User, deviceId: string, info: HeartbeatI
   const agent = await heartbeat(user, deviceId, info);
   const until = Date.now() + 25_000;
   for (;;) {
-    const jobs = await pendingWork(user, agent);
+    const jobs = await pendingWork(user, { ...agent, ownOnly: info.ownOnly });
     if (jobs.length || signal.aborted || Date.now() >= until) return { jobs, ...(await repoState(user, deviceId)) };
     await sleep(2000, signal);
   }

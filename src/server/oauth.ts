@@ -19,7 +19,8 @@ const DEVICE_MS = 900e3;
 const DEVICE_INTERVAL_MS = 5000;
 const USER_CODE_ALPHABET = 'BCDFGHJKLMNPQRSTVWXZ'; // bez samogłosek i podobnych znaków
 const LOOPBACK = ['127.0.0.1', 'localhost', '[::1]'];
-const BAD_SCHEMES = ['javascript:', 'data:', 'file:', 'vbscript:', 'blob:', 'about:', 'ftp:', 'ws:', 'wss:'];
+/** Własne schematy znanych klientów MCP. Inne (ms-msdt:, search-ms:...) potrafią uruchomić programy w systemie. */
+const APP_SCHEMES = ['cursor:', 'vscode:', 'vscode-insiders:', 'claude:'];
 
 type Body = Record<string, string | undefined>;
 const bodyOf = (req: FastifyRequest): Body => {
@@ -29,15 +30,28 @@ const bodyOf = (req: FastifyRequest): Body => {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** https, loopback po http (dowolny port) albo własny schemat aplikacji (cursor://, vscode://...). */
+/** https, loopback po http (dowolny port) albo schemat znanej aplikacji (cursor://, vscode://...). */
 function validRedirect(raw: string): boolean {
   let u: URL;
   try { u = new URL(raw); } catch { return false; }
   if (u.hash || raw.length > 500) return false;
   if (u.protocol === 'https:') return true;
   if (u.protocol === 'http:') return LOOPBACK.includes(u.hostname);
-  return !BAD_SCHEMES.includes(u.protocol);
+  return APP_SCHEMES.includes(u.protocol);
 }
+
+/** Dokąd wróci zgoda, tak jak zobaczy to człowiek: "this computer" dla loopback, inaczej host albo schemat. */
+function returnsTo(raw: string) {
+  try {
+    const u = new URL(raw);
+    if (u.protocol === 'http:' && LOOPBACK.includes(u.hostname)) return 'an app on this computer';
+    return u.protocol === 'https:' ? u.host : u.protocol.replace(':', '') + ' app';
+  } catch { return raw; }
+}
+
+/** Nazwę podaje sam klient przy rejestracji, więc ekran zgody mówi wprost, skąd wróci i od kiedy klient istnieje. */
+const clientFacts = (name: string, createdAt: Date, redirect?: string) =>
+  `<p class="note">The name “${esc(name)}” is given by the app itself and is not verified.${redirect ? ` Access goes to <b>${esc(returnsTo(redirect))}</b>.` : ''} App registered ${createdAt.toISOString().slice(0, 16).replace('T', ' ')} UTC.</p>`;
 
 /** Zgodność redirect_uri: dokładna, a dla loopback pomijamy port (RFC 8252). */
 function redirectMatches(registered: string[], given: string): boolean {
@@ -93,7 +107,7 @@ const oerr = (reply: FastifyReply, error: string, description?: string, code = 4
 
 const PAGE_CSS = `body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f5f4;color:#1c1917;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
 .card{background:#fff;border:1px solid #e7e5e4;border-radius:12px;padding:28px;max-width:420px;width:calc(100% - 32px);box-sizing:border-box}
-h1{font-size:18px;margin:0 0 8px}p{margin:0 0 16px;color:#57534e}.row{display:flex;gap:8px}
+h1{font-size:18px;margin:0 0 8px}p{margin:0 0 16px;color:#57534e}p.note{font-size:13px;padding:10px 12px;border-radius:8px;background:#fef3c7;color:#78350f}.row{display:flex;gap:8px}
 button{flex:1;font:inherit;padding:9px 14px;border-radius:8px;border:1px solid #d6d3d1;background:#fff;color:#1c1917;cursor:pointer}
 button.p{background:#1c1917;color:#fff;border-color:#1c1917}input[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:9px 12px;border:1px solid #d6d3d1;border-radius:8px;margin-bottom:12px;letter-spacing:2px;text-transform:uppercase}
 @media(prefers-color-scheme:dark){body{background:#1c1917;color:#f5f5f4}.card{background:#292524;border-color:#44403c}p{color:#a8a29e}button{background:#292524;border-color:#57534e;color:#f5f5f4}button.p{background:#f5f5f4;color:#1c1917;border-color:#f5f5f4}input[type=text]{background:#1c1917;border-color:#57534e;color:#f5f5f4}}`;
@@ -180,14 +194,15 @@ export async function registerOAuth(app: FastifyInstance) {
       const q = req.query as Body;
       const client = await clientById(q.client_id);
       if (!client || !q.redirect_uri || !redirectMatches(client.redirectUris, q.redirect_uri)) return errorPage(reply, 'Unknown client or redirect address.');
-      const fail = (error: string) => reply.redirect(backTo(q.redirect_uri!, { error, state: q.state }));
-      if (q.response_type !== 'code') return fail('unsupported_response_type');
-      if (q.code_challenge_method !== 'S256' || !/^[A-Za-z0-9_-]{43}$/.test(q.code_challenge ?? '')) return fail('invalid_request');
+      // Błędne żądanie kończy się stroną błędu, nie przekierowaniem: inaczej każdy zarejestrowany klient robi z nas otwarte przekierowanie.
+      if (q.response_type !== 'code') return errorPage(reply, 'This app sent an unsupported request (response_type).');
+      if (q.code_challenge_method !== 'S256' || !/^[A-Za-z0-9_-]{43}$/.test(q.code_challenge ?? '')) return errorPage(reply, 'This app sent an invalid request (PKCE).');
       if (!req.user) return toLogin(req, reply);
       reply.clearCookie('oauth_return', { path: '/' });
       const csrf = newCsrf(reply);
       return page(reply, 'Authorize', `<h1>${esc(client.name)} wants access to Exponential</h1>
 <p>It will act as <b>${esc(req.user.name)}</b> and can read and change issues you can access.</p>
+${clientFacts(client.name, client.createdAt, q.redirect_uri)}
 <form method="post" action="/oauth/authorize">${hidden({ csrf, client_id: client.id, redirect_uri: q.redirect_uri, code_challenge: q.code_challenge!, state: q.state ?? '', scope: (q.scope ?? '').slice(0, 200) })}
 <div class="row"><button name="decision" value="deny">Deny</button><button class="p" name="decision" value="allow">Allow</button></div></form>`);
     });
@@ -285,18 +300,21 @@ export async function registerOAuth(app: FastifyInstance) {
     o.get('/oauth/device', async (req, reply) => {
       if (!req.user) return toLogin(req, reply);
       reply.clearCookie('oauth_return', { path: '/' });
-      const raw = (req.query as Body).code;
-      const code = raw ? normCode(raw.slice(0, 20)) : '';
-      const entry = (note = '') => page(reply, 'Connect a device', `<h1>Connect a device</h1><p>${note || 'Enter the code shown in your tool.'}</p>
-<form method="get" action="/oauth/device"><input type="text" name="code" value="${esc(code)}" placeholder="ABCD-EFGH" autocomplete="off" autofocus><div class="row"><button class="p">Continue</button></div></form>`);
+      const q = req.query as Body;
+      // Kod liczy się tylko przepisany ręcznie (typed=1 z formularza). Link z gotowym ?code= wysłany przez kogoś obcego
+      // nie może prowadzić prosto do "Allow": człowiek musi przepisać kod, który widzi we własnym narzędziu.
+      const code = q.code && q.typed === '1' ? normCode(q.code.slice(0, 20)) : '';
+      const entry = (note = '') => page(reply, 'Connect a device', `<h1>Connect a device</h1><p>${note || 'Type the code shown in your own tool. If someone sent you a link or a code, do not continue.'}</p>
+<form method="get" action="/oauth/device"><input type="hidden" name="typed" value="1"><input type="text" name="code" value="" placeholder="ABCD-EFGH" autocomplete="off" autofocus><div class="row"><button class="p">Continue</button></div></form>`);
       if (!code) return entry();
-      const [d] = await db.select({ clientName: oauthClients.name, approvedAt: oauthDeviceCodes.approvedAt })
+      const [d] = await db.select({ clientName: oauthClients.name, clientAt: oauthClients.createdAt, approvedAt: oauthDeviceCodes.approvedAt })
         .from(oauthDeviceCodes).innerJoin(oauthClients, eq(oauthClients.id, oauthDeviceCodes.clientId))
         .where(and(eq(oauthDeviceCodes.userCode, code), gt(oauthDeviceCodes.expiresAt, new Date())));
       if (!d || d.approvedAt) return entry('This code is not valid or has expired. Check it and try again.');
       const csrf = newCsrf(reply);
       return page(reply, 'Connect a device', `<h1>${esc(d.clientName)} wants access to Exponential</h1>
 <p>It will act as <b>${esc(req.user.name)}</b>. Only continue if you started this on your own device.</p>
+${clientFacts(d.clientName, d.clientAt)}
 <form method="post" action="/oauth/device">${hidden({ csrf, code })}
 <div class="row"><button name="decision" value="deny">Deny</button><button class="p" name="decision" value="allow">Allow</button></div></form>`);
     });

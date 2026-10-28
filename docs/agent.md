@@ -30,7 +30,7 @@ Details: [agent/README.md](../agent/README.md).
 | MCP (Codex) | `codex mcp remove tracker` |
 | Plugin | `claude plugin uninstall tracker@tracker` |
 | Agent | `exponential-agent uninstall --yes`, then delete the exe |
-| Server-side access | `DELETE /api/connections/:id` (a list with Revoke in Settings is not built yet) |
+| Server-side access | Settings > Claude Code > Connected AI clients: Revoke |
 
 ## Legacy PowerShell installer
 

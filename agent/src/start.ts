@@ -70,7 +70,7 @@ async function analyze(a: Auth, job: { key: string; deep: boolean }, deviceId: s
   try {
     let claim: { deep: boolean; model?: string };
     try {
-      claim = await request(a, 'POST', `/api/issues/${key}/analyze/claim`, { deviceId, version: AGENT_VERSION });
+      claim = await request(a, 'POST', `/api/issues/${key}/analyze/claim`, { deviceId, version: AGENT_VERSION, engine: loadConfig().engine ?? 'claude' });
     } catch (e) {
       const s = e instanceof HttpError ? e.status : 0;
       if (s === 409) { log(`${key} taken or no longer requested, skipping`); return; }
@@ -152,7 +152,7 @@ export async function cmdStart() {
       if (!a) throw new Error('not logged in (run: exponential-agent login)');
       const busy = running || freshLocks();
       const qs = new URLSearchParams({
-        deviceId: cfg.deviceId, name: hostname(), busy: busy ? '1' : '0', version: cfg.version ?? AGENT_VERSION,
+        deviceId: cfg.deviceId, name: hostname(), busy: busy ? '1' : '0', version: cfg.version ?? AGENT_VERSION, engine: cfg.engine ?? 'claude',
         // Mapping with paths and sources ({KEY: {path, source}}), so the server can show and route by it.
         repos: JSON.stringify(Object.fromEntries(Object.entries(cfg.repos).map(([k, r]) => [k, { path: r.path, source: r.source }]))),
       });

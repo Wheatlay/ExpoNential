@@ -211,6 +211,19 @@ describe('pendingWork', () => {
     await setTeamQueue(false);
   });
 
+  it('a Codex agent (ownOnly) gets only its owner\'s requests, never the team queue, and cannot claim a teammate\'s', async () => {
+    await clearAll();
+    const n = await newIssue();
+    await svc.requestAnalysis(P, alice, n);
+    const id = `AGT-${n}`;
+    await setTeamQueue(true);
+    expect(keys(await ag.pendingWork(bob, { ...(await agentOf(DEV_B1)), ownOnly: true }))).not.toContain(id);
+    expect(keys(await ag.pendingWork(alice, { ...(await agentOf(DEV_A1)), ownOnly: true }))).toContain(id);
+    await expect(ag.claimAnalysis(P, bob, n, DEV_B1, undefined, true)).rejects.toThrow();
+    expect((await ag.claimAnalysis(P, bob, n, DEV_B1)).ok).toBe(true);
+    await setTeamQueue(false);
+  });
+
   it('never lists an issue from a project the user is not a member of', async () => {
     await clearAll();
     const n = await newIssue();

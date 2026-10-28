@@ -125,7 +125,7 @@ export async function registerApi(app: FastifyInstance) {
     // Agent na PC (tracker-agent.ps1): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
     r.get<{ Querystring: Record<string, string> }>('/api/agent/work', async (req) => {
       const q = z.object({
-        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(300).default(''),
+        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(300).default(''), engine: z.enum(['claude', 'codex']).optional(),
       }).parse(req.query);
       // Zamknięte połączenie przerywa czekanie, żeby pętla nie trzymała zapytań do bazy po odejściu agenta.
       const ac = new AbortController();
@@ -136,7 +136,7 @@ export async function registerApi(app: FastifyInstance) {
         try { repos = z.record(z.string(), z.union([z.string(), z.object({ path: z.string().optional(), source: z.string().optional(), status: z.string().optional(), error: z.string().nullable().optional() })])).parse(JSON.parse(q.repos)); } catch { repos = {}; }
         repoKeys = Object.keys(repos);
       } else repoKeys = q.repos.split(',').filter(Boolean);
-      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error }, ac.signal);
+      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error, ownOnly: q.engine === 'codex' }, ac.signal);
     });
     r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
       const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);
@@ -316,8 +316,8 @@ export async function registerApi(app: FastifyInstance) {
     const deviceBody = z.object({ deviceId: z.string().uuid() });
     r.post<{ Params: { id: string } }>('/api/issues/:id/analyze/claim', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
-      const b = deviceBody.extend({ version: z.string().max(40).optional() }).parse(req.body);
-      return ag.claimAnalysis(p, req.user!, number, b.deviceId, b.version);
+      const b = deviceBody.extend({ version: z.string().max(40).optional(), engine: z.enum(['claude', 'codex']).optional() }).parse(req.body);
+      return ag.claimAnalysis(p, req.user!, number, b.deviceId, b.version, b.engine === 'codex');
     });
     r.delete<{ Params: { id: string } }>('/api/issues/:id/analyze/claim', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);

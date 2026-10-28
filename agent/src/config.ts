@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export const AGENT_VERSION = '0.1.2';
+export const AGENT_VERSION = '0.1.3';
 
 export type RepoEntry = { path: string; source: 'manual' | 'clone' | 'hook' };
 export type Config = {

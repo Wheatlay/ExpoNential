@@ -85,6 +85,8 @@ describe('discovery and registration', () => {
   it('rejects http non-loopback and dangerous schemes, accepts loopback, https and app schemes', async () => {
     expect((await register(['http://example.com/cb'])).statusCode).toBe(400);
     expect((await register(['javascript:alert(1)'])).statusCode).toBe(400);
+    expect((await register(['ms-msdt:/id PCWDiagnostic'])).statusCode).toBe(400);
+    expect((await register(['search-ms:query=x'])).statusCode).toBe(400);
     expect((await register([])).statusCode).toBe(400);
     expect((await register(['http://localhost:3000/cb', 'https://example.com/cb', 'cursor://anysphere.cursor-mcp/oauth/callback'])).statusCode).toBe(201);
   });
@@ -106,6 +108,18 @@ describe('authorization code + PKCE', () => {
     const cid = await newClient();
     const r = await app.inject({ method: 'GET', url: `/oauth/authorize?${form({ response_type: 'code', client_id: cid, redirect_uri: 'https://evil.example/cb', code_challenge: pkce().challenge, code_challenge_method: 'S256' })}`, headers: { cookie: sessionCookie } });
     expect(r.statusCode).toBe(400);
+  });
+  it('is not an open redirect: a bad request shows an error page, even for a registered https redirect', async () => {
+    const evil = (await register(['https://evil.example/cb'])).json().client_id as string;
+    const r = await app.inject({ method: 'GET', url: `/oauth/authorize?${form({ response_type: 'bad', client_id: evil, redirect_uri: 'https://evil.example/cb' })}` });
+    expect(r.statusCode).toBe(400);
+    expect(r.headers.location).toBeUndefined();
+  });
+  it('the consent page says the name is not verified and where access goes', async () => {
+    const cid = await newClient();
+    const r = await app.inject({ method: 'GET', url: `/oauth/authorize?${form({ response_type: 'code', client_id: cid, redirect_uri: REDIRECT, code_challenge: pkce().challenge, code_challenge_method: 'S256' })}`, headers: { cookie: sessionCookie } });
+    expect(r.body).toContain('is not verified');
+    expect(r.body).toContain('Access goes to');
   });
   it('happy path, single use, wrong verifier', async () => {
     const cid = await newClient();
@@ -210,7 +224,12 @@ describe('device flow', () => {
 
     const anon = await app.inject({ url: `/oauth/device?code=${d.user_code}` });
     expect(anon.statusCode).toBe(302);
-    const page = await app.inject({ url: `/oauth/device?code=${d.user_code}`, headers: { cookie: sessionCookie } });
+    // Link z gotowym kodem nie prowadzi do zgody: kod trzeba przepisać (typed=1 z formularza).
+    const linked = await app.inject({ url: `/oauth/device?code=${d.user_code}`, headers: { cookie: sessionCookie } });
+    expect(linked.body).not.toContain("Test client");
+    expect(linked.body).toContain("do not continue");
+    const page = await app.inject({ url: `/oauth/device?typed=1&code=${d.user_code}`, headers: { cookie: sessionCookie } });
+    expect(page.body).toContain("is not verified");
     expect(page.body).toContain('Test client');
     const csrf = /name="csrf" value="([^"]+)"/.exec(page.body)![1];
     const ok = await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, cookie: `${sessionCookie}; oauth_csrf=${csrf}` }, payload: form({ csrf, code: d.user_code, decision: 'allow' }) });
