@@ -4,7 +4,7 @@ import {
   activity, comments, issueCommits, issueLabels, issueViews, issues, labels, projectMembers, projects, sprints, statuses, users,
   type ActivityPayload,
 } from '../db/schema.ts';
-import { RuleError, identifier, isNeedInfo, PRIORITIES } from './rules.ts';
+import { RuleError, identifier, isEmail, isNeedInfo, PRIORITIES } from './rules.ts';
 import { relationsOf } from './relations.ts';
 import { listAllProjects, seedProjectStatuses, type Project } from './projects.ts';
 import { TYPE_LABEL_COLORS, TYPE_LABEL_NAMES, chosenText, fromInput, parseData, render, type AnalysisData, type AnalysisInput } from './analysis.ts';
@@ -590,9 +590,12 @@ export async function saveUser(p: Project | null, input: { id?: number; login: s
     const { id, ...rest } = input;
     await db.update(users).set(rest).where(eq(users.id, id));
   } else {
-    const [dup] = await db.select({ id: users.id }).from(users).where(dsql`lower(${users.login}) = lower(${input.login})`);
+    const byEmail = isEmail(input.login);
+    const [dup] = await db.select({ id: users.id }).from(users).where(byEmail
+      ? dsql`lower(${users.email}) = lower(${input.login}) or lower(${users.login}) = lower(${input.login})`
+      : dsql`lower(${users.login}) = lower(${input.login})`);
     if (dup) throw new RuleError(`${input.login} already has an account`, 'invalid');
-    const [u] = await db.insert(users).values({ login: input.login, name: input.name || input.login, isAdmin: !!input.isAdmin }).returning();
+    const [u] = await db.insert(users).values({ login: input.login, name: input.name || input.login, isAdmin: !!input.isAdmin, ...(byEmail ? { email: input.login } : {}) }).returning();
     if (p) await db.insert(projectMembers).values({ projectId: p.id, userId: u.id, role: 'member' }).onConflictDoNothing();
   }
   await publish({ type: 'meta', projectKey: p?.key });

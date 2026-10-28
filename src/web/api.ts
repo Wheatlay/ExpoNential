@@ -10,8 +10,8 @@ export type Status = { id: number; name: string; type: StatusType; color: string
 export type Label = { id: number; name: string; color: string };
 export type User = { id: number; login: string; name: string; avatarUrl: string | null; isAdmin: boolean; active: boolean; role?: 'admin' | 'member' };
 export type ProjectSummary = { id: number; key: string; name: string; color: string; role: 'admin' | 'member'; memberCount: number; githubRepo: string; askedMe: number };
-export type Me = { id: number; name: string; login: string; isAdmin: boolean; localAgentAt: string | null; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean };
-export type AppConfig = { demo: boolean; repoUrl: string | null };
+export type Me = { id: number; name: string; login: string; isAdmin: boolean; hasPassword: boolean; localAgentAt: string | null; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean };
+export type AppConfig = { demo: boolean; repoUrl: string | null; providers: { github: boolean; google: boolean } };
 export type Meta = { statuses: Status[]; labels: Label[]; users: User[]; priorities: string[] };
 export type Sprint = { id: number; name: string; startsAt: string; endsAt: string; status: 'planned' | 'active' | 'ended' | 'reviewed'; reviewNotes: string };
 

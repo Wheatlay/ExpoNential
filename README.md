@@ -71,6 +71,8 @@ npm run dev:web                        # UI on :5173, proxied to the API
 
 Log in without GitHub: start the API with `DEV_LOGIN=1` and open `http://localhost:5173/auth/dev?login=you` (ignored when `NODE_ENV=production`).
 
+Sign-in methods: GitHub, Google, and e-mail + password. New people get in through a one-time project invite link (Settings › People › Invite link; valid 7 days) or are added by an admin by GitHub login or e-mail. A workspace admin can create a one-time password link for an account (Settings › Accounts › Password link).
+
 Demo mode: start the API with `DEMO_MODE=1`. Sample data for an empty database: `npx tsx scripts/seed-demo.ts`.
 
 ## Configuration
@@ -86,6 +88,8 @@ Copy `.env.example`. Only `DATABASE_URL` is needed to start; everything else ena
 | `DEV_LOGIN` | no | `1` enables `/auth/dev?login=...` for local development. |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | for login | GitHub OAuth App; callback `${BASE_URL}/auth/callback`. |
 | `ADMIN_LOGINS` | no | Comma-separated GitHub logins that become admins on first login. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | for Google login | Google OAuth client (OIDC, scopes `openid email profile`); redirect URI `${BASE_URL}/auth/google/callback`. Without `GOOGLE_CLIENT_ID` the Google routes and button are off. Only verified e-mails log in. |
+| `ADMIN_EMAILS` | no | Comma-separated Google e-mails that become admins on first login. |
 | `APP_TIMEZONE` | no | IANA time zone for meeting hours and default sprint review (default `UTC`). |
 | `APP_LOCALE` | no | Language of server-sent messages (Discord, push, reminders): `en` (default) or `pl`. |
 | `DEMO_MODE` | no | `1` runs the public demo: guest sessions, tour, simulated agent, hourly reset. |

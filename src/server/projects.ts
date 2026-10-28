@@ -1,7 +1,7 @@
 import { and, asc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { projectMembers, projects, statuses, users, type StatusType } from '../db/schema.ts';
-import { RuleError, isProjectKey } from './rules.ts';
+import { RuleError, isEmail, isProjectKey } from './rules.ts';
 
 export type Project = typeof projects.$inferSelect;
 export type ProjectUser = { id: number; isAdmin: boolean };
@@ -120,15 +120,17 @@ export async function listMembers(projectId: number) {
 }
 
 /**
- * Dodaje członka po loginie GitHub. Nowe konto (= prawo wejścia do trackera) zakłada tylko admin globalny;
+ * Dodaje członka po loginie GitHub albo e-mailu. Nowe konto (= prawo wejścia do trackera) zakłada tylko admin globalny;
  * admin projektu dodaje osoby, które już mają konto.
  */
 export async function addMember(actor: ProjectUser, projectId: number, login: string, role?: 'admin' | 'member') {
   const clean = login.trim().replace(/^@/, '');
   if (!clean) throw new RuleError('Login cannot be empty', 'invalid');
-  const [existing] = await db.select().from(users).where(dsql`lower(${users.login}) = lower(${clean})`);
+  // Wpis z "@x.y" to e-mail (konto Google / hasło), inaczej login GitHub.
+  const byEmail = isEmail(clean);
+  const [existing] = await db.select().from(users).where(byEmail ? dsql`lower(${users.email}) = lower(${clean})` : dsql`lower(${users.login}) = lower(${clean})`);
   if (!existing && !actor.isAdmin) throw new RuleError(`${clean} has no tracker account yet; a workspace admin has to allow them first`, 'forbidden');
-  const user = existing ?? (await db.insert(users).values({ login: clean, name: clean }).returning())[0];
+  const user = existing ?? (await db.insert(users).values(byEmail ? { login: clean, email: clean, name: clean } : { login: clean, name: clean }).returning())[0];
   const current = await membership(user.id, projectId);
   if (current && role === undefined) return user;
   if (current && current.role === 'admin' && role === 'member') {

@@ -20,7 +20,7 @@ import { DoneGuardHost } from './DoneGuard.tsx';
 import { ConfirmHost } from './Confirm.tsx';
 import { DeployStatus, RecentIssues } from './SidebarExtras.tsx';
 import { requestQuestionsScope } from './Board.tsx';
-import { Avatar, BrandMark, Icon } from './icons.tsx';
+import { Avatar, Icon } from './icons.tsx';
 import { linkProps, usePath } from './router.ts';
 import { onToast, toast } from './toast.ts';
 import { InlineCode } from './InlineCode.tsx';
@@ -31,6 +31,7 @@ import { Calendar } from './Calendar.tsx';
 import { MeetingHost } from './Meetings.tsx';
 import { MeetingBanner, NotifyPrompt } from './Notifications.tsx';
 import { t } from './i18n.ts';
+import { Invite, Login, Reset } from './AuthScreens.tsx';
 
 /** Tytuł karty przeglądarki: nazwa projektu przed nazwą aplikacji (kilka projektów w kartach = widać który). */
 let baseTitle = 'Exponential';
@@ -67,6 +68,10 @@ function App() {
 
   if (me.isLoading || config.isLoading) return null;
   if (path === '/about') return <About loggedIn={!!me.data} />;
+  const reset = /^\/reset\/([\w-]+)\/?$/.exec(path);
+  if (reset) return <Reset token={reset[1]} />;
+  const invite = /^\/invite\/([\w-]+)\/?$/.exec(path);
+  if (invite) return <Invite token={invite[1]} loggedIn={!!me.data} />;
   if (!me.data && demoMode && path !== '/login') return <Landing />;
   if (!me.data || path === '/login') return <Login />;
   if (projects.isLoading || wanted !== projectKey) return null;
@@ -189,7 +194,7 @@ function IssueCrumb({ number }: { number: number }) {
   return <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ident(number)} {issue && <span style={{ color: 'var(--text-secondary)' }}><InlineCode text={issue.title} /></span>}</span>;
 }
 
-/** Konto bez żadnego projektu: admin projektu musi dodać tę osobę w Settings › Project. */
+/** Konto bez żadnego projektu: admin projektu musi dodać tę osobę w Settings › People albo wysłać link zaproszenia. */
 function NoProjects() {
   const me = useMe().data;
   return (
@@ -197,33 +202,9 @@ function NoProjects() {
       <div className="login-card">
         <h1>{t('No projects yet')}</h1>
         <div className="hint" style={{ maxWidth: 360, textAlign: 'center' }}>
-          {t('You ({login}) are not a member of any project. Ask a project admin to add your GitHub login in Settings › Project.', { login: me?.login })}
+          {t('You ({login}) are not a member of any project. Ask a project admin to add you in Settings › People or to send you an invite link.', { login: me?.login })}
         </div>
         <button className="btn" onClick={() => void api('/auth/logout', { method: 'POST' }).then(() => location.assign('/login'))}>{t('Log out')}</button>
-      </div>
-    </div>
-  );
-}
-
-function Login() {
-  const demo = useConfig().data?.demo;
-  const err = new URLSearchParams(location.search).get('error');
-  const messages: Record<string, string> = {
-    not_allowed: t('Your GitHub account is not on the team list. Ask an admin to add your login.'),
-    state: t('Login expired, try again.'),
-    github: t('GitHub login failed, try again.'),
-  };
-  return (
-    <div className="login">
-      <div className="login-card">
-        <BrandMark size={44} />
-        <h1>{t('Log in to Exponential')}</h1>
-        {err && <div className="err">{messages[err] ?? t('Login failed')}</div>}
-        <a className="btn primary" href="/auth/login" style={{ height: 40, padding: '0 20px' }}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0a8 8 0 0 0-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.3.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.8-3.6 4 .3.3.6.8.6 1.5v2.2c0 .2.1.5.6.4A8 8 0 0 0 8 0z" /></svg>
-          {t('Continue with GitHub')}
-        </a>
-        {demo && <a className="btn" href="/auth/demo?tour=1" style={{ height: 40, padding: '0 20px' }}>{t('Try the live demo')}</a>}
       </div>
     </div>
   );

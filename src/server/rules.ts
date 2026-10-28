@@ -74,3 +74,8 @@ export function sortBetween(before: number | null, after: number | null): number
 
 /** Sekrety w adresach (webhook Coolify, link kalendarza) nie trafiają do logów. */
 export function maskUrl(url: string) { return url.replace(/([?&]secret=)[^&]*/i, '$1***').replace(/(\/calendar\/)[^/?]+/, '$1***'); }
+
+/** Wpis z "@x.y" traktujemy jako e-mail (allowlista po e-mailu), inaczej jako login GitHub. */
+export function isEmail(s: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}

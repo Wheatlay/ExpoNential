@@ -4,6 +4,8 @@ import { and, asc, desc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { apiTokens, issues, projects, userViews, users } from '../db/schema.ts';
 import { createApiToken, requireAdmin, requireUser } from './auth.ts';
+import * as inv from './invites.ts';
+import { hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
 import * as svc from './service.ts';
 import * as sp from './sprints.ts';
 import * as pr from './projects.ts';
@@ -75,16 +77,48 @@ export async function registerApi(app: FastifyInstance) {
     return reply.code(500).send({ error: 'Server error' });
   });
 
+  // Publiczne: dane ekranu zaproszenia i resetu hasła (tylko dla ważnych linków).
+  app.get<{ Params: { token: string } }>('/api/invites/:token', async (req) => {
+    const info = await inv.inviteInfo(req.params.token);
+    if (!info) throw new RuleError('This invite is no longer valid', 'not_found');
+    return { projectName: info.projectName, role: info.role };
+  });
+  app.get<{ Params: { token: string } }>('/api/reset/:token', async (req) => {
+    const info = await inv.resetInfo(req.params.token);
+    if (!info) throw new RuleError('This link is no longer valid', 'not_found');
+    return { name: info.name };
+  });
+
   app.register(async (r) => {
     r.addHook('preHandler', requireUser);
 
     r.get('/api/me', async (req) => {
-      const [u] = await db.select({ localAgentAt: users.localAgentAt }).from(users).where(eq(users.id, req.user!.id));
+      const [u] = await db.select({ localAgentAt: users.localAgentAt, passwordHash: users.passwordHash }).from(users).where(eq(users.id, req.user!.id));
       const mine = await ag.myAgents(req.user!);
       const lastSeen = mine.map((a) => a.lastSeenAt).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
-      return { ...req.user, localAgentAt: u?.localAgentAt ?? null, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
+      return { ...req.user, hasPassword: !!u?.passwordHash, localAgentAt: u?.localAgentAt ?? null, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
         // Stara wersja skryptów na którymś PC, albo instalacja sprzed agenta w tle (jest znacznik, nie ma żadnego komputera).
         agentOutdated: !!u?.localAgentAt && (!mine.length || mine.some((a) => a.outdated)), demo: process.env.DEMO_MODE === '1' };
+    });
+
+    // Zmiana własnego hasła; jeśli konto ma już hasło, wymaga obecnego.
+    r.post('/api/me/password', async (req) => {
+      const body = z.object({ current: z.string().max(1000).optional(), password: z.string().max(1000) }).parse(req.body);
+      const problem = passwordProblem(body.password);
+      if (problem) throw new RuleError(problem, 'invalid');
+      const [u] = await db.select({ passwordHash: users.passwordHash, email: users.email }).from(users).where(eq(users.id, req.user!.id));
+      if (!u?.email) throw new RuleError('Your account has no e-mail address, so a password cannot be used to log in', 'invalid');
+      if (u.passwordHash) {
+        const key = `me|${req.user!.id}`;
+        if (loginLimiter.blocked(key)) throw new RuleError('Too many failed attempts, try again in 15 minutes', 'invalid');
+        if (!body.current || !(await verifyPassword(body.current, u.passwordHash))) {
+          loginLimiter.fail(key);
+          throw new RuleError('Current password is wrong', 'invalid');
+        }
+        loginLimiter.reset(key);
+      }
+      await db.update(users).set({ passwordHash: await hashPassword(body.password) }).where(eq(users.id, req.user!.id));
+      return { ok: true };
     });
 
     // Agent na PC (tracker-agent.ps1): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
@@ -173,6 +207,26 @@ export async function registerApi(app: FastifyInstance) {
       await svc.publish({ type: 'meta', projectKey: p.key });
       await svc.publish({ type: 'projects' });
       return { ok: true };
+    });
+
+    // Zaproszenia do projektu (admin projektu): link widać tylko raz, w odpowiedzi na utworzenie.
+    r.post<{ Params: { key: string } }>('/api/projects/:key/invites', async (req) => {
+      const p = await manage(req, req.params.key);
+      const body = z.object({ role: z.enum(['admin', 'member']).default('member') }).parse(req.body ?? {});
+      return inv.createInvite(req.user!.id, p.id, body.role);
+    });
+    r.get<{ Params: { key: string } }>('/api/projects/:key/invites', async (req) => inv.listInvites((await manage(req, req.params.key)).id));
+    r.delete<{ Params: { key: string; id: string } }>('/api/projects/:key/invites/:id', async (req) => {
+      const p = await manage(req, req.params.key);
+      await inv.revokeInvite(p.id, intParam(req.params.id));
+      return { ok: true };
+    });
+    // Zalogowany przyjmuje zaproszenie na swoje konto.
+    r.post<{ Params: { token: string } }>('/api/invites/:token/accept', async (req) => {
+      const joined = await inv.consumeInvite(req.params.token, req.user!.id);
+      if (!joined) throw new RuleError('This invite is no longer valid', 'not_found');
+      await svc.publish({ type: 'projects' });
+      return { projectKey: joined.projectKey };
     });
 
     r.get('/api/meta', async (req) => svc.getMeta((await ctx(req)).project));
@@ -399,6 +453,7 @@ export async function registerApi(app: FastifyInstance) {
     r.get('/api/admin/users', async () => db.select({
       id: users.id, login: users.login, name: users.name, avatarUrl: users.avatarUrl, isAdmin: users.isAdmin, active: users.active,
     }).from(users).orderBy(asc(users.name)));
+    r.post<{ Params: { id: string } }>('/api/admin/users/:id/reset-link', async (req) => inv.createResetLink(req.user!.id, intParam(req.params.id)));
     r.post('/api/admin/users', async (req) => {
       const body = z.object({
         id: z.number().int().optional(), login: z.string().min(1), name: z.string().optional(),

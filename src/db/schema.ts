@@ -1,6 +1,7 @@
 import {
   pgTable, serial, integer, text, boolean, timestamp, jsonb, primaryKey, uniqueIndex, index, doublePrecision, bigint,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const STATUS_TYPES = ['backlog', 'unstarted', 'started', 'completed', 'canceled', 'duplicate'] as const;
 export type StatusType = (typeof STATUS_TYPES)[number];
@@ -8,6 +9,10 @@ export type StatusType = (typeof STATUS_TYPES)[number];
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
   githubId: bigint('github_id', { mode: 'number' }).unique(),
+  // Google `sub` (stały identyfikator konta Google).
+  googleId: text('google_id').unique(),
+  // scrypt$N$r$p$sól$hash; null = konto bez hasła.
+  passwordHash: text('password_hash'),
   login: text('login').notNull().unique(),
   name: text('name').notNull(),
   email: text('email'),
@@ -21,7 +26,7 @@ export const users = pgTable('users', {
   calendarToken: text('calendar_token').unique(),
   // Lokalna analiza (tracker://) zainstalowana na komputerze użytkownika; ustawia instalator.
   localAgentAt: timestamp('local_agent_at', { withTimezone: true }),
-});
+}, (t) => [uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)]);
 
 /** Projekt = osobny zespół: własny prefiks numerów, członkowie, statusy, etykiety i sprinty. */
 export const projects = pgTable('projects', {
@@ -363,4 +368,23 @@ export const agentJobs = pgTable('agent_jobs', {
   claimedAt: timestamp('claimed_at', { withTimezone: true }),
   claimedDevice: text('claimed_device'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Jednorazowe linki: zaproszenie do projektu (kind 'invite', projectId + role) albo reset hasła
+ * (kind 'password_reset', userId). W bazie tylko sha256 tokenu.
+ */
+export const projectInvites = pgTable('project_invites', {
+  id: serial('id').primaryKey(),
+  kind: text('kind').$type<'invite' | 'password_reset'>().notNull().default('invite'),
+  tokenHash: text('token_hash').notNull().unique(),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  role: text('role').$type<'admin' | 'member'>().notNull().default('member'),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  usedBy: integer('used_by').references(() => users.id, { onDelete: 'set null' }),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
 });
