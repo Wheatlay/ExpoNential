@@ -51,7 +51,7 @@ function returnsTo(raw: string) {
 
 /** Nazwę podaje sam klient przy rejestracji, więc ekran zgody mówi wprost, skąd wróci i od kiedy klient istnieje. */
 const clientFacts = (name: string, createdAt: Date, redirect?: string) =>
-  `<p class="note">The name “${esc(name)}” is given by the app itself and is not verified.${redirect ? ` Access goes to <b>${esc(returnsTo(redirect))}</b>.` : ''} App registered ${createdAt.toISOString().slice(0, 16).replace('T', ' ')} UTC.</p>`;
+  `<p class="note">The name “${esc(name)}” is given by the app itself and is not verified.${redirect ? ` Access goes to <b>${esc(returnsTo(redirect))}</b>.` : ''} App registered ${createdAt.toISOString().replace(/^(\d+)-(\d+)-(\d+)T(\d+:\d+).*/, '$3.$2.$1, $4')} UTC.</p>`;
 
 /** Zgodność redirect_uri: dokładna, a dla loopback pomijamy port (RFC 8252). */
 function redirectMatches(registered: string[], given: string): boolean {
@@ -105,17 +105,24 @@ export async function markMcpUse(req: FastifyRequest) {
 const oerr = (reply: FastifyReply, error: string, description?: string, code = 400) =>
   reply.code(code).header('Cache-Control', 'no-store').send({ error, ...(description ? { error_description: description } : {}) });
 
-const PAGE_CSS = `body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f5f4;color:#1c1917;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
-.card{background:#fff;border:1px solid #e7e5e4;border-radius:12px;padding:28px;max-width:420px;width:calc(100% - 32px);box-sizing:border-box}
-h1{font-size:18px;margin:0 0 8px}p{margin:0 0 16px;color:#57534e}p.note{font-size:13px;padding:10px 12px;border-radius:8px;background:#fef3c7;color:#78350f}.row{display:flex;gap:8px}
-button{flex:1;font:inherit;padding:9px 14px;border-radius:8px;border:1px solid #d6d3d1;background:#fff;color:#1c1917;cursor:pointer}
-button.p{background:#1c1917;color:#fff;border-color:#1c1917}input[type=text]{width:100%;box-sizing:border-box;font:inherit;padding:9px 12px;border:1px solid #d6d3d1;border-radius:8px;margin-bottom:12px;letter-spacing:2px;text-transform:uppercase}
-@media(prefers-color-scheme:dark){body{background:#1c1917;color:#f5f5f4}.card{background:#292524;border-color:#44403c}p{color:#a8a29e}button{background:#292524;border-color:#57534e;color:#f5f5f4}button.p{background:#f5f5f4;color:#1c1917;border-color:#f5f5f4}input[type=text]{background:#1c1917;border-color:#57534e;color:#f5f5f4}}`;
+/** Wygląd stron zgody i urządzenia: te same tokeny co aplikacja (src/web/styles.css), ciemny domyślnie jak w aplikacji. */
+const PAGE_CSS = `:root{--bg-app:lch(3.5% 0.4 272);--bg-card:lch(9.5% 1.3 272);--bg-input:lch(5.52% 0.4 272);--border:lch(14.16% 1.48 272);--text:lch(100% 0 272);--text-2:lch(61.803% 1.2 272);--accent:#5e6ad2;--accent-hover:#7180ff;--warn:#f2994a;--warn-text:#f2b06a;color-scheme:dark}
+@media(prefers-color-scheme:light){:root{--bg-app:lch(94.44% 0.5 282);--bg-card:#fff;--bg-input:#fff;--border:lch(88.49% 0 282);--text:lch(9.794% 0 282);--text-2:lch(39.176% 1.25 282);--warn:#e8862e;--warn-text:#b45309;color-scheme:light}}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg-app);color:var(--text);font:13px/1.5 'Inter Variable',Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-feature-settings:'cv11','ss01'}
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:420px;width:calc(100% - 32px);box-sizing:border-box;box-shadow:0 8px 30px rgb(0 0 0 / .3)}
+h1{font-size:16px;font-weight:600;margin:0 0 8px}p{margin:0 0 16px;color:var(--text-2)}p b{color:var(--text);font-weight:500}
+p.note{font-size:12px;padding:10px 12px;border-radius:6px;background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);color:var(--warn-text)}p.note b{color:inherit}
+.row{display:flex;gap:8px}
+button{flex:1;font:inherit;font-weight:500;height:32px;padding:0 14px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text);cursor:pointer}
+button:hover{background:color-mix(in srgb,var(--text) 6%,transparent)}
+button.p{background:var(--accent);border-color:var(--accent);color:#fff}button.p:hover{background:var(--accent-hover)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=text]{width:100%;box-sizing:border-box;font:inherit;font-size:16px;height:36px;padding:0 12px;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;letter-spacing:2px;text-transform:uppercase;background:var(--bg-input);color:var(--text)}`;
 
 function page(reply: FastifyReply, title: string, body: string, status = 200) {
   return reply.code(status).type('text/html; charset=utf-8').header('Cache-Control', 'no-store')
     .header('X-Frame-Options', 'DENY').header('Content-Security-Policy', "frame-ancestors 'none'")
-    .send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${PAGE_CSS}</style></head><body><div class="card">${body}</div></body></html>`);
+    .send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} · Exponential</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet"><style>${PAGE_CSS}</style></head><body><div class="card">${body}</div></body></html>`);
 }
 const errorPage = (reply: FastifyReply, msg: string) => page(reply, 'Exponential', `<h1>Cannot continue</h1><p>${esc(msg)}</p>`, 400);
 
