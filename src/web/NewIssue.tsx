@@ -82,7 +82,7 @@ function NewIssueModal({ init }: { init: Init }) {
         </div>
         <input className="title" autoFocus placeholder={t('Issue title')} value={title} onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
-        <textarea placeholder={t('What happens?\nWhat should happen?\nWhere (screen, link, steps)?\n\nEnter creates · Alt+Enter new line · paste screenshots')} value={description} onChange={(e) => setDescription(e.target.value)}
+        <textarea placeholder={t('What happens?\nWhat should happen?\nWhere (screen, link, steps)?')} value={description} onChange={(e) => setDescription(e.target.value)}
           onPaste={att.onPaste}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') close(); enterToSubmit(e, () => void submit(), setDescription); }} />
         <MentionHint text={description} />

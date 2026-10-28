@@ -31,6 +31,12 @@ i odrzuciłeś, zostaje u Ciebie.
    pierwszą decyzją zrób "O co chodzi w zgłoszeniu?". Wśród opcji daj też odczytanie odwrotne
    albo podważające założenie zgłoszenia (np. "szablon faktury musi być inny" → opcja "zrezygnować
    z osobnego szablonu faktury"). Zespół często wybiera właśnie to.
+5. **Zależność od wejścia z zewnątrz** (dane do importu, plik, partner, inny system): ustal, co
+   dokładnie przyjdzie i w jakiej formie. Jeśli zgłoszenie tego nie mówi, pierwsza decyzja jest
+   o wejściu (np. „W jakiej formie dostaniemy umowy?”: eksport z bazy / Excel / skany papierowe).
+6. **Kluczowe założenie:** nazwij to, na czym opiera się odpowiedź (np. „zaimportowana umowa ma
+   szablon”), i sprawdź, czy każde możliwe wejście je spełnia. Jeśli nie (umowy papierowe nie mają
+   szablonu), zrób z tego decyzję albo niewiadomą, nie pomijaj.
 
 ## Krok 3: zapisz
 
@@ -39,6 +45,7 @@ i odrzuciłeś, zostaje u Ciebie.
 **Styl sekcji: zwarty.** Zwykły tekst w języku zgłoszenia (tym samym, w którym napisany jest opis; przy wątpliwości po angielsku), jedno, najwyżej dwa krótkie zdania na sekcję,
 równoważniki tam, gdzie zdanie nic nie dodaje. Żadnych wstępów, powtórzeń między sekcjami,
 "warto zauważyć", "należy". Wszystkie sekcje razem najwyżej ok. 180 słów. Pustą sekcję pomiń.
+Jedna myśl na akapit, między akapitami pusta linia (`\n\n`); bez ścian tekstu.
 
 Sekcje zależne od typu:
 
@@ -57,9 +64,12 @@ Sekcje dla każdego typu:
 - `system` („Co jeszcze to dotyka”): inne ekrany, procesy lub kanały, które w kodzie korzystają
   z tego samego ("ten sam status widzi karta podpisującego i raport"). Tylko miejsca znalezione
   w kodzie, bez przewidywań.
-- `risk` (opcjonalnie): jedno nieoczywiste ryzyko, np. istniejące dane.
-- `related` (opcjonalnie): inne zgłoszenia, które zmieniały **to samo miejsce w kodzie albo tę
-  samą regułę** (`mcp__tracker__list_issues` z `query`); podobny temat nie wystarcza. Najwyżej 3,
+- `risk` (opcjonalnie): jedno nieoczywiste ryzyko, np. istniejące dane. Ryzyko musi wynikać z
+  **tej** zmiany i być napisane jako skutek dla użytkownika (kiedy i komu się przydarzy), nie jako
+  opis mechanizmu. Bez ryzyk istniejących funkcji, których zmiana nie musi używać.
+- `related` (opcjonalnie): inne zgłoszenia o **sednie tego problemu**, które zmieniały to samo
+  miejsce w kodzie (`mcp__tracker__list_issues` z `query`); podobny temat albo reguła wspólna dla
+  całego systemu nie wystarcza. Najwyżej 3,
   każde w osobnej linii `- ACME-12: dlaczego`, bez tytułu i statusu (tracker pokazuje je w chipie),
   bez innego tekstu. Liczy się `statusType`:
   - otwarte (`backlog`, `unstarted`, `started`): duplikat albo ryzyko kolizji, napisz które;
@@ -79,13 +89,15 @@ skilla bez zmian.
 
 - **Szukanie bez limitu „nie więcej”.** Celem jest pewny werdykt, nie dłuższy tekst:
   - prześledź cały przepływ od początku do końca (ekran → serwer → baza),
-  - rozważ co najmniej 2 hipotezy przyczyny, sprawdź obie w kodzie i ustal, czemu słabsza odpada,
+  - przy bugu rozważ co najmniej 2 hipotezy przyczyny, sprawdź obie w kodzie i ustal, czemu słabsza odpada,
   - sprawdź powiązane ścieżki, testy i podobne wzorce,
-  - szukaj ryzyk, przypadków brzegowych i tego, co poprawka może zepsuć.
+  - szukaj ryzyk i przypadków brzegowych tej zmiany (te same zasady co przy `risk`).
 - **Limit sekcji: ok. 500 słów razem** zamiast 180, nadal bez wstępów i powtórzeń. `related`
   najwyżej 5 zgłoszeń zamiast 3.
-- `verdict` / `answer`: po przyczynie jedno zdanie o odrzuconej hipotezie i czemu odpada.
-  Twierdzenia niesprawdzone w kodzie oznacz „(założenie)”.
+- `verdict`: po przyczynie jedno zdanie o odrzuconej hipotezie i czemu odpada.
+- `answer`: dwa akapity, każdy od pogrubionego słowa: **Ustalenia:** (co wiadomo z kodu) i
+  **Niewiadome:** (czego nie da się ustalić bez zespołu lub źródła danych).
+- Twierdzenia niesprawdzone w kodzie oznacz „(założenie)”.
 - `risk` jest obowiązkowy i może być listą: każde ryzyko i przypadek brzegowy od nowej linii
   zaczynającej się od „- ”.
 - Zasada „bez nazw plików i funkcji” dalej obowiązuje: dowody sprawdzasz w kodzie, a w analizie

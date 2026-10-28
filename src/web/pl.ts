@@ -376,7 +376,7 @@ export const pl: Record<string, string> = {
   'Sub-issue of {id}': 'Podzadanie {id}',
   'New issue': 'Nowe zgłoszenie',
   'Issue title': 'Tytuł zgłoszenia',
-  'What happens?\nWhat should happen?\nWhere (screen, link, steps)?\n\nEnter creates · Alt+Enter new line · paste screenshots': 'Co się dzieje?\nCo powinno się dziać?\nGdzie (ekran, link, kroki)?\n\nEnter tworzy · Alt+Enter nowa linia · wklej zrzuty ekranu',
+  'What happens?\nWhat should happen?\nWhere (screen, link, steps)?': 'Co się dzieje?\nCo powinno się dziać?\nGdzie (ekran, link, kroki)?',
   'Keeps this window open after creating, so you can add several issues in a row': 'Okno zostaje otwarte po utworzeniu, żeby dodać kilka zgłoszeń pod rząd',
   'Create another': 'Utwórz kolejne',
   'Create issue': 'Utwórz zgłoszenie',
