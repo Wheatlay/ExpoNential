@@ -166,7 +166,6 @@ export function useUpdateIssue() {
     mutationFn: ({ number, patch }: { number: number; patch: IssuePatch }) =>
       api(`/api/issues/${ident(number)}`, { method: 'PATCH', body: patch }),
     onMutate: async ({ number, patch }) => {
-      await qc.cancelQueries({ queryKey: ['issues'] });
       const prevList = qc.getQueryData<IssueRow[]>(['issues']);
       // Ostrzeżenie (nie blokada): start pracy nad zadaniem, które na coś czeka.
       // Na stronie zadania listy może nie być w cache: wtedy dane bierzemy ze szczegółów.
@@ -186,8 +185,15 @@ export function useUpdateIssue() {
       }
       const prevDetail = qc.getQueryData<IssueDetail>(['issue', number]);
       const { parentNumber: _p, ...rowPatch } = patch;
-      qc.setQueryData<IssueRow[]>(['issues'], (old) => old?.map((i) => (i.number === number ? { ...i, ...rowPatch } : i)));
-      qc.setQueryData<IssueDetail>(['issue', number], (old) => (old ? { ...old, ...rowPatch } : old));
+      // Zmiana od razu, przed jakimkolwiek await: inaczej po upuszczeniu karta na klatkę wraca do starej kolumny.
+      const apply = () => {
+        qc.setQueryData<IssueRow[]>(['issues'], (old) => old?.map((i) => (i.number === number ? { ...i, ...rowPatch } : i)));
+        qc.setQueryData<IssueDetail>(['issue', number], (old) => (old ? { ...old, ...rowPatch } : old));
+      };
+      apply();
+      // Przerwane pobieranie listy może przywrócić stare dane, więc po nim zmianę nakładamy jeszcze raz.
+      await qc.cancelQueries({ queryKey: ['issues'] });
+      apply();
       return { prevList, prevDetail };
     },
     onError: (e, { number }, ctx) => {
