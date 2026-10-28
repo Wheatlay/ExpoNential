@@ -45,7 +45,8 @@ i odrzuciłeś, zostaje u Ciebie.
 **Styl sekcji: zwarty.** Zwykły tekst w języku zgłoszenia (tym samym, w którym napisany jest opis; przy wątpliwości po angielsku), jedno, najwyżej dwa krótkie zdania na sekcję,
 równoważniki tam, gdzie zdanie nic nie dodaje. Żadnych wstępów, powtórzeń między sekcjami,
 "warto zauważyć", "należy". Wszystkie sekcje razem najwyżej ok. 180 słów. Pustą sekcję pomiń.
-Jedna myśl na akapit, między akapitami pusta linia (`\n\n`); bez ścian tekstu.
+Pusta linia (`\n\n`) tylko między częściami sekcji (np. przed **Niewiadome:**); wewnątrz części
+ciągły tekst, bez pustych linii między zdaniami.
 
 Sekcje zależne od typu:
 
