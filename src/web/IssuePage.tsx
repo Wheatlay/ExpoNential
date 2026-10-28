@@ -245,8 +245,8 @@ export function IssuePage({ number }: { number: number }) {
           <div className="section fold-group">
             <FoldBar id="analysis" tour="analysis" badge={<span className="badge ai">AI</span>} name={t('Problem analysis')}
               preview={issue.analysisRequestedAt ? t('Waiting for Claude…') : analysisPreview(issue) || t('No analysis yet')}
-              meta={issue.analysisUpdatedAt ? `${timeAgo(issue.analysisUpdatedAt)}${!issue.analysisRequestedAt && issue.analysisResultDeep ? ` · ${t('Deep')}` : ''}` : ''}
-              tools={<span style={{ display: 'inline-flex', gap: 4 }}>
+              meta={issue.analysisUpdatedAt && !issue.analysisRequestedAt ? `${timeAgo(issue.analysisUpdatedAt)}${!issue.analysisRequestedAt && issue.analysisResultDeep ? ` · ${t('Deep')}` : ''}` : ''}
+              tools={<span className="fold-tools">
                 {/* Kolejka zespołu jest domyślnie wyłączona; gdy włączona, widać to przy analizie, bo zmienia, czyj PC ją uruchomi. */}
                 {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in project settings > AI agent.")}>{t('Team queue')}</span>}
                 {/* Czeka, a mój PC ma stare skrypty: to zwykle prawdziwa przyczyna, więc mówimy o niej tutaj, nie tylko w Ustawieniach. */}
@@ -259,8 +259,8 @@ export function IssuePage({ number }: { number: number }) {
                     title={failed ? t('The analysis failed on the PC: {error}. Analyze again or cancel.', { error: issue.analysisError || '?' })
                       : stalled ? t('No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.')
                       : waitingForPc ? t('No computer with the agent is online for this request. It runs when one is on.') : undefined}>
-                    <Icon.sparkle size={12} /> {failed ? t('Failed') : stalled ? t('Stalled') : waitingForPc ? t('Waiting for a PC')
-                      : claimedAt ? t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') }) : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(failed ? issue.analysisFailedAt! : claimedAt ?? issue.analysisRequestedAt)}</span>
+                    <Icon.sparkle size={12} /> <span className="pill-text">{failed ? t('Failed') : stalled ? t('Stalled') : waitingForPc ? t('Waiting for a PC')
+                      : claimedAt ? t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') }) : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(failed ? issue.analysisFailedAt! : claimedAt ?? issue.analysisRequestedAt)}</span></span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
                 </>}
                 {(!issue.analysisRequestedAt || stalled || failed) && <>

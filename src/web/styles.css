@@ -663,6 +663,10 @@ textarea.md-edit {
 .fold.open .fold-caret { transform: none; }
 .fold-name { font-weight: 500; white-space: nowrap; }
 .fold-meta { white-space: nowrap; }
+.fold-tools { display: inline-flex; gap: 4px; min-width: 0; flex-shrink: 1; }
+.fold-tools .pill { min-width: 0; }
+.fold-tools .btn { flex-shrink: 0; }
+.pill-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fold-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); }
 .fold-body { padding: 10px 12px 12px; background: var(--bg-secondary); animation: fade-in 0.15s ease-out both; }
 .fold-body .panel { border: 0; padding: 4px 6px; background: none; }
