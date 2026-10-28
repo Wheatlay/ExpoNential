@@ -1,6 +1,6 @@
 # Plan: PC agent that picks up work from the server
 
-Status: approved direction, not started. Written for a local session to implement.
+Status: implemented (see `src/server/agents.ts`). Superseded for new users by `release-v1.md`.
 
 ## Goal
 

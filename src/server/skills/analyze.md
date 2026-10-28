@@ -1,0 +1,142 @@
+# Analiza zgłoszenia
+
+Analizę czyta człowiek z zespołu (niekoniecznie programista), który decyduje, czy i jak brać
+zadanie. Ma ją przeczytać w minutę i od razu kliknąć decyzje. Tracker pokazuje każdą sekcję
+osobno, a decyzje jako opcje do wyboru. To nie jest raport z przeszukania kodu: co sprawdziłeś
+i odrzuciłeś, zostaje u Ciebie.
+
+## Krok 1: co czeka
+
+- Podany numer (np. "ACME-123"): analizujesz tylko jego, nawet bez flagi.
+- Bez numeru: `list_issues` z `analysisRequested: true`. Pusta lista = powiedz
+  to w jednym zdaniu i skończ. Kilka zgłoszeń = po kolei, każde osobno.
+
+## Krok 2: sprawdź w kodzie
+
+1. `get_issue` i `list_comments`.
+2. Ustal typ: `bug` (coś działa źle), `feature` (czegoś brakuje albo ma działać inaczej),
+   `investigate` (pytanie "czemu", "sprawdzić", "ustalić").
+3. Znajdź w kodzie miejsce, które o tym decyduje, i to, z czym się łączy (przeszukaj repo i przeczytaj kod). Szukaj
+   tyle, żeby wypełnić sekcje, nie więcej.
+4. **Opis krótki, pusty albo niejasny:** przyjmij najbardziej prawdopodobne odczytanie, ale
+   pierwszą decyzją zrób "O co chodzi w zgłoszeniu?". Wśród opcji daj też odczytanie odwrotne
+   albo podważające założenie zgłoszenia (np. "szablon faktury musi być inny" → opcja "zrezygnować
+   z osobnego szablonu faktury"). Zespół często wybiera właśnie to. To wtedy **jedyna**
+   decyzja: inne pytania (także „kiedy”, „jak mocno”) dojdą przy ponownej analizie po wyborze.
+   Opcja zamknięcia jako duplikat ma etykietę „Duplikat ACME-12”, a opis mówi, czemu tamto
+   zgłoszenie to pokrywa.
+5. **Zależność od wejścia z zewnątrz** (dane do importu, plik, partner, inny system): ustal, co
+   dokładnie przyjdzie i w jakiej formie. Jeśli zgłoszenie tego nie mówi, pierwsza decyzja jest
+   o wejściu (np. „W jakiej formie dostaniemy umowy?”: eksport z bazy / Excel / skany papierowe).
+6. **Kluczowe założenie:** nazwij to, na czym opiera się odpowiedź (np. „zaimportowana umowa ma
+   szablon”), i sprawdź, czy każde możliwe wejście je spełnia. Jeśli nie (umowy papierowe nie mają
+   szablonu), zrób z tego decyzję albo niewiadomą, nie pomijaj.
+
+## Krok 3: zapisz
+
+`set_analysis` z polami `id`, `type`, `sections`, `decisions`.
+
+**Styl sekcji: zwarty.** Zwykły tekst w języku zgłoszenia (tym samym, w którym napisany jest opis; przy wątpliwości po angielsku), jedno, najwyżej dwa krótkie zdania na sekcję,
+równoważniki tam, gdzie zdanie nic nie dodaje. Żadnych wstępów, powtórzeń między sekcjami,
+"warto zauważyć", "należy". Wszystkie sekcje razem najwyżej ok. 180 słów. Pustą sekcję pomiń.
+Pusta linia (`\n\n`) tylko między częściami sekcji (np. przed **Niewiadome:**); wewnątrz części
+ciągły tekst, bez pustych linii między zdaniami.
+
+Sekcje zależne od typu:
+
+| typ | sekcja | treść |
+|---|---|---|
+| bug | `verdict` | "Tak · przyczyna" / "Nie · dlaczego" / "Niepewne · co sprawdzić" |
+| bug | `howToCheck` | kroki w aplikacji po strzałkach: "Kontrakty → Nowy → … → Zapisz" |
+| feature | `current` | co już jest, czego brakuje |
+| investigate | `answer` | co ustalono w kodzie (i czego nie dało się ustalić bez żywego testu) |
+
+Analiza to punkt startowy: same fakty ustalone w kodzie, bez propozycji stanu docelowego (ten
+ustala zespół w decyzjach). Nie pisz sekcji `todo` ani `after` (zostały w starych analizach).
+
+Sekcje dla każdego typu:
+
+- `system` („Co jeszcze to dotyka”): inne ekrany, procesy lub kanały, które w kodzie korzystają
+  z tego samego ("ten sam status widzi karta podpisującego i raport"). Tylko miejsca znalezione
+  w kodzie, bez przewidywań.
+- `risk` (opcjonalnie): jedno nieoczywiste ryzyko, np. istniejące dane. Ryzyko musi wynikać z
+  **tej** zmiany i być napisane jako skutek dla użytkownika (kiedy i komu się przydarzy), nie jako
+  opis mechanizmu. Bez ryzyk istniejących funkcji, których zmiana nie musi używać.
+- `related` (opcjonalnie): inne zgłoszenia o **sednie tego problemu**, które zmieniały to samo
+  miejsce w kodzie (`list_issues` z `query`); podobny temat albo reguła wspólna dla
+  całego systemu nie wystarcza. Najwyżej 3,
+  każde w osobnej linii `- ACME-12: dlaczego`, bez tytułu i statusu (tracker pokazuje je w chipie;
+  nie pisz „otwarte” ani „zrobione”),
+  bez innego tekstu. Liczy się `statusType`:
+  - otwarte (`backlog`, `unstarted`, `started`): duplikat albo ryzyko kolizji, napisz które;
+  - zrobione (`completed`): tylko gdy zmieniało to samo miejsce (Start czyta wtedy jego notatki zmian);
+  - `canceled` i `duplicate` pomiń.
+  Limit słów sekcji nie obejmuje `related`.
+
+**Decyzje** (`decisions`): tylko pytania, od których zależy zakres, najwyżej 3. Każde ma 2-3
+opcje: `label` 1-4 słowa, `desc` najwyżej 8 słów (skutek dla produktu, nie technika),
+`recommended: true` na tej jednej, którą polecasz, ustawionej jako pierwsza. Brak decyzji =
+pusta lista.
+
+**Sprawdź przed zapisem:**
+- Zgłoszenie zależy od wejścia z zewnątrz (krok 2, punkt 5)? Pierwsza decyzja pyta o wejście.
+- Kluczowe założenie (krok 2, punkt 6) nie dla każdego wejścia jest spełnione? Jest o nim
+  decyzja albo zdanie w niewiadomych.
+- Każde ryzyko dotyczy tej zmiany. „Inne importy działają wszystko albo nic” się nie liczy:
+  to cecha istniejącej funkcji, nie skutek tej zmiany.
+
+### Tryb Deep
+
+Gdy polecenie zawiera słowo „deep” („tryb deep”, „deep mode”), obowiązują poniższe zmiany. Reszta
+procedury bez zmian.
+
+- **Szukanie bez limitu „nie więcej”.** Celem jest pewny werdykt, nie dłuższy tekst:
+  - prześledź cały przepływ od początku do końca (ekran → serwer → baza),
+  - przy bugu rozważ co najmniej 2 hipotezy przyczyny, sprawdź obie w kodzie i ustal, czemu słabsza odpada,
+  - sprawdź powiązane ścieżki, testy i podobne wzorce,
+  - szukaj ryzyk i przypadków brzegowych tej zmiany (te same zasady co przy `risk`).
+- **Limit sekcji: ok. 500 słów razem** zamiast 180, nadal bez wstępów i powtórzeń. `related`
+  najwyżej 5 zgłoszeń zamiast 3.
+- `verdict`: po przyczynie jedno zdanie o odrzuconej hipotezie i czemu odpada.
+- `answer`: dwa akapity, każdy od pogrubionego słowa: **Ustalenia:** (co wiadomo z kodu) i
+  **Niewiadome:** (czego nie da się ustalić bez zespołu lub źródła danych).
+- Twierdzenia niesprawdzone w kodzie oznacz „(założenie)”.
+- `risk` jest obowiązkowy i może być listą: każde ryzyko i przypadek brzegowy od nowej linii
+  zaczynającej się od „- ”.
+- Zasada „bez nazw plików i funkcji” dalej obowiązuje: dowody sprawdzasz w kodzie, a w analizie
+  opisujesz je nazwami z interfejsu.
+
+Typ sam ustawia etykietę zgłoszenia (Bug / Feature / Investigate), nie podawaj jej osobno.
+
+Przykład wywołania:
+
+```json
+{
+  "id": "ACME-180",
+  "type": "bug",
+  "sections": {
+    "verdict": "Tak · formularz kontraktu zapisuje się bez daty końca, wymaga jej dopiero zatwierdzenie.",
+    "howToCheck": "Kontrakty → Nowy kontrakt → zostaw puste „Do, włącznie” → Zapisz: kontrakt powstaje.",
+    "system": "Brak daty to kontrakt bezterminowy na liście, przy przypisywaniu przez operatora i w raporcie.",
+    "risk": "Istniejące kontrakty bez daty trzeba uzupełnić przy następnej edycji."
+  },
+  "decisions": [
+    { "question": "Kiedy wymagać daty końca?", "options": [
+      { "label": "Przy zapisie", "desc": "nie powstanie kontrakt bez daty", "recommended": true },
+      { "label": "Przy zatwierdzeniu", "desc": "szkic może być bez daty" } ] }
+  ]
+}
+```
+
+## Zasady
+
+- **Nie zmieniaj kodu ani statusu zgłoszenia.** Analiza to tylko tekst.
+- Bez nazw plików, funkcji i klas, backticków i żargonu (seed, 403, endpoint, API, commit,
+  migracja, tenant, nazwy stanów z kodu, nazwy dostawców). Pisz nazwami z interfejsu. Wyjątek: nazwa, której używa samo zgłoszenie (np.
+  „Lambda” w tytule), może zostać.
+- Przy ponownej analizie (Re-analyze) uwzględnij poprzednią i nowe komentarze i napisz całość od
+  nowa. Pytania, na które ktoś już odpowiedział, zostaw w tym samym brzmieniu i z tymi samymi
+  nazwami opcji: tracker przeniesie wybór. Pytania bez odpowiedzi nie są wiążące: ułóż decyzje od
+  nowa według tej procedury, jakby poprzednich nie było.
+- Nie używaj pauzy em dash (—).
+- Na koniec podaj użytkownikowi listę przeanalizowanych zgłoszeń, jedno zdanie na każde.

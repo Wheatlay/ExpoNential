@@ -71,6 +71,13 @@
       "when": 1793191492492,
       "tag": "0009_google_invites_password",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793222769678,
+      "tag": "0010_oauth",
+      "breakpoints": true
     }
   ]
 }

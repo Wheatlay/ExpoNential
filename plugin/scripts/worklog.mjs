@@ -106,6 +106,7 @@ async function main() {
  * Konto Claude Code, na którym deweloper właśnie pracuje (CLAUDE_CONFIG_DIR tej sesji, pusty = domyślne ~/.claude).
  * Lokalna analiza w tle (tracker-handler.ps1) startuje bez tej zmiennej i bierze stąd konto, więc przy kilku
  * kontach idzie na tym, którego używasz teraz (np. po przełączeniu, bo poprzednie wyczerpało limit).
+ * Do usunięcia razem ze skryptami PS, gdy zastąpi je agent z agent/ (docs/plans/release-v1.md).
  */
 function rememberAccount() {
   if (!process.env.LOCALAPPDATA) return;

@@ -1,0 +1,33 @@
+name: agent-release
+
+on:
+  push:
+    tags: ['agent-v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run build:exe
+      - name: Checksums
+        shell: bash
+        run: node -e "const c=require('crypto'),fs=require('fs');const h=c.createHash('sha256').update(fs.readFileSync('dist/exponential-agent.exe')).digest('hex');fs.writeFileSync('dist/SHA256SUMS',h+'  exponential-agent.exe\n')"
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ github.ref_name }}" dist/exponential-agent.exe dist/SHA256SUMS --title "Exponential agent ${{ github.ref_name }}" --generate-notes

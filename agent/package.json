@@ -1,0 +1,20 @@
+{
+  "name": "exponential-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local agent for Exponential: runs AI analyses on this computer",
+  "bin": { "exponential-agent": "dist/agent.cjs" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.mjs bundle",
+    "build:exe": "node scripts/build.mjs exe"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.25.0",
+    "postject": "^1.0.0-alpha.6",
+    "typescript": "^5.7.0"
+  }
+}

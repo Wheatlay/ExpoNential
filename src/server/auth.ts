@@ -7,6 +7,7 @@ import { apiTokens, sessions, users } from '../db/schema.ts';
 import { ensureSomeMembership } from './projects.ts';
 import { consumeInvite, consumeReset, inviteInfo, resetInfo } from './invites.ts';
 import { RuleError, isEmail } from './rules.ts';
+import { userFromOAuthToken } from './oauth.ts';
 import { dummyHash, hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
 
 const SESSION_DAYS = 30;
@@ -56,6 +57,7 @@ async function userFromSession(raw: string | undefined, reply: FastifyReply): Pr
 export async function userFromToken(header: string | undefined): Promise<SessionUser | null> {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? '');
   if (!m) return null;
+  if (m[1].startsWith('exa_')) return userFromOAuthToken(m[1]);
   const [row] = await db.select({ id: users.id, name: users.name, login: users.login, isAdmin: users.isAdmin, tokenId: apiTokens.id })
     .from(apiTokens).innerJoin(users, eq(users.id, apiTokens.userId))
     .where(and(eq(apiTokens.tokenHash, sha256(m[1])), eq(users.active, true)));
@@ -85,6 +87,12 @@ export async function registerAuth(app: FastifyInstance) {
   app.decorateRequest('user', null);
   app.addHook('onRequest', async (req, reply) => {
     req.user = (await userFromSession(req.cookies[COOKIE], reply)) ?? (await userFromToken(req.headers.authorization));
+    // Powrót do /oauth/authorize albo /oauth/device po logowaniu (dowolną metodą): logowanie kończy się wejściem na "/".
+    const ret = req.cookies.oauth_return;
+    if (ret && req.user && req.method === 'GET' && req.url.split('?')[0] === '/') {
+      reply.clearCookie('oauth_return', { path: '/' });
+      if (/^\/oauth\/(authorize|device)(\?|$)/.test(ret)) return reply.redirect(ret);
+    }
   });
 
   /** Początek logowania przez dostawcę: state (+ zaproszenie z ?invite=) w ciasteczkach na 10 minut. */

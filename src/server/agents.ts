@@ -29,6 +29,19 @@ export function agentScriptsVersion() {
   return scriptsVersion;
 }
 
+/** Najstarszy agent z agent/ (exponential-agent.exe, wersja semver), który jeszcze dostaje pracę. */
+export const MIN_EXE_AGENT = '0.1.0';
+const semver = (v: string) => /^(\d+)\.(\d+)\.(\d+)$/.exec(v)?.slice(1).map(Number);
+/** Aktualny agent: skrypty PS w wersji z serwera albo agent .exe nie starszy niż MIN_EXE_AGENT. */
+export function agentUpToDate(version: string | null | undefined) {
+  if (!version) return false;
+  if (version === agentScriptsVersion()) return true;
+  const v = semver(version), min = semver(MIN_EXE_AGENT)!;
+  if (!v) return false;
+  for (let i = 0; i < 3; i++) if (v[i] !== min[i]) return v[i] > min[i];
+  return true;
+}
+
 /** Urządzenie musi istnieć (install.ps1 zgłasza je pierwszym heartbeatem) i należeć do wołającego. */
 export async function requireOwnAgent(user: User, deviceId: string) {
   const [row] = await db.select().from(agents).where(eq(agents.id, deviceId));
@@ -52,7 +65,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
     agent.version = version;
   }
   // Stare skrypty nie dostają pracy: poprawki (np. blokada .env) działają dopiero po aktualizacji, więc nie puszczamy ich bez niej.
-  if (agent.version !== agentScriptsVersion()) throw new RuleError('PC scripts are outdated: run the install command again (Settings > Claude Code)', 'outdated');
+  if (!agentUpToDate(agent.version)) throw new RuleError('PC scripts are outdated: run the install command again (Settings > Claude Code)', 'outdated');
   const [cur] = await db.select().from(issues).where(and(eq(issues.projectId, p.id), eq(issues.number, number)));
   if (!cur) throw new RuleError(`Issue ${identifier(p.key, number)} not found`, 'not_found');
   const already = cur.analysisClaimedDevice === deviceId && cur.analysisClaimedAt != null;
@@ -134,7 +147,7 @@ export type AgentJob = { kind: 'analyze'; key: string; deep: boolean } | { kind:
 /** Co ten agent może teraz wziąć: moje zlecenia (i kolejka zespołu w projektach z włączonym przełącznikiem) oraz zlecenia Start. */
 export async function pendingWork(user: User, agent: { busy: boolean; repoKeys: string[]; version: string }): Promise<AgentJob[]> {
   // Stara wersja skryptów: nic nie dostaje (Ustawienia i pasek analizy pokazują "Update needed").
-  if (agent.busy || agent.version !== agentScriptsVersion()) return [];
+  if (agent.busy || !agentUpToDate(agent.version)) return [];
   const jobs: AgentJob[] = [];
   if (agent.repoKeys.length) {
     const rows = await db.select({ key: projects.key, number: issues.number, deep: issues.analysisDeep })
@@ -189,7 +202,7 @@ export async function claimStartJob(user: User, jobId: number, deviceId: string)
 /** Moje komputery do Ustawień. */
 export async function myAgents(user: User) {
   const rows = await db.select().from(agents).where(eq(agents.userId, user.id)).orderBy(dsql`${agents.lastSeenAt} desc nulls last`);
-  return rows.map((a) => ({ id: a.id, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: a.version !== agentScriptsVersion(),
+  return rows.map((a) => ({ id: a.id, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: !agentUpToDate(a.version),
     // Błąd starszy niż 24 h już nie jest istotny.
     lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 ? a.lastError : '', lastErrorAt: a.lastErrorAt }));
 }

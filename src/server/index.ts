@@ -10,6 +10,7 @@ import { registerDemo } from './demo/index.ts';
 import { registerApi } from './api.ts';
 import { registerEvents } from './events.ts';
 import { registerMcp } from './mcp.ts';
+import { registerOAuth } from './oauth.ts';
 import { registerHooks } from './hooks.ts';
 import { seedDefaults } from './service.ts';
 import { ensureSprints } from './sprints.ts';
@@ -40,6 +41,7 @@ await registerDemo(app); // zaraz po auth: hooki blokad demo obejmują wszystkie
 await registerApi(app);
 await registerEvents(app);
 await registerMcp(app);
+await registerOAuth(app);
 await registerHooks(app);
 await registerUploads(app);
 await registerDeploys(app);

@@ -7,6 +7,8 @@ import { RuleError, identifier, parseIdentifier, PRIORITIES } from './rules.ts';
 import { projectsOf, requireMember, type Project } from './projects.ts';
 import { listMeetings, meetingUrl } from './meetings.ts';
 import type { SessionUser } from './auth.ts';
+import { markMcpUse } from './oauth.ts';
+import { procedures } from './skills/index.ts';
 import { addRelation, removeRelation } from './relations.ts';
 import { ANALYSIS_TYPES, SECTION_KEYS, TYPE_LABEL_NAMES, analysisInputSchema, decisionSchema } from './analysis.ts';
 
@@ -122,7 +124,8 @@ function buildServer(user: SessionUser) {
       'Tools that create or list project settings take a project key (required when you belong to more than one project); list_projects shows your projects. ' +
       'list_issues without project lists issues of all your projects. ' +
       'Before moving an issue to a "completed" status (Done), fill in changeHuman and changeAi with set_change_notes (the team expects them; it is not enforced). ' +
-      'Issues with analysisRequested=true are waiting for an AI analysis: list them with list_issues({analysisRequested:true}) (all your projects) and write the result with set_analysis.',
+      'Issues with analysisRequested=true are waiting for an AI analysis: list them with list_issues({analysisRequested:true}) (all your projects) and write the result with set_analysis. ' +
+      'Before analyzing an issue or closing one (moving to Done), call get_procedure with name analyze or close and follow it.',
   });
 
   const tool = <S extends z.ZodRawShape>(name: string, description: string, shape: S, fn: (a: z.infer<z.ZodObject<S>>) => Promise<unknown>) =>
@@ -134,6 +137,15 @@ function buildServer(user: SessionUser) {
         throw e;
       }
     }) as never);
+
+  tool('get_procedure', 'Step-by-step procedure for analyzing an issue (analyze) or closing it with change notes (close). Call it before doing either.',
+    { name: z.enum(['analyze', 'close']) }, async ({ name }) => procedures[name].text);
+
+  const promptFor = (name: 'analyze' | 'close', id: string) => ({
+    messages: [{ role: 'user' as const, content: { type: 'text' as const, text: `${procedures[name].text}\n\nIssue: ${id}` } }],
+  });
+  server.registerPrompt('analyze_issue', { description: procedures.analyze.title, argsSchema: { id: z.string().describe('Issue identifier, e.g. ACME-12') } }, ({ id }) => promptFor('analyze', id));
+  server.registerPrompt('close_issue', { description: procedures.close.title, argsSchema: { id: z.string().describe('Issue identifier, e.g. ACME-12') } }, ({ id }) => promptFor('close', id));
 
   tool('get_issue', 'Get an issue by identifier (e.g. ACME-12) with description, AI analysis, HUMAN/AI change notes, sub-issues, commits and the Claude Code worklog (files, commits, prompts per session).',
     { id: z.string() }, async ({ id }) => { const { p, n } = await ref(me, id); return presentIssue(p, n); });
@@ -303,7 +315,11 @@ function buildServer(user: SessionUser) {
 export async function registerMcp(app: FastifyInstance) {
   // Bezstanowo: nowy serwer i transport na każde żądanie, użytkownik z tokenu Bearer.
   app.all('/mcp', async (req, reply) => {
-    if (!req.user) return reply.code(401).send({ error: 'Missing or invalid API token' });
+    if (!req.user) {
+      return reply.code(401).header('WWW-Authenticate', `Bearer resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`)
+        .send({ error: 'Missing or invalid API token' });
+    }
+    await markMcpUse(req);
     if (req.method !== 'POST') return reply.code(405).send({ error: 'Method not allowed' });
     const server = buildServer(req.user);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
