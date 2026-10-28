@@ -11,6 +11,7 @@ import { crc32, deflateRawSync } from 'node:zlib';
  * Wersja to skrót treści, więc każda zmiana w `plugin/` po deployu jest nową wersją.
  */
 const ROOT = path.join(process.cwd(), 'plugin');
+const PLUGIN_VERSION: string = (JSON.parse(readFileSync(path.join(ROOT, ".claude-plugin", "plugin.json"), "utf8")) as { version: string }).version;
 
 let cached: { zip: Buffer; sha256: string; version: string } | null = null;
 
@@ -54,7 +55,7 @@ export function pluginArchive() {
   if (!cached) {
     const z = zip(files(ROOT));
     const sha256 = createHash('sha256').update(z).digest('hex');
-    cached = { zip: z, sha256, version: `1.0.0+${sha256.slice(0, 12)}` };
+    cached = { zip: z, sha256, version: `${PLUGIN_VERSION}+${sha256.slice(0, 12)}` };
   }
   return cached;
 }

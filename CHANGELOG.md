@@ -1,0 +1,22 @@
+# Changelog
+
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [1.1.0] - 28.10.2026
+
+### Server
+- OAuth sign-in for MCP clients (dynamic client registration, PKCE, refresh tokens) and the device flow for the agent; `/api/connections` lists and revokes connections. Existing `trk_` API tokens keep working.
+- Procedures (analyze, close) are served by the MCP server (`get_procedure` tool and MCP prompts), so clients work without the plugin.
+- Repo mappings per computer; the team queue only hands a computer work for projects it has mapped.
+- Per-project `agentsMayClone` option: agents may clone the project's repo themselves.
+- Issue page shows "Waiting for a PC with this project's repo".
+- Setup wizard for connecting clients: pending (in progress, not released yet).
+
+### Agent 0.1.1
+- New standalone `exponential-agent` (single exe) replacing the PowerShell scripts. Commands: `login`, `start`, `status`, `engine`, `repos`, `hook`, `autostart`, `uninstall`.
+- Hidden autostart (no console window at logon).
+- Codex runs in a temporary git worktree with secret files removed.
+
+### Plugin 1.1.0
+- Thin skills that fetch the procedure from the server.
+- Worklog hook tries `exponential-agent` first.

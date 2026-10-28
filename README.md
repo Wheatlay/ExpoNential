@@ -27,13 +27,15 @@ No sign-up: the landing page starts a guided 5-step tour on issue ACME-12 (Analy
 
 ## How the AI integration works
 
-- **MCP server** at `/mcp` over Streamable HTTP, authenticated with per-user API tokens. Tools list, read and save issues, comments, relations, analyses and change notes.
-- **Claude Code plugin served by the tracker itself** (`plugin/`): the skills `analyze-tracker-ticket` and `close-ticket`, plus a worklog hook that reports prompts, files and commits. Every machine gets the same version from the server.
+Three optional layers (see [docs/agent.md](docs/agent.md) for what each installs and how to remove it; release notes in [CHANGELOG.md](CHANGELOG.md)):
+
+- **MCP server** at `/mcp` over Streamable HTTP, signed in with OAuth in the browser (API tokens still work). Tools list, read and save issues, comments, relations, analyses and change notes; the analyze and close procedures are served as `get_procedure` and MCP prompts.
+- **Claude Code plugin served by the tracker itself** (`plugin/`): thin skills that fetch the procedure from the server, plus a worklog hook that reports prompts, files and commits. Every machine gets the same version from the server.
 - **Structured analysis** via the `set_analysis` tool: sections and decisions with options and a recommendation, rendered in the UI as buttons.
 - **Start work** puts a ready prompt (editable per project) into Claude Code.
 - **Commits** are linked to issues by ID (`ACME-12`) from a GitHub push webhook, only for the repository configured in the project.
 - **Deploy events** come from a generic webhook, GitHub Deployments, or optionally Coolify.
-- **Local agent** (Windows, `tracker://` protocol, `scripts/local-agent/`) runs analysis on the user's machine with an allow-list of tools, so malicious issue text (prompt injection) cannot run arbitrary commands.
+- **exponential-agent** (`agent/`, single exe) runs analysis on the user's machine with Claude Code or Codex, per-computer repo mappings and a tool allow-list, so malicious issue text (prompt injection) cannot run arbitrary commands or read secret files.
 
 ## Architecture
 
@@ -57,7 +59,8 @@ No sign-up: the landing page starts a guided 5-step tour on issue ACME-12 (Analy
 - `src/web/Board.tsx` - kanban board with drag and drop.
 - `src/web/IssuePage.tsx` - the issue view with analysis and decisions.
 - `plugin/` - Claude Code plugin: skills and worklog hook.
-- `scripts/local-agent/` - Windows local agent installer and handler.
+- `agent/` - exponential-agent (standalone exe).
+- `scripts/local-agent/` - legacy PowerShell installer, still served for existing installs.
 - `tests/` - Vitest suites against a real Postgres.
 
 ## Run locally
@@ -144,7 +147,9 @@ npm test
 
 - Single instance: timers, presence and realtime fan-out live in the process.
 - Login is GitHub-only.
-- The local agent is Windows-only.
+- The agent is Windows-first: the code is portable, but autostart exists only on Windows.
+- The agent exe is unsigned, so Windows SmartScreen shows a warning.
+- The legacy PowerShell installer is kept for existing installs.
 - The UI is available in English and Polish.
 - In the public demo, GitHub login, API tokens/MCP, the local agent, integrations and administration are disabled.
 

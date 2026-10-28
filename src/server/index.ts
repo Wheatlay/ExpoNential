@@ -54,6 +54,7 @@ app.addHook('onClose', async () => clearInterval(reminders));
 
 app.get('/health', async () => ({ ok: true }));
 
+// Legacy: installers for existing PowerShell installs (they need updates). New users use the setup wizard + exponential-agent.
 // Skrypty lokalnej analizy do "irm <adres> | iex": bez sekretów, więc publiczne. Adres trackera wstawiany
 // tutaj, żeby instalator nie wymagał parametrów; repo projektów instalator pobiera z /api/projects.
 const AGENT_FILES = ['install.ps1', 'uninstall.ps1', 'tracker-handler.ps1', 'tracker-agent.ps1'];
