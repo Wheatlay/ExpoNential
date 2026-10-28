@@ -9,8 +9,8 @@ import { t } from './i18n.ts';
 
 // Kolejność i nazwy jak SECTION_KEYS w src/server/analysis.ts.
 const SECTIONS = [
-  ['verdict', 'Does it happen'], ['howToCheck', 'How to check'], ['current', 'Current state'], ['answer', 'Answer'],
-  ['todo', 'Anything to do'], ['system', 'In the system'], ['after', 'After the change'], ['risk', 'Watch out'], ['related', 'Related'],
+  ['verdict', 'Does it happen'], ['howToCheck', 'How to reproduce'], ['current', 'Current state'], ['answer', 'Answer'],
+  ['todo', 'Anything to do'], ['system', 'Also affects'], ['after', 'After the change'], ['risk', 'Watch out'], ['related', 'Related'],
 ] as const;
 
 /**

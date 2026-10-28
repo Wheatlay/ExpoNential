@@ -48,20 +48,22 @@ Sekcje zależne od typu:
 | bug | `howToCheck` | kroki w aplikacji po strzałkach: "Kontrakty → Nowy → … → Zapisz" |
 | feature | `current` | co już jest, czego brakuje |
 | investigate | `answer` | co ustalono w kodzie (i czego nie dało się ustalić bez żywego testu) |
-| investigate | `todo` | "Tak · co" / "Nie" |
+
+Analiza to punkt startowy: same fakty ustalone w kodzie, bez propozycji stanu docelowego (ten
+ustala zespół w decyzjach). Nie pisz sekcji `todo` ani `after` (zostały w starych analizach).
 
 Sekcje dla każdego typu:
 
-- `system`: jak to się wpisuje w resztę systemu. Które ekrany, procesy lub kanały korzystają
-  z tego samego i co zmiana w nich poruszy ("ten sam status widzi karta podpisującego i raport").
-- `after`: jak to działa dla użytkownika po zmianie. Stan docelowy, nie plan pracy.
+- `system` („Co jeszcze to dotyka”): inne ekrany, procesy lub kanały, które w kodzie korzystają
+  z tego samego ("ten sam status widzi karta podpisującego i raport"). Tylko miejsca znalezione
+  w kodzie, bez przewidywań.
 - `risk` (opcjonalnie): jedno nieoczywiste ryzyko, np. istniejące dane.
-- `related` (opcjonalnie): inne zgłoszenia o tym samym miejscu (`mcp__tracker__list_issues`
-  z `query`), najwyżej 3, każde w osobnej linii `- ACME-12 tytuł: dlaczego`, bez innego tekstu.
-  Liczy się `statusType`:
+- `related` (opcjonalnie): inne zgłoszenia, które zmieniały **to samo miejsce w kodzie albo tę
+  samą regułę** (`mcp__tracker__list_issues` z `query`); podobny temat nie wystarcza. Najwyżej 3,
+  każde w osobnej linii `- ACME-12: dlaczego`, bez tytułu i statusu (tracker pokazuje je w chipie),
+  bez innego tekstu. Liczy się `statusType`:
   - otwarte (`backlog`, `unstarted`, `started`): duplikat albo ryzyko kolizji, napisz które;
-  - zrobione (`completed`): tylko gdy zmieniało to samo miejsce, z dopiskiem „zrobione”
-    (Start czyta wtedy jego notatki zmian);
+  - zrobione (`completed`): tylko gdy zmieniało to samo miejsce (Start czyta wtedy jego notatki zmian);
   - `canceled` i `duplicate` pomiń.
   Limit słów sekcji nie obejmuje `related`.
 
@@ -101,7 +103,6 @@ Przykład wywołania:
     "verdict": "Tak · formularz kontraktu zapisuje się bez daty końca, wymaga jej dopiero zatwierdzenie.",
     "howToCheck": "Kontrakty → Nowy kontrakt → zostaw puste „Do, włącznie” → Zapisz: kontrakt powstaje.",
     "system": "Brak daty to kontrakt bezterminowy na liście, przy przypisywaniu przez operatora i w raporcie.",
-    "after": "Formularz nie pozwala zapisać kontraktu bez daty końca.",
     "risk": "Istniejące kontrakty bez daty trzeba uzupełnić przy następnej edycji."
   },
   "decisions": [

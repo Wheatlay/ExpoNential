@@ -18,8 +18,8 @@ export type SectionKey = (typeof SECTION_KEYS)[number];
 
 /** Nagłówki w markdown (dla agenta i eksportu; UI ma własne tłumaczenia). */
 export const SECTION_LABELS: Record<SectionKey, string> = {
-  verdict: 'Does it happen', howToCheck: 'How to check', current: 'Current state', answer: 'Answer',
-  todo: 'Anything to do', system: 'In the system', after: 'After the change', risk: 'Watch out for', related: 'Related',
+  verdict: 'Does it happen', howToCheck: 'How to reproduce', current: 'Current state', answer: 'Answer',
+  todo: 'Anything to do', system: 'Also affects', after: 'After the change', risk: 'Watch out for', related: 'Related',
 };
 const TYPE_LABELS = { bug: 'bug', feature: 'feature', investigate: 'to investigate' } as const;
 

@@ -285,7 +285,7 @@ export function IssuePage({ number }: { number: number }) {
                     : t('No analysis yet. Click Analyze and Claude will look at the problem and the code. Tip: set up local analysis in Settings > Claude Code (one command) and it runs by itself.')} minHeight={120} />}
               </div>
             </FoldBar>
-            <FoldBar id="human" badge={<span className="badge human">HUMAN</span>} name={t('What changed')}
+            <FoldBar id="human" badge={<span className="badge human">HUMAN</span>} name={t('Summary')}
               preview={firstLine(issue.changeHuman) || t('Short summary for people, one change per line')}
               meta={lineCount(issue.changeHuman)} required={!issue.changeHuman.trim()}>
               <div className="panel human">

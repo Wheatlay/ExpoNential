@@ -70,7 +70,7 @@ export function LandingPreview() {
                   <div className="fold-bar">
                     <span className="fold-caret"><Icon.caret /></span>
                     <span className="badge human">HUMAN</span>
-                    <span className="fold-name">{t('What changed')}</span>
+                    <span className="fold-name">{t('Summary')}</span>
                     <span className="fold-preview">{t('Company customers can enter VAT IDs with spaces or a lowercase prefix; checkout accepts them.')}</span>
                   </div>
                 </div>

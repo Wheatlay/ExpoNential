@@ -5,8 +5,8 @@ export const LOCALE: 'en' | 'pl' = process.env.APP_LOCALE === 'pl' ? 'pl' : 'en'
 const pl: Record<string, string> = {
   // analiza AI (analysis.ts render)
   'Type': 'Typ', 'bug': 'błąd', 'feature': 'funkcja', 'to investigate': 'do zbadania',
-  'Does it happen': 'Czy występuje', 'How to check': 'Jak sprawdzić', 'Current state': 'Stan obecny', 'Answer': 'Odpowiedź',
-  'Anything to do': 'Czy jest co robić', 'In the system': 'W systemie', 'After the change': 'Po zmianie', 'Watch out for': 'Uwaga na',
+  'Does it happen': 'Czy występuje', 'How to reproduce': 'Jak odtworzyć', 'Current state': 'Stan obecny', 'Answer': 'Odpowiedź',
+  'Anything to do': 'Czy jest co robić', 'Also affects': 'Co jeszcze to dotyka', 'After the change': 'Po zmianie', 'Watch out for': 'Uwaga na',
   'Related': 'Powiązane', 'Decided': 'Ustalono', 'recommended': 'polecam', 'To decide': 'Do decyzji',
   'Poll: {title}': 'Ankieta: {title}',
   '{count} to choose from, you can propose another. Organized by {name}.': '{count} do wyboru, możesz zaproponować inny. Organizuje {name}.',

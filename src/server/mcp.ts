@@ -223,7 +223,7 @@ function buildServer(user: SessionUser) {
       type: z.enum(ANALYSIS_TYPES).optional().describe('bug | feature | investigate'),
       sections: analysisSections.optional().describe(
         'Plain text in the language of the issue (match the issue description), 1-2 short sentences per section, omit empty ones. bug: verdict ("Yes · cause"), howToCheck (steps with →). ' +
-        'feature: current. investigate: answer, todo. All types: system (how it fits the rest of the system), after (target state for the user), risk, related.'),
+        'feature: current. investigate: answer. All types: system (other places in the code that use the same thing), risk, related. todo and after are legacy, do not write them.'),
       decisions: z.array(decisionSchema).max(5).optional().describe('Questions for a human, 2-4 options each, mark one recommended. Empty when none.'),
       analysis: z.string().optional().describe('Legacy markdown analysis; ignored when type is given'),
     },
