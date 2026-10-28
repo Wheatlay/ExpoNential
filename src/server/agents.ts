@@ -30,7 +30,7 @@ export function agentScriptsVersion() {
 }
 
 /** Najstarszy agent z agent/ (exponential-agent.exe, wersja semver), który jeszcze dostaje pracę. */
-export const MIN_EXE_AGENT = '0.1.0';
+export const MIN_EXE_AGENT = '0.1.2';
 const semver = (v: string) => /^(\d+)\.(\d+)\.(\d+)$/.exec(v)?.slice(1).map(Number);
 /** Aktualny agent: skrypty PS w wersji z serwera albo agent .exe nie starszy niż MIN_EXE_AGENT. */
 export function agentUpToDate(version: string | null | undefined) {

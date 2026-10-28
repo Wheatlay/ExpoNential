@@ -16,7 +16,7 @@ export function findEngine(engine: Engine): string | null {
 
 // Issue text is written by every project member, so it is untrusted (prompt injection). Read/Grep/Glob are NOT
 // allowed explicitly: without consent they only work inside the repo. Secrets in the repo are denied too.
-const ALLOWED = 'Skill,mcp__tracker__get_issue,mcp__tracker__list_comments,mcp__tracker__list_issues,mcp__tracker__set_analysis';
+const ALLOWED = 'Skill,mcp__tracker__get_procedure,mcp__tracker__get_issue,mcp__tracker__list_comments,mcp__tracker__list_issues,mcp__tracker__set_analysis';
 const SECRETS = ['**/.env*', '**/*.pem', '**/*.key', '**/*.pfx', '**/*.p12'];
 const DENIED = `Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,${SECRETS.map((s) => `Read(${s}),Grep(${s})`).join(',')}`;
 

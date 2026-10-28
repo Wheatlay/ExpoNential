@@ -94,7 +94,7 @@ try {
   # Read/Grep/Glob celowo NIE są na liście: bez jawnej zgody działają tylko w katalogu repo, a odczyt
   # poza nim (~/.claude.json z tokenem, ~/.ssh) w trybie -p dostaje odmowę. Sprawdzone 2026-10-20.
   # --setting-sources project: bez uprawnień z ustawień użytkownika, które bywają szerokie.
-  $allowed = 'Skill,mcp__tracker__get_issue,mcp__tracker__list_comments,mcp__tracker__list_issues,mcp__tracker__set_analysis'
+  $allowed = 'Skill,mcp__tracker__get_procedure,mcp__tracker__get_issue,mcp__tracker__list_comments,mcp__tracker__list_issues,mcp__tracker__set_analysis'
   # Lokalne sekrety w repo (.env, klucze, certyfikaty) też poza zasięgiem: analiza bywa zlecona przez kogoś innego
   # (kolejka zespołu), a jej treść widzi cały projekt. Read() blokuje też Grep/Glob; sprawdzone w -p 27.10.2026.
   $secrets = '**/.env*', '**/*.pem', '**/*.key', '**/*.pfx', '**/*.p12'
