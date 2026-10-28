@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useMe, useProjects, type ProjectSummary } from './api.ts';
+import { useProjects, type ProjectSummary } from './api.ts';
 import { openMenu } from './menu.tsx';
 import { navigate } from './router.ts';
 import { setProjectKey, useProjectKey } from './project.ts';
@@ -40,7 +40,6 @@ const WHEEL_DELAY = 1000;
  * projektu z paskiem odliczania; po 1 s bez ruchu przełącza. Esc albo zjechanie kursorem anuluje.
  */
 export function ProjectSwitcher() {
-  const me = useMe().data;
   const projects = useProjects().data ?? [];
   const current = useProjectKey();
   const [preview, setPreview] = useState<{ index: number; started: number } | null>(null);
@@ -108,7 +107,6 @@ export function ProjectSwitcher() {
         { key: 'sep', separator: true as const },
         {
           key: 'new', label: t('+ New project'),
-          disabledReason: me?.isAdmin ? undefined : t('Only workspace admins can create projects'),
           onSelect: () => openNewProject(),
         },
         { key: 'settings', label: t('Project settings and members'), onSelect: () => navigate('/settings#project') },

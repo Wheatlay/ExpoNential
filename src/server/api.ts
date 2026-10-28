@@ -127,8 +127,7 @@ export async function registerApi(app: FastifyInstance) {
         askedMe: askedBy.get(project.id) ?? 0,
       }));
     });
-    r.post('/api/projects', async (req, reply) => {
-      if (!req.user!.isAdmin) return reply.code(403).send({ error: 'Admin only' });
+    r.post('/api/projects', async (req) => {
       const body = z.object({ key: z.string(), name: z.string(), color: z.string().optional() }).parse(req.body);
       const p = await pr.createProject(req.user!.id, body);
       await sp.ensureProjectSprints(p);

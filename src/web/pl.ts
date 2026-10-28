@@ -554,7 +554,6 @@ export const pl: Record<string, string> = {
   // Przełącznik projektów
   '{n} person|{n} people': '{n} osoba|{n} osoby|{n} osób',
   '+ New project': '+ Nowy projekt',
-  'Only workspace admins can create projects': 'Projekty mogą tworzyć tylko admini workspace',
   'Project settings and members': 'Ustawienia i członkowie projektu',
   'Switch project (click, or scroll over the name)': 'Zmień projekt (kliknij albo przewiń kółkiem nad nazwą)',
   'Project': 'Projekt',
