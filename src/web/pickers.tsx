@@ -179,3 +179,19 @@ export function relationMenu(all: IssueRow[], number: number, onDone?: () => voi
     })),
   };
 }
+
+/** Relacja otwartego zgłoszenia z gotowym drugim (wzmianka w tekście): od razu zdania, bez wyszukiwarki. */
+export function relationToMenu(number: number, other: number, onDone?: () => void): MenuSpec {
+  return {
+    searchable: false,
+    items: (['waits_on', 'blocks', 'related'] as RelationKind[]).map((k) => ({
+      key: k, label: `${ident(number)} ${RELATION_VERB[k]} ${ident(other)}`,
+      icon: k === 'related' ? <Icon.relation size={14} /> : <Icon.blocked size={14} />,
+      onSelect: () => {
+        void api(`/api/issues/${ident(number)}/relations`, { method: 'POST', body: { kind: k, other } })
+          .then(() => { toast(`${ident(number)} ${RELATION_VERB[k]} ${ident(other)}`); onDone?.(); })
+          .catch((e: Error) => toast(e.message, 'err'));
+      },
+    })),
+  };
+}

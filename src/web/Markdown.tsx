@@ -1,10 +1,10 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { useIssues, useMe, useMeta, useProjects, useUpdateIssue, type IssuePatch } from './api.ts';
+import { queryClient, useIssues, useMe, useMeta, useProjects, useUpdateIssue, type IssuePatch } from './api.ts';
 import { Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu, type MenuSpec } from './menu.tsx';
-import { assigneeMenu, priorityMenu, statusMenu } from './pickers.tsx';
+import { assigneeMenu, priorityMenu, relationToMenu, statusMenu } from './pickers.tsx';
 import { linkProps, navigate } from './router.ts';
 import { copyText } from './toast.ts';
 import { t } from './i18n.ts';
@@ -74,6 +74,10 @@ function IssueMention({ id, preview }: { id: string; preview?: boolean }) {
   }
   const path = `/issue/${id}`;
   const upd = (patch: IssuePatch) => update.mutate({ number: row.number, patch });
+  // Wzmianka na stronie innego zgłoszenia: relację z nim można dodać od razu z menu.
+  const page = /^\/issue\/([A-Z]{2,6})-(\d+)$/.exec(location.pathname);
+  const here = page && page[1] === key && Number(page[2]) !== row.number ? Number(page[2]) : null;
+  const refresh = () => { void queryClient.invalidateQueries({ queryKey: ['issue', here] }); void queryClient.invalidateQueries({ queryKey: ['issues'] }); };
   // Prawy przycisk: menu aplikacji jak przy podzadaniu. Środkowy i Ctrl+klik obsługuje przeglądarka (prawdziwy href).
   const menu = (): MenuSpec => ({
     searchable: false,
@@ -84,6 +88,7 @@ function IssueMention({ id, preview }: { id: string; preview?: boolean }) {
       { key: 'status', label: t('Status'), icon: <StatusIcon status={st} />, submenu: () => statusMenu(meta, row, upd) },
       { key: 'priority', label: t('Priority'), icon: <PriorityIcon priority={row.priority} colored={false} />, submenu: () => priorityMenu(meta, row, upd) },
       { key: 'assignee', label: t('Assignee'), icon: <Icon.user size={14} />, submenu: () => assigneeMenu(meta, row, upd, me?.id) },
+      ...(here ? [{ key: 'relation', label: t('Add relation'), icon: <Icon.relation size={14} />, submenu: () => relationToMenu(here, row.number, refresh) }] : []),
       { key: 'sep2', separator: true },
       { key: 'copyid', label: t('Copy ID'), icon: <Icon.copy size={14} />, onSelect: () => copyText(id, t('ID copied')) },
       { key: 'copyurl', label: t('Copy link'), icon: <Icon.link size={14} />, onSelect: () => copyText(`${location.origin}${path}`, t('Link copied')) },
