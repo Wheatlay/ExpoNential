@@ -82,6 +82,13 @@ opcje: `label` 1-4 słowa, `desc` najwyżej 8 słów (skutek dla produktu, nie t
 `recommended: true` na tej jednej, którą polecasz, ustawionej jako pierwsza. Brak decyzji =
 pusta lista.
 
+**Sprawdź przed zapisem:**
+- Zgłoszenie zależy od wejścia z zewnątrz (krok 2, punkt 5)? Pierwsza decyzja pyta o wejście.
+- Kluczowe założenie (krok 2, punkt 6) nie dla każdego wejścia jest spełnione? Jest o nim
+  decyzja albo zdanie w niewiadomych.
+- Każde ryzyko dotyczy tej zmiany. „Inne importy działają wszystko albo nic” się nie liczy:
+  to cecha istniejącej funkcji, nie skutek tej zmiany.
+
 ### Tryb Deep
 
 Gdy polecenie zawiera słowo „deep” („tryb deep”, „deep mode”), obowiązują poniższe zmiany. Reszta
@@ -132,6 +139,7 @@ Przykład wywołania:
   migracja, tenant, nazwy stanów z kodu, nazwy dostawców). Pisz nazwami z interfejsu.
 - Przy ponownej analizie (Re-analyze) uwzględnij poprzednią i nowe komentarze i napisz całość od
   nowa. Pytania, na które ktoś już odpowiedział, zostaw w tym samym brzmieniu i z tymi samymi
-  nazwami opcji: tracker przeniesie wybór.
+  nazwami opcji: tracker przeniesie wybór. Pytania bez odpowiedzi nie są wiążące: ułóż decyzje od
+  nowa według tego skilla, jakby poprzednich nie było.
 - Nie używaj pauzy em dash (—).
 - Na koniec podaj użytkownikowi listę przeanalizowanych zgłoszeń, jedno zdanie na każde.
