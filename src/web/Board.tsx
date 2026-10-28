@@ -728,7 +728,9 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
         {show.labels && labels.map((l) => (
           <span key={l.id} className="pill" {...pillProps('labels')}><span className="dot" style={{ background: l.color }} />{l.name}</span>
         ))}
-        {show.ai && issue.analysisRequestedAt && <span className="pill ai" title={t('Waiting for AI analysis')}><Icon.sparkle size={12} /> {t('Analysis pending')}</span>}
+        {show.ai && issue.analysisRequestedAt && (issue.analysisClaimedAt
+          ? <span className="pill ai" title={t('A PC is running the AI analysis')}><Icon.sparkle size={12} /> {t('Analysis running')}</span>
+          : <span className="pill ai" title={t('Waiting for AI analysis')}><Icon.sparkle size={12} /> {t('Analysis pending')}</span>)}
         {show.ai && !issue.analysisRequestedAt && issue.hasAnalysis && <span className="pill ai done" title={t('AI analysis available')}><Icon.sparkle size={12} /></span>}
         {notesMissing && <span className="pill notes-missing" title={t('Done without HUMAN / AI change notes')}>{t('Notes missing')}</span>}
       </div>
