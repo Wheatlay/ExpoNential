@@ -245,7 +245,7 @@ export function IssuePage({ number }: { number: number }) {
           <div className="section fold-group">
             <FoldBar id="analysis" tour="analysis" badge={<span className="badge ai">AI</span>} name={t('Problem analysis')}
               preview={issue.analysisRequestedAt ? t('Waiting for Claude…') : analysisPreview(issue) || t('No analysis yet')}
-              meta={issue.analysisUpdatedAt ? timeAgo(issue.analysisUpdatedAt) : ''}
+              meta={issue.analysisUpdatedAt ? `${timeAgo(issue.analysisUpdatedAt)}${!issue.analysisRequestedAt && issue.analysisResultDeep ? ` · ${t('Deep')}` : ''}` : ''}
               tools={<span style={{ display: 'inline-flex', gap: 4 }}>
                 {/* Kolejka zespołu jest domyślnie wyłączona; gdy włączona, widać to przy analizie, bo zmienia, czyj PC ją uruchomi. */}
                 {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in project settings > AI agent.")}>{t('Team queue')}</span>}
@@ -264,7 +264,6 @@ export function IssuePage({ number }: { number: number }) {
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
                 </>}
                 {(!issue.analysisRequestedAt || stalled || failed) && <>
-                    {!issue.analysisRequestedAt && issue.analysisResultDeep && issue.analysisUpdatedAt && <span className="pill ai done" title={t('Deeper analysis with a stronger model: slower and more expensive')}>{t('Deep')}</span>}
                     <Tooltip text={outdated ? outdatedReason : null}>
                       <button className="btn sm ai-btn" data-tour="analyze" disabled={outdated} title={outdated ? undefined : local ? t('Runs Claude on your computer, read-only') : t('Marks the issue for analysis by Claude')}
                         onClick={(e) => { e.stopPropagation(); void analyze(); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
