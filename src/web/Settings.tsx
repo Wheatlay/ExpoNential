@@ -513,16 +513,16 @@ function ProjectLabelsStatuses() {
             <button className="btn" disabled={!!ro || !label.name.trim()} onClick={() => void api('/api/admin/labels', { method: 'POST', body: label }).then(() => { setLabel({ name: '', color: label.color }); refresh(); })}><Icon.plus size={13} /> {t('Add')}</button>
           </Tooltip>
         </div>
-        {meta.labels.map((l) => (
+        {meta.labels.map((l) => { const byAi = AI_LABELS.includes(l.name.toLowerCase()); const lock = ro || (byAi ? t('AI analysis finds this label by its name, so it cannot be renamed or deleted. You can change its color.') : null); return (
           <div key={l.id} className="s-row">
             <input type="color" defaultValue={toHex(l.color)} disabled={!!ro} onBlur={(e) => e.target.value !== toHex(l.color) && void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: l.name, color: e.target.value } }).then(refresh)} style={{ width: 30, height: 30, border: 0, background: 'none' }} />
-            <input className="input grow" defaultValue={l.name} disabled={!!ro} onBlur={(e) => e.target.value.trim() && e.target.value !== l.name && void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: e.target.value.trim(), color: l.color } }).then(refresh)} />
-            {AI_LABELS.includes(l.name.toLowerCase()) && <span className="badge ai" title={t('AI analysis sets this label from the issue type. Renamed or deleted, it is created again.')}>{t('set by AI')}</span>}
-            <Tooltip text={ro}>
-              <button className="btn sm danger" disabled={!!ro} onClick={() => void askConfirm({ title: t('Delete label "{name}"?', { name: l.name }), body: t('It will be removed from all issues.') }).then((ok) => { if (ok) void api(`/api/admin/labels/${l.id}`, { method: 'DELETE' }).then(refresh); })}>{t('Delete')}</button>
+            <input className="input grow" defaultValue={l.name} disabled={!!lock} title={lock ?? undefined} onBlur={(e) => e.target.value.trim() && e.target.value !== l.name && void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: e.target.value.trim(), color: l.color } }).then(refresh)} />
+            {byAi && <span className="badge ai" title={t('AI analysis sets this label from the issue type.')}>{t('set by AI')}</span>}
+            <Tooltip text={lock}>
+              <button className="btn sm danger" disabled={!!lock} onClick={() => void askConfirm({ title: t('Delete label "{name}"?', { name: l.name }), body: t('It will be removed from all issues.') }).then((ok) => { if (ok) void api(`/api/admin/labels/${l.id}`, { method: 'DELETE' }).then(refresh); })}>{t('Delete')}</button>
             </Tooltip>
           </div>
-        ))}
+        ); })}
       </div>
       <div className="s-card" style={{ marginTop: 12 }}>
         <div className="s-row s-row-head"><b>{t('Statuses')}</b><span className="hint">{t('Order is the order of columns on the board.')}</span></div>

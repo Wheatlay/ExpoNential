@@ -554,7 +554,16 @@ export async function projectIdOfComment(id: number) {
 
 // ---------- słowniki (admin projektu) ----------
 
+/** Etykiety typu analizy (Bug / Feature / Investigate): analiza szuka ich po nazwie, więc nazwy i usunięcia nie zmieniamy. */
+const isTypeLabel = (name: string) => Object.values(TYPE_LABEL_NAMES).some((n) => n.toLowerCase() === name.toLowerCase());
+async function guardTypeLabel(p: Project, id: number, newName?: string) {
+  const [cur] = await db.select({ name: labels.name }).from(labels).where(and(eq(labels.id, id), eq(labels.projectId, p.id)));
+  if (cur && isTypeLabel(cur.name) && (newName === undefined || newName.toLowerCase() !== cur.name.toLowerCase()))
+    throw new RuleError('This label is set by AI analysis; only its color can change', 'invalid');
+}
+
 export async function saveLabel(p: Project, input: { id?: number; name: string; color: string }) {
+  if (input.id) await guardTypeLabel(p, input.id, input.name);
   const row = input.id
     ? (await db.update(labels).set({ name: input.name, color: input.color }).where(and(eq(labels.id, input.id), eq(labels.projectId, p.id))).returning())[0]
     : (await db.insert(labels).values({ projectId: p.id, name: input.name, color: input.color })
@@ -564,6 +573,7 @@ export async function saveLabel(p: Project, input: { id?: number; name: string; 
 }
 
 export async function deleteLabel(p: Project, id: number) {
+  await guardTypeLabel(p, id);
   await db.delete(labels).where(and(eq(labels.id, id), eq(labels.projectId, p.id)));
   await publish({ type: 'meta', projectKey: p.key });
 }
