@@ -140,7 +140,7 @@ export function issueContextMenu(opts: {
     ...(opts.onStart ? [{ key: 'start', label: t('Start work in Claude'), icon: <Icon.play size={14} />, onSelect: opts.onStart }] : []),
     { key: 'analyze', label: t('Request AI analysis'), icon: <Icon.sparkle size={14} />, onSelect: opts.onAnalyze },
     { key: 'sub', label: t('Add sub-issue'), icon: <Icon.sub size={14} />, onSelect: opts.onSubIssue },
-    ...(opts.allIssues ? [{ key: 'relation', label: t('Add relation'), icon: <Icon.relation size={14} />, kbd: ['R'], submenu: () => relationMenu(opts.allIssues!, tg.number) }] : []),
+    ...(opts.allIssues ? [{ key: 'relation', label: t('Add relation'), icon: <Icon.relation size={14} />, kbd: ['R'], submenu: () => relationMenu(opts.allIssues!, tg.number, undefined, meta.statuses) }] : []),
     { key: 'sep2', separator: true },
     { key: 'open', label: t('Open'), icon: <Icon.chevronRight size={14} />, kbd: ['↵'], onSelect: opts.onOpen },
     { key: 'copyid', label: t('Copy ID'), icon: <Icon.copy size={14} />, onSelect: () => copyText(`${ident(tg.number)}`, t('ID copied')) },
@@ -155,14 +155,21 @@ export const RELATION_LABELS: Record<RelationKind, string> = { waits_on: t('Wait
 /** Zdanie po identyfikatorze: "ACME-3 waits on ACME-5". */
 const RELATION_VERB: Record<RelationKind, string> = { waits_on: t('waits on'), blocks: t('blocks'), related: t('is related to') };
 
+/** Ikona statusu zgłoszenia w listach wyboru zgłoszeń (rodzic, relacja), jak przy wzmiance. */
+export function issueStatusIcon(statuses: Status[] | undefined, statusId: number) {
+  const s = statuses?.find((x) => x.id === statusId);
+  return s ? <StatusIcon status={s} fraction={startedFraction(statuses!, s)} /> : undefined;
+}
+
 /** Relacja w dwóch krokach: rodzaj zdaniem, potem zadanie z wyszukiwarki. */
-export function relationMenu(all: IssueRow[], number: number, onDone?: () => void): MenuSpec {
+export function relationMenu(all: IssueRow[], number: number, onDone?: () => void, statuses?: Status[]): MenuSpec {
   const pick = (kind: RelationKind): MenuSpec => ({
     searchable: true,
     placeholder: `${ident(number)} ${RELATION_VERB[kind]}…`,
     items: all.filter((i) => i.number !== number).sort((a, b) => b.number - a.number).map((i) => ({
       key: `r${i.number}`,
       label: `${ident(i.number)} ${i.title}`,
+      icon: issueStatusIcon(statuses, i.statusId),
       onSelect: () => {
         void api(`/api/issues/${ident(number)}/relations`, { method: 'POST', body: { kind, other: i.number } })
           .then(() => { toast(`${ident(number)} ${RELATION_VERB[kind]} ${ident(i.number)}`); onDone?.(); })

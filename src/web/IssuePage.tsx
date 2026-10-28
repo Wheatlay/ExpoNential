@@ -7,7 +7,7 @@ import {
 } from './api.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu, isMenuOpen, Tooltip, type MenuSpec } from './menu.tsx';
-import { assigneeMenu, labelMenu, priorityMenu, relationMenu, sprintLabel, sprintMenu, statusMenu, type PickTarget } from './pickers.tsx';
+import { assigneeMenu, issueStatusIcon, labelMenu, priorityMenu, relationMenu, sprintLabel, sprintMenu, statusMenu, type PickTarget } from './pickers.tsx';
 import { isAskedTo, type IssueRow, type RelatedIssue, type RelationKind } from './api.ts';
 import { linkProps, navigate } from './router.ts';
 import { openNewIssue } from './NewIssue.tsx';
@@ -335,13 +335,13 @@ export function IssuePage({ number }: { number: number }) {
         <div className="props-group">
           <h4>{t('Parent')}</h4>
           <button className="prop muted" onClick={(e) => {
-            const all = qc.getQueryData<{ number: number; title: string }[]>(['issues']) ?? [];
+            const all = qc.getQueryData<IssueRow[]>(['issues']) ?? [];
             openMenu(e.currentTarget, {
               searchable: true, placeholder: t('Set parent issue…'),
               items: [
                 { key: 'none', label: t('No parent'), checked: !issue.parent, onSelect: () => save({ parentNumber: null }) },
                 ...all.filter((i) => i.number !== number).sort((a, b) => b.number - a.number).map((i) => ({
-                  key: `i${i.number}`, label: `${ident(i.number)} ${i.title}`, checked: issue.parent?.number === i.number,
+                  key: `i${i.number}`, label: `${ident(i.number)} ${i.title}`, icon: issueStatusIcon(meta.statuses, i.statusId), checked: issue.parent?.number === i.number,
                   onSelect: () => save({ parentNumber: i.number }),
                 })),
               ],
@@ -620,7 +620,7 @@ function Relations({ issue, meta }: { issue: IssueDetail; meta: Meta }) {
       <h4 style={{ display: 'flex', alignItems: 'center' }}>
         {t('Relations')}
         <button className="icon-btn" style={{ marginLeft: 'auto', width: 22, height: 22 }} title={t('Add relation')}
-          onClick={(e) => openMenu(e.currentTarget, relationMenu(qc.getQueryData<IssueRow[]>(['issues']) ?? [], issue.number, refresh))}>
+          onClick={(e) => openMenu(e.currentTarget, relationMenu(qc.getQueryData<IssueRow[]>(['issues']) ?? [], issue.number, refresh, meta.statuses))}>
           <Icon.plus size={13} />
         </button>
       </h4>
