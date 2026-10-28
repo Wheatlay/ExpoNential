@@ -639,7 +639,7 @@ export const pl: Record<string, string> = {
   'Allow': 'Wpuść',
   'GitHub login': 'Login GitHub',
   'You cannot remove your own admin role': 'Nie możesz odebrać sobie roli admina',
-  'Workspace admins can create projects and manage accounts': 'Admini workspace mogą tworzyć projekty i zarządzać kontami',
+  'Workspace admins manage accounts and every project': 'Admini workspace zarządzają kontami i wszystkimi projektami',
   'You cannot deactivate yourself': 'Nie możesz dezaktywować siebie',
   'Deactivate': 'Dezaktywuj',
   'Activate': 'Aktywuj',

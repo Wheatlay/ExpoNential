@@ -615,7 +615,7 @@ function Accounts() {
           {/* Login GitHub jest edytowalny, żeby poprawić mapowanie z importu bez dublowania osoby. */}
           <input className="input" style={{ width: 150 }} defaultValue={u.login} disabled={demo} title={demo ? t('Disabled in the demo') : t('GitHub login')}
             onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== u.login && void saveUser({ id: u.id, login: e.target.value.trim() })} />
-          <Tooltip text={demo ? t('Disabled in the demo') : u.id === me?.id ? t('You cannot remove your own admin role') : t('Workspace admins can create projects and manage accounts')}>
+          <Tooltip text={demo ? t('Disabled in the demo') : u.id === me?.id ? t('You cannot remove your own admin role') : t('Workspace admins manage accounts and every project')}>
             <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input type="checkbox" checked={u.isAdmin} disabled={demo || u.id === me?.id} onChange={(e) => void saveUser({ id: u.id, login: u.login, isAdmin: e.target.checked })} /> {t('Admin')}
             </label>
