@@ -23,7 +23,7 @@ const tmpCookie = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure:
 export type SessionUser = { id: number; name: string; login: string; isAdmin: boolean };
 
 declare module 'fastify' {
-  interface FastifyRequest { user: SessionUser | null }
+  interface FastifyRequest { user: SessionUser | null; authVia: 'session' | 'token' | null }
 }
 
 export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -73,6 +73,28 @@ export async function createApiToken(userId: number, name: string) {
   return token;
 }
 
+/**
+ * Token Bearer (trk_ i exa_) działa tylko dla klientów AI i agenta: /mcp, /oauth/*, trasy wołane przez agenta
+ * (agent/src) i hook worklog (plugin/scripts/worklog.mjs). Reszta (m.in. /api/tokens, /api/connections) wymaga ciasteczka sesji.
+ */
+const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
+  [/^(GET|POST|DELETE|PUT|PATCH|HEAD|OPTIONS)$/, /^\/(mcp|oauth|\.well-known)(\/|$)/],
+  [/^GET$/, /^\/api\/(me|projects)$/],
+  [/^GET$/, /^\/api\/issues\/[^/]+$/], // hook worklog czyta zgłoszenie
+  [/^GET$/, /^\/api\/issues\/[^/]+\/prompt\/[^/]+$/],
+  [/^(POST|DELETE)$/, /^\/api\/issues\/[^/]+\/analyze\/claim$/],
+  [/^POST$/, /^\/api\/issues\/[^/]+\/worklog$/],
+  [/^GET$/, /^\/api\/agent\/work$/],
+  [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
+  // Stary instalator i deinstalator PowerShell (scripts/local-agent).
+  [/^(POST|DELETE)$/, /^\/api\/me\/local-agent$/],
+  [/^DELETE$/, /^\/api\/agents\/[^/]+$/],
+];
+export const tokenAllowed = (method: string, url: string) => {
+  const path = url.split('?')[0];
+  return TOKEN_ROUTES.some(([m, p]) => m.test(method) && p.test(path));
+};
+
 export function requireUser(req: FastifyRequest, reply: FastifyReply, done: () => void) {
   if (!req.user) return void reply.code(401).send({ error: 'Not signed in' });
   done();
@@ -85,8 +107,14 @@ export function requireAdmin(req: FastifyRequest, reply: FastifyReply, done: () 
 
 export async function registerAuth(app: FastifyInstance) {
   app.decorateRequest('user', null);
+  app.decorateRequest('authVia', null);
   app.addHook('onRequest', async (req, reply) => {
-    req.user = (await userFromSession(req.cookies[COOKIE], reply)) ?? (await userFromToken(req.headers.authorization));
+    const fromSession = await userFromSession(req.cookies[COOKIE], reply);
+    req.user = fromSession ?? (await userFromToken(req.headers.authorization));
+    req.authVia = req.user ? (fromSession ? 'session' : 'token') : null;
+    if (req.authVia === 'token' && !tokenAllowed(req.method, req.url)) {
+      return reply.code(403).send({ error: 'This token can only be used by AI clients and the agent' });
+    }
     // Powrót do /oauth/authorize albo /oauth/device po logowaniu (dowolną metodą): logowanie kończy się wejściem na "/".
     const ret = req.cookies.oauth_return;
     if (ret && req.user && req.method === 'GET' && req.url.split('?')[0] === '/') {

@@ -9,6 +9,8 @@ export async function cmdLogin(args: string[]) {
   const url = (opt('--url') || process.env.EXPONENTIAL_URL || '').replace(/\/+$/, '');
   const token = opt('--token');
   if (!/^https?:\/\//.test(url)) throw new Error('usage: login --url https://your-tracker [--token trk_...]');
+  const host = new URL(url).hostname;
+  if (!url.startsWith('https://') && !['localhost', '127.0.0.1', '[::1]'].includes(host)) throw new Error('login requires an https:// URL (http is allowed only for localhost, 127.0.0.1 and [::1])');
 
   if (token) {   // trk_ tokens are long-lived, no refresh
     updateConfig((c) => { c.url = url; c.token = token; delete c.oauth; });

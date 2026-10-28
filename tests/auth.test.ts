@@ -19,7 +19,7 @@ let svc: typeof import('../src/server/service.ts');
 let app: import('fastify').FastifyInstance;
 let P: import('../src/server/projects.ts').Project;
 let owner: { id: number };
-let bearer: (userId: number) => Promise<{ authorization: string }>;
+let bearer: (userId: number) => Promise<{ cookie: string }>;
 const { eq } = await import('drizzle-orm');
 
 const google = (sub: string, email: string, extra: object = {}) => ({ sub, email, email_verified: true, name: 'G User', ...extra });
@@ -48,7 +48,12 @@ beforeAll(async () => {
   await app.register(cookie);
   await auth.registerAuth(app);
   await registerApi(app);
-  bearer = async (userId) => ({ authorization: `Bearer ${await auth.createApiToken(userId, 't')}` });
+  // Token Bearer ma ograniczony zakres (tests/scope.test.ts), więc trasy admina wołamy sesją.
+  bearer = async (userId) => {
+    const raw = (await import('node:crypto')).randomBytes(16).toString('base64url');
+    await dbmod.db.insert(schema.sessions).values({ id: auth.sha256(raw), userId, expiresAt: new Date(Date.now() + 864e5) });
+    return { cookie: `tracker_session=${raw}` };
+  };
 });
 afterAll(async () => { await app?.close(); await dbmod?.sql.end(); });
 

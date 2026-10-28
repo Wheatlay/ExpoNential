@@ -2,6 +2,14 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.1.2], Agent [0.1.4] - 28.10.2026
+
+- Security: API tokens (`trk_`, `exa_`) work only for MCP, the agent, the worklog hook and the legacy PowerShell installer; creating tokens and managing connections needs a browser session.
+- Security: the agent runs Claude in repos it cloned without that repo's settings, hooks or MCP servers (`--setting-sources user --strict-mcp-config`), so a project admin cannot run code on teammates' PCs.
+- Security: the Claude plugin is bundled in the agent instead of downloaded from the server on every run; `login` requires https (http only for localhost) and the agent opens only http(s) links.
+- The hourly OAuth sweep also removes revoked and expired grants and unused clients older than a day.
+- Release workflow: checkout without persisted credentials, write permission only on the release job.
+
 ## Server [1.1.1], Agent [0.1.3] - 28.10.2026
 
 - Security: `/oauth/authorize` shows an error page instead of redirecting on a bad request (no open redirect); redirect addresses are limited to https, loopback and the cursor/vscode/vscode-insiders/claude app schemes.

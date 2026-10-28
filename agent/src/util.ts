@@ -17,6 +17,7 @@ export const gitSafe = (args: string[], opts: { cwd?: string; timeout?: number }
 
 /** Opens a URL with the default handler (browser or vscode://). No cmd.exe, so no % or & parsing. */
 export function openUrl(url: string) {
+  if (!/^https?:[/][/]/i.test(url)) { console.log(`Not opening a non-http(s) address, open it yourself if you trust it: ${url}`); return; }
   const [cmd, args] = process.platform === 'win32' ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
     : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
   const p = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });

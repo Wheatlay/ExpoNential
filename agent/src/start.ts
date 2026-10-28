@@ -104,7 +104,7 @@ async function analyze(a: Auth, job: { key: string; deep: boolean }, deviceId: s
     log(`start ${key} (${engine}, ${model})`);
     const wd = await prepareWorkdir(projectKey, entry, engine);
     cleanup = wd.cleanup;
-    const code = await runEngine({ engine, bin, prompt: res.prompt, model, cwd: wd.dir, base: a.base, auth: a.auth, activeAccount: activeAccount() });
+    const code = await runEngine({ engine, bin, prompt: res.prompt, model, untrusted: entry.source === 'clone', cwd: wd.dir, base: a.base, auth: a.auth, activeAccount: activeAccount() });
     log(`end ${key} (code ${code})`);
     if (code !== 0) failMsg = `${engine} exited with code ${code} (details in log.txt)`;
   } catch (e: any) {

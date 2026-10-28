@@ -1,13 +1,20 @@
 // Bundles src/cli.ts into dist/agent.cjs (esbuild); with "exe" also builds a Node SEA executable.
 import { build } from 'esbuild';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 
 const mode = process.argv[2] || 'bundle';
 mkdirSync('dist', { recursive: true });
-await build({ entryPoints: ['src/cli.ts'], bundle: true, platform: 'node', format: 'cjs', target: 'node22', outfile: 'dist/agent.cjs', logLevel: 'info' });
+// Embed ../plugin as { 'relative/path': 'text' }; the agent extracts it at runtime (engine.ts ensurePlugin).
+const pluginFiles = {};
+const walk = (d, rel = '') => { for (const e of readdirSync(join(d, rel), { withFileTypes: true })) {
+  const r = rel ? rel + '/' + e.name : e.name;
+  if (e.isDirectory()) walk(d, r); else pluginFiles[r] = readFileSync(join(d, r), 'utf8');
+} };
+walk('../plugin');
+await build({ define: { __PLUGIN_FILES__: JSON.stringify(pluginFiles) }, entryPoints: ['src/cli.ts'], bundle: true, platform: 'node', format: 'cjs', target: 'node22', outfile: 'dist/agent.cjs', logLevel: 'info' });
 if (mode !== 'exe') process.exit(0);
 
 const win = process.platform === 'win32';

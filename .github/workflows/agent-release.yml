@@ -4,17 +4,18 @@ on:
   push:
     tags: ['agent-v*']
 
-permissions:
-  contents: write
-
 jobs:
   release:
     runs-on: windows-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: agent
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22

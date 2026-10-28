@@ -46,3 +46,9 @@ The poll response may carry `repos` (project to folder map set in the tracker) a
 ## Remove
 
 `exponential-agent uninstall --yes` (or `autostart off` and delete the data folder), then delete the exe.
+
+## Plugin and untrusted repos
+
+- The Claude plugin (`../plugin`: skills, hooks) is embedded in the agent at build time and extracted to `<data dir>/plugin-<agent version>/` on first use; Claude gets it with `--plugin-dir`. Nothing is downloaded per run, so the plugin version is the one bundled in the agent.
+- Repos with source `clone` (from the project's GitHub repo, controlled by a project admin) run Claude with `--setting-sources user --strict-mcp-config`: the repo's `.claude/settings*.json`, hooks and `.mcp.json` are not loaded. Your own folders (`manual`, `hook`) keep `--setting-sources project`.
+- `login` requires an `https://` URL (http only for localhost, 127.0.0.1, [::1]); only http(s) addresses are opened in the browser.

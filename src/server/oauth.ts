@@ -4,7 +4,7 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { and, desc, eq, gt, isNull, lt, or } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, notExists, or } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { oauthClients, oauthCodes, oauthDeviceCodes, oauthGrants, users } from '../db/schema.ts';
 import { requireUser, sha256, type SessionUser } from './auth.ts';
@@ -152,6 +152,18 @@ const normCode = (s: string) => {
   const c = s.toUpperCase().replace(/[^A-Z]/g, '');
   return c.length === 8 ? `${c.slice(0, 4)}-${c.slice(4)}` : c;
 };
+
+/** Sprzątanie: grant odwołany albo po wygaśnięciu refresh (+1 doba), potem klienci bez grantów i kodów starsi niż doba. */
+export async function sweepOAuth() {
+  const day = new Date(Date.now() - 864e5);
+  await db.delete(oauthGrants).where(or(lt(oauthGrants.revokedAt, day), lt(oauthGrants.refreshExpiresAt, day)));
+  await db.delete(oauthClients).where(and(
+    lt(oauthClients.createdAt, day),
+    notExists(db.select({ x: oauthGrants.id }).from(oauthGrants).where(eq(oauthGrants.clientId, oauthClients.id))),
+    notExists(db.select({ x: oauthCodes.codeHash }).from(oauthCodes).where(eq(oauthCodes.clientId, oauthClients.id))),
+    notExists(db.select({ x: oauthDeviceCodes.deviceHash }).from(oauthDeviceCodes).where(eq(oauthDeviceCodes.clientId, oauthClients.id))),
+  ));
+}
 
 export async function registerOAuth(app: FastifyInstance) {
   await app.register(async (o) => {
@@ -374,6 +386,6 @@ ${clientFacts(d.clientName, d.clientAt)}
   const sweep = setInterval(() => void Promise.all([
     db.delete(oauthCodes).where(lt(oauthCodes.expiresAt, new Date())),
     db.delete(oauthDeviceCodes).where(lt(oauthDeviceCodes.expiresAt, new Date())),
-  ]).catch((e) => app.log.error(e)), 3600e3);
+  ]).then(() => sweepOAuth()).catch((e) => app.log.error(e)), 3600e3);
   app.addHook('onClose', async () => clearInterval(sweep));
 }
