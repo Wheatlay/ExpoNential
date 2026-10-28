@@ -30,7 +30,11 @@ i odrzuciłeś, zostaje u Ciebie.
 4. **Opis krótki, pusty albo niejasny:** przyjmij najbardziej prawdopodobne odczytanie, ale
    pierwszą decyzją zrób "O co chodzi w zgłoszeniu?". Wśród opcji daj też odczytanie odwrotne
    albo podważające założenie zgłoszenia (np. "szablon faktury musi być inny" → opcja "zrezygnować
-   z osobnego szablonu faktury"). Zespół często wybiera właśnie to.
+   z osobnego szablonu faktury"). Zespół często wybiera właśnie to. Pozostałe decyzje muszą mieć
+   sens przy każdej odpowiedzi na to pytanie; jeśli zależą od odczytania, pomiń je (dojdą przy
+   ponownej analizie po wyborze).
+   Opcja zamknięcia jako duplikat ma etykietę „Duplikat ACME-12”, a opis mówi, czemu tamto
+   zgłoszenie to pokrywa.
 5. **Zależność od wejścia z zewnątrz** (dane do importu, plik, partner, inny system): ustal, co
    dokładnie przyjdzie i w jakiej formie. Jeśli zgłoszenie tego nie mówi, pierwsza decyzja jest
    o wejściu (np. „W jakiej formie dostaniemy umowy?”: eksport z bazy / Excel / skany papierowe).
@@ -137,7 +141,8 @@ Przykład wywołania:
 
 - **Nie zmieniaj kodu ani statusu zgłoszenia.** Analiza to tylko tekst.
 - Bez nazw plików, funkcji i klas, backticków i żargonu (seed, 403, endpoint, API, commit,
-  migracja, tenant, nazwy stanów z kodu, nazwy dostawców). Pisz nazwami z interfejsu.
+  migracja, tenant, nazwy stanów z kodu, nazwy dostawców). Pisz nazwami z interfejsu. Wyjątek: nazwa, której używa samo zgłoszenie (np.
+  „Lambda” w tytule), może zostać.
 - Przy ponownej analizie (Re-analyze) uwzględnij poprzednią i nowe komentarze i napisz całość od
   nowa. Pytania, na które ktoś już odpowiedział, zostaw w tym samym brzmieniu i z tymi samymi
   nazwami opcji: tracker przeniesie wybór. Pytania bez odpowiedzi nie są wiążące: ułóż decyzje od
