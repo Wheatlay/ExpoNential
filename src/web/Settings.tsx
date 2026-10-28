@@ -11,6 +11,7 @@ import { copyText, toast } from './toast.ts';
 import { timeAgo } from './time.ts';
 import { Tooltip } from './menu.tsx';
 import { agentHere, agentInstallCommand } from './startWork.ts';
+import { openSetupWizard } from './SetupWizard.tsx';
 import { lang, setLang, t, type Lang } from './i18n.ts';
 
 export type Theme = 'dark' | 'light' | 'oled';
@@ -177,11 +178,14 @@ function Appearance() {
  * dodaje serwer MCP każdemu kontu Claude Code, instaluje plugin (skille, ślad pracy) i analizę w tle.
  * Po instalacji to samo polecenie bez tokenu tylko aktualizuje. Tokeny niżej, żeby dało się je unieważnić.
  */
+const dmy = (iso: string) => { const d = new Date(iso); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`; };
+
 function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
   const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; lastError: string; lastErrorAt: string | null }[]>('/api/agents'), enabled: !!me && !me.demo && !!me.localAgentAt });
+  const grants = useQuery({ queryKey: ['connections'], queryFn: () => api<{ id: number; client: string; createdAt: string; lastUsedAt: string | null; firstMcpAt: string | null }[]>('/api/connections'), enabled: !!me && !me.demo });
   // Przełącznik "ten komputer ma agenta": tylko ta przeglądarka (localStorage), dla laptopów z dotykiem, gdzie wykrycie telefonu myli.
   const [, setTick] = useState(0);
   const here = agentHere(me);
@@ -211,8 +215,29 @@ function ClaudeConnect() {
   const update = agentInstallCommand();
   return (
     <>
-      <p className="hint settings-lead">{t('One PowerShell command connects this computer to Exponential, for every Claude Code account: AI skills, work log in issues and Analyze in the background.')}</p>
+      <p className="hint settings-lead">{t('Connect Claude Code or Codex to Exponential: issue access, work log in issues and Analyze in the background.')}</p>
       <div className="s-card" id="claude-connect">
+        <div className="s-row">
+          <span className="grow">{t('AI clients')}<div className="hint">{t('The wizard connects Claude Code or Codex, in VS Code, Cursor or the terminal.')}</div></span>
+          <button className="btn primary" onClick={() => openSetupWizard()}>{t('Connect AI')}</button>
+        </div>
+      </div>
+      {(grants.data?.length ?? 0) > 0 && (
+        <div className="s-card" id="ai-clients" style={{ marginTop: 12 }}>
+          <div className="s-row s-row-head"><b>{t('Connected AI clients')}</b></div>
+          {grants.data!.map((g) => (
+            <div key={g.id} className="s-row">
+              <span className="grow">{g.client}</span>
+              <span className="hint">{g.lastUsedAt ? t('since {date}, last used {when}', { date: dmy(g.createdAt), when: timeAgo(g.lastUsedAt) }) : t('since {date}, never used', { date: dmy(g.createdAt) })}</span>
+              <button className="btn sm danger" onClick={() => void askConfirm({
+                title: t('Revoke "{name}"?', { name: g.client }), body: t('This client loses access to Exponential until you sign in with it again.'), action: t('Revoke'), danger: true,
+              }).then((ok) => { if (ok) void api(`/api/connections/${g.id}`, { method: 'DELETE' }).then(() => { void qc.invalidateQueries({ queryKey: ['connections'] }); void qc.invalidateQueries({ queryKey: ['me'] }); }); })}>{t('Revoke')}</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <details className="s-card settings-legacy">
+        <summary className="s-row">{t('Legacy installer (Windows script)')}</summary>
         <div className="s-row">
           <span className={`step-dot${installed ? ' done' : ''}`}>{installed ? <Icon.check size={12} /> : <Icon.sparkle size={12} />}</span>
           <span className="grow">
@@ -257,7 +282,7 @@ function ClaudeConnect() {
             </div>
           </div>
         )}
-      </div>
+      </details>
       {installed && !demo && (
         <div className="s-card" id="your-computers" style={{ marginTop: 12 }}>
           <div className="s-row s-row-head"><b>{t('Your computers')}</b><span className="hint">{t('A computer with the agent picks up analyses requested from your phone.')}</span></div>

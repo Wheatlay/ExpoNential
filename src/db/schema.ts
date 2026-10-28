@@ -26,6 +26,8 @@ export const users = pgTable('users', {
   calendarToken: text('calendar_token').unique(),
   // Lokalna analiza (tracker://) zainstalowana na komputerze użytkownika; ustawia instalator.
   localAgentAt: timestamp('local_agent_at', { withTimezone: true }),
+  // Kreator podłączenia AI ukończony (przycisk Done przy pełnym celu).
+  setupDoneAt: timestamp('setup_done_at', { withTimezone: true }),
 }, (t) => [uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)]);
 
 /** Projekt = osobny zespół: własny prefiks numerów, członkowie, statusy, etykiety i sprinty. */

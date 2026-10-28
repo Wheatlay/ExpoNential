@@ -18,6 +18,7 @@ import { AskHost } from './AskModal.tsx';
 import { LightboxHost } from './ImageBlock.tsx';
 import { DoneGuardHost } from './DoneGuard.tsx';
 import { ConfirmHost } from './Confirm.tsx';
+import { SetupWizardHost } from './SetupWizard.tsx';
 import { DeployStatus, RecentIssues } from './SidebarExtras.tsx';
 import { requestQuestionsScope } from './Board.tsx';
 import { Avatar, Icon } from './icons.tsx';
@@ -103,6 +104,7 @@ function App() {
       <NotifyPrompt />
       <LightboxHost />
       <DoneGuardHost />
+      <SetupWizardHost />
       <ConfirmHost />
       <AskHost />
       <CommandMenu />
@@ -153,7 +155,7 @@ function Sidebar({ page }: { page: string }) {
         ))}
         <RecentIssues onNavigate={() => setOpen(false)} />
         <div className="nav-section">{t('Project & account')}</div>
-        {item('/settings', 'settings', <Icon.settings size={15} />, t('Settings'))}
+        {item('/settings', 'settings', <Icon.settings size={15} />, t('Settings'), !me.demo && me.aiStatus && !me.aiStatus.client ? <span className="nav-dot" role="img" aria-label={t('AI is not connected')} title={t('AI is not connected')} /> : undefined)}
         <div style={{ marginTop: 'auto' }}><DeployStatus /></div>
         <div className="sidebar-bottom" style={{ marginTop: 0 }}>
           <Avatar user={useMeta().data?.users.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={22} />

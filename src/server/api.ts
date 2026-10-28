@@ -93,10 +93,11 @@ export async function registerApi(app: FastifyInstance) {
     r.addHook('preHandler', requireUser);
 
     r.get('/api/me', async (req) => {
-      const [u] = await db.select({ localAgentAt: users.localAgentAt, passwordHash: users.passwordHash }).from(users).where(eq(users.id, req.user!.id));
+      const [u] = await db.select({ localAgentAt: users.localAgentAt, setupDoneAt: users.setupDoneAt, passwordHash: users.passwordHash }).from(users).where(eq(users.id, req.user!.id));
       const mine = await ag.myAgents(req.user!);
       const lastSeen = mine.map((a) => a.lastSeenAt).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
       return { ...req.user, hasPassword: !!u?.passwordHash, localAgentAt: u?.localAgentAt ?? null, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
+        setupDoneAt: u?.setupDoneAt ?? null, aiStatus: await ag.aiStatus(req.user!, mine),
         // Stara wersja skryptów na którymś PC, albo instalacja sprzed agenta w tle (jest znacznik, nie ma żadnego komputera).
         agentOutdated: !!u?.localAgentAt && (!mine.length || mine.some((a) => a.outdated)), demo: process.env.DEMO_MODE === '1' };
     });
@@ -157,6 +158,7 @@ export async function registerApi(app: FastifyInstance) {
       ag.renameAgent(req.user!, req.params.id, z.object({ label: z.string().max(60) }).parse(req.body).label));
     // Instalator lokalnej analizy zgłasza się tu tokenem MCP, deinstalator kasuje znacznik.
     r.post('/api/me/local-agent', async (req) => { await db.update(users).set({ localAgentAt: new Date() }).where(eq(users.id, req.user!.id)); return { ok: true }; });
+    r.put('/api/me/setup-done', async (req) => { await db.update(users).set({ setupDoneAt: new Date() }).where(eq(users.id, req.user!.id)); return { ok: true }; });
     r.delete('/api/me/local-agent', async (req) => { await db.update(users).set({ localAgentAt: null }).where(eq(users.id, req.user!.id)); return { ok: true }; });
 
     // projekty

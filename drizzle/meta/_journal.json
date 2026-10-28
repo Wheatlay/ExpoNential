@@ -85,6 +85,13 @@
       "when": 1793223179442,
       "tag": "0011_agent_repos",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793224606598,
+      "tag": "0012_setup_done",
+      "breakpoints": true
     }
   ]
 }

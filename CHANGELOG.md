@@ -10,7 +10,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Repo mappings per computer; the team queue only hands a computer work for projects it has mapped.
 - Per-project `agentsMayClone` option: agents may clone the project's repo themselves.
 - Issue page shows "Waiting for a PC with this project's repo".
-- Setup wizard for connecting clients: pending (in progress, not released yet).
+- AI setup window: one screen, a goal question and a live checklist (client, work trace, agent); hints on AI buttons instead of errors; connected AI clients with Revoke in Settings.
 
 ### Agent 0.1.1
 - New standalone `exponential-agent` (single exe) replacing the PowerShell scripts. Commands: `login`, `start`, `status`, `engine`, `repos`, `hook`, `autostart`, `uninstall`.

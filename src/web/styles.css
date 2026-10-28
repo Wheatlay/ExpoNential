@@ -1104,3 +1104,66 @@ a.sub-row > button { display: inline-flex; }
 .about-diagram .edge { stroke: var(--text-tertiary); stroke-width: 1px; }
 .about-diagram text { fill: var(--text-primary); font-size: var(--text-md); font-weight: 500; }
 .about-diagram .note { fill: var(--text-tertiary); font-size: var(--text-xs); font-weight: 400; }
+
+/* Podłączenie AI (SetupWizard): okno, drabina kroków, podpowiedź przy funkcji AI, kropka w pasku bocznym */
+.modal.wiz { width: 560px; display: flex; flex-direction: column; gap: 14px; padding: 16px 20px; }
+.wiz-head { display: flex; align-items: flex-start; gap: 12px; }
+.wiz-head-text { flex: 1; min-width: 0; }
+.wiz-title { font-size: var(--text-xl); font-weight: 600; margin: 0; }
+.wiz-lead { color: var(--text-secondary); margin: 4px 0 0; }
+.wiz-body { display: flex; flex-direction: column; gap: 16px; max-height: 66vh; overflow-y: auto; }
+.wiz-label { font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary); padding: 0; margin-bottom: 8px; }
+.wiz-goals { display: flex; flex-direction: column; gap: 6px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.wiz-goal { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--border-secondary); border-radius: var(--radius-lg); cursor: pointer; }
+.wiz-goal.static { cursor: default; }
+.wiz-goal.on { border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.wiz-goal input { accent-color: var(--accent); margin: 0; flex-shrink: 0; }
+.wiz-goal .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wiz-goal-title { font-size: var(--text-md); font-weight: 500; }
+.wiz-ladder { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.wiz-step { position: relative; display: flex; gap: 12px; padding-bottom: 14px; }
+.wiz-step:last-child { padding-bottom: 0; }
+.wiz-step::before { content: ''; position: absolute; left: 11px; top: 24px; bottom: 2px; width: 1px; background: var(--border-secondary); }
+.wiz-step:last-child::before { display: none; }
+.wiz-step.off { opacity: 0.5; }
+.wiz-mark { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-tertiary); display: grid; place-items: center; flex-shrink: 0; color: var(--on-accent); }
+.wiz-step.cur .wiz-mark { border-color: var(--accent); }
+.wiz-step.done .wiz-mark, .wiz-mark.done { background: var(--success); border-color: var(--success); }
+.wiz-step-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.wiz-step-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 22px; }
+.wiz-step-head b, .wiz-step-toggle { font-weight: 600; }
+.wiz-step-toggle { all: unset; cursor: pointer; border-radius: var(--radius-sm); }
+.wiz-step-toggle:hover { color: var(--accent-text); }
+.wiz-step-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wiz-step-body { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; animation: wiz-open 0.12s ease-out both; }
+@keyframes wiz-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.wiz-ok { color: var(--success-text); font-size: var(--text-sm); }
+.wiz-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.wiz-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
+.wiz-cmd { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 8px 10px; background: var(--bg-secondary); border-radius: var(--radius-md); font-size: var(--text-sm); }
+.wiz-cmd-text { display: block; flex: 1; min-width: 0; overflow-x: auto; white-space: pre; }
+.wiz-wait { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-tertiary); }
+.wiz-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); animation: wiz-pulse 1.2s ease-in-out infinite; }
+@keyframes wiz-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.wiz-warn { color: var(--warning-text); font-size: var(--text-sm); }
+.wiz-computer { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.wiz-computer .grow { flex: 1; min-width: 0; }
+.wiz-repo { display: flex; align-items: center; gap: 8px; padding-left: 12px; font-size: var(--text-sm); }
+.wiz-repo code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wiz-repo .grow { flex: 1; min-width: 0; }
+.wiz-foot { margin-top: auto; }
+.wiz-progress { display: flex; align-items: center; gap: 10px; }
+.wiz-bar { width: 120px; height: 4px; border-radius: var(--radius-full); background: var(--border-secondary); overflow: hidden; display: block; }
+.wiz-bar > span { display: block; height: 100%; background: var(--accent); }
+.ai-hint { position: fixed; z-index: 100; width: 320px; max-width: calc(100vw - 16px); display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--bg-popover); border-radius: var(--radius-lg); box-shadow: var(--shadow-popover); animation: pop 0.08s ease-out; }
+.ai-hint-title { font-size: var(--text-md); font-weight: 600; }
+.ai-hint-actions { display: flex; gap: 8px; }
+.nav-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: auto; flex-shrink: 0; }
+.settings-legacy summary { cursor: pointer; color: var(--text-secondary); }
+.settings-legacy { margin-top: 12px; }
+@media (max-width: 760px) {
+  .backdrop:has(.wiz) { padding-top: 0; }
+  .modal.wiz { width: 100vw; max-width: 100vw; height: 100dvh; border-radius: 0; }
+  .wiz-body { max-height: none; flex: 1; }
+  .wiz-foot { flex-wrap: wrap; }
+}

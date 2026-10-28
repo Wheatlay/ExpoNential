@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { askConfirm } from './Confirm.tsx';
+import { openAiHint } from './SetupWizard.tsx';
 import { Markdown, MentionHint } from './Markdown.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -151,19 +152,14 @@ export function IssuePage({ number }: { number: number }) {
   // Stare skrypty na PC: serwer i tak nie wyda im zlecenia, więc nie dajemy go złożyć (powód + skrót do aktualizacji obok).
   const outdated = !!me?.agentOutdated && local && !me?.demo;
   const outdatedReason = t('Your PC has old Exponential scripts. Update them first: Settings > Claude Code (or click Update needed).');
-  // Bez podłączonego Claude Code link vscode:// albo nic nie otworzy, albo otworzy Claude bez dostępu do zgłoszenia:
-  // zamiast udawać, że działa, prowadzimy do jednorazowego podłączenia.
-  const connectFirst = async () => {
-    const ok = await askConfirm({
-      title: t('Connect Claude Code first?'),
-      body: t('This account has no computer connected to Exponential yet. One PowerShell command in Settings > Claude Code connects it; without it Claude cannot read the issue.'),
-      action: t('Open settings'), danger: false,
-    });
-    if (ok) navigate('/settings#claude');
-  };
+  // Bez podłączonego AI link vscode:// albo nic nie otworzy, albo otworzy klienta bez dostępu do zgłoszenia: zamiast błędu
+  // popover pod przyciskiem prowadzi do kreatora z celem tej funkcji.
+  const ai = me?.aiStatus;
+  const aiMissing = !!ai && !local && (!ai.client || !ai.agent);
   const demo = !!me?.demo;
-  const analyze = async (deep = false) => {
+  const analyze = async (deep = false, anchor?: HTMLElement) => {
     if (demo) { await simulateAgent(number, 'analyze'); return; }
+    if (aiMissing && anchor) { openAiHint(anchor, 'analyze', 3); return; }
     // Na komputerze z agentem link tracker:// rusza od razu (local rezerwuje zlecenie dla tego PC na 60 s); gdzie indziej zlecenie czeka w kolejce.
     const here = agentHere(me);
     await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep, local: here } });
@@ -207,7 +203,7 @@ export function IssuePage({ number }: { number: number }) {
                 </button>
               </Tooltip>
             ) : (
-              <button className="btn sm start-btn" data-tour="start-work" onClick={() => (demo ? setStartOpen(true) : local ? void startWork(number) : void connectFirst())} title={t('Opens Claude Code in VS Code with this issue, assigns you and moves it to In Progress')}>
+              <button className="btn sm start-btn" data-tour="start-work" onClick={(e) => (demo ? setStartOpen(true) : local || ai?.client ? void startWork(number) : openAiHint(e.currentTarget, 'start', 3))} title={t('Opens Claude Code in VS Code with this issue, assigns you and moves it to In Progress')}>
                 <Icon.play size={12} /> {t('Start work in Claude')}
               </button>
             )}
@@ -267,11 +263,11 @@ export function IssuePage({ number }: { number: number }) {
                 {(!issue.analysisRequestedAt || stalled || failed) && <>
                     <Tooltip text={outdated ? outdatedReason : null}>
                       <button className="btn sm ai-btn" data-tour="analyze" disabled={outdated} title={outdated ? undefined : local ? t('Runs Claude on your computer, read-only') : t('Marks the issue for analysis by Claude')}
-                        onClick={(e) => { e.stopPropagation(); void analyze(); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
+                        onClick={(e) => { e.stopPropagation(); void analyze(false, e.currentTarget); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
                     </Tooltip>
                     {demo && <button className="btn sm ai-btn" disabled title={t('Disabled in the demo')} onClick={(e) => e.stopPropagation()}>{t('Deep')}</button>}
                     {!demo && local && <Tooltip text={outdated ? outdatedReason : null}>
-                      <button className="btn sm ai-btn" disabled={outdated} title={outdated ? undefined : t('Deeper analysis with a stronger model: slower and more expensive')} onClick={(e) => { e.stopPropagation(); void analyze(true); }}>{t('Deep')}</button>
+                      <button className="btn sm ai-btn" disabled={outdated} title={outdated ? undefined : t('Deeper analysis with a stronger model: slower and more expensive')} onClick={(e) => { e.stopPropagation(); void analyze(true, e.currentTarget); }}>{t('Deep')}</button>
                     </Tooltip>}
                 </>}
                   </span>}>

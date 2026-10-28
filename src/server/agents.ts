@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { and, asc, eq, gt, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { agentJobs, agentRepos, agents, issues, projectMembers, projects, statuses, users } from '../db/schema.ts';
+import { activity, agentJobs, agentRepos, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, users } from '../db/schema.ts';
 import { RuleError, identifier } from './rules.ts';
 import { analysisModel } from './prompts.ts';
 import { log, publish, requireIssue, updateIssue, type Actor, type Project } from './service.ts';
@@ -336,4 +336,27 @@ export async function createStartJob(p: Project, user: NonNullable<Actor>, numbe
   if (cur.assigneeId == null) patch.assigneeId = user.id;
   if (Object.keys(patch).length) await updateIssue(p, user, number, patch);
   return { ok: true, id: job.id };
+}
+
+/**
+ * Stan podłączenia AI dla kreatora: klient (pierwsze wywołanie MCP przez OAuth albo użyty token), ślad pracy (jakikolwiek
+ * worklog tego użytkownika) i agent (któryś własny komputer online ze świeżą wersją). Kilka tanich zapytań z LIMIT 1.
+ */
+export async function aiStatus(user: User, mine?: Awaited<ReturnType<typeof myAgents>>) {
+  const [grant] = await db.select({ name: oauthClients.name, at: oauthGrants.firstMcpAt }).from(oauthGrants)
+    .innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
+    .where(and(eq(oauthGrants.userId, user.id), isNull(oauthGrants.revokedAt), dsql`${oauthGrants.firstMcpAt} is not null`))
+    .orderBy(dsql`${oauthGrants.firstMcpAt} desc`).limit(1);
+  const [token] = grant ? [] : await db.select({ at: apiTokens.lastUsedAt }).from(apiTokens)
+    .where(and(eq(apiTokens.userId, user.id), dsql`${apiTokens.lastUsedAt} is not null`)).orderBy(dsql`${apiTokens.lastUsedAt} desc`).limit(1);
+  const [wl] = await db.select({ id: activity.id }).from(activity)
+    .where(and(eq(activity.actorId, user.id), dsql`${activity.payload}->>'kind' = 'worklog'`)).limit(1);
+  const computers = mine ?? await myAgents(user);
+  return {
+    client: !!grant || !!token,
+    clientName: grant ? grant.name : token ? 'Claude Code' : null,
+    clientAt: grant?.at ?? token?.at ?? null,
+    workTrace: !!wl,
+    agent: computers.some((a) => a.online && !a.outdated),
+  };
 }
