@@ -30,9 +30,8 @@ i odrzuciłeś, zostaje u Ciebie.
 4. **Opis krótki, pusty albo niejasny:** przyjmij najbardziej prawdopodobne odczytanie, ale
    pierwszą decyzją zrób "O co chodzi w zgłoszeniu?". Wśród opcji daj też odczytanie odwrotne
    albo podważające założenie zgłoszenia (np. "szablon faktury musi być inny" → opcja "zrezygnować
-   z osobnego szablonu faktury"). Zespół często wybiera właśnie to. Pozostałe decyzje muszą mieć
-   sens przy każdej odpowiedzi na to pytanie; jeśli zależą od odczytania, pomiń je (dojdą przy
-   ponownej analizie po wyborze).
+   z osobnego szablonu faktury"). Zespół często wybiera właśnie to. To wtedy **jedyna**
+   decyzja: inne pytania (także „kiedy”, „jak mocno”) dojdą przy ponownej analizie po wyborze.
    Opcja zamknięcia jako duplikat ma etykietę „Duplikat ACME-12”, a opis mówi, czemu tamto
    zgłoszenie to pokrywa.
 5. **Zależność od wejścia z zewnątrz** (dane do importu, plik, partner, inny system): ustal, co
@@ -75,7 +74,8 @@ Sekcje dla każdego typu:
 - `related` (opcjonalnie): inne zgłoszenia o **sednie tego problemu**, które zmieniały to samo
   miejsce w kodzie (`mcp__tracker__list_issues` z `query`); podobny temat albo reguła wspólna dla
   całego systemu nie wystarcza. Najwyżej 3,
-  każde w osobnej linii `- ACME-12: dlaczego`, bez tytułu i statusu (tracker pokazuje je w chipie),
+  każde w osobnej linii `- ACME-12: dlaczego`, bez tytułu i statusu (tracker pokazuje je w chipie;
+  nie pisz „otwarte” ani „zrobione”),
   bez innego tekstu. Liczy się `statusType`:
   - otwarte (`backlog`, `unstarted`, `started`): duplikat albo ryzyko kolizji, napisz które;
   - zrobione (`completed`): tylko gdy zmieniało to samo miejsce (Start czyta wtedy jego notatki zmian);
