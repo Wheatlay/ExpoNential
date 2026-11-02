@@ -48,7 +48,7 @@ export async function listMeetings(p: Project, since = new Date(Date.now() - 14 
     ...m,
     reminders: rems.filter((r) => r.meetingId === m.id).map((r) => r.offsetMinutes).sort((a, b) => b - a),
     slots: slots.filter((s) => s.meetingId === m.id).map((s) => ({
-      ...s, votes: votes.filter((v) => v.slotId === s.id).map((v) => ({ userId: v.userId, vote: v.vote })),
+      ...s, votes: votes.filter((v) => v.slotId === s.id).map((v) => ({ userId: v.userId, vote: v.vote, note: v.note })),
     })),
   }));
 }
@@ -188,7 +188,8 @@ export async function proposeSlot(p: Project, actor: Actor, meetingId: number, i
   return slot;
 }
 
-export async function vote(p: Project, actor: Actor, slotId: number, v: Vote | null) {
+/** note: powód przy "maybe"; przy innym głosie się czyści. */
+export async function vote(p: Project, actor: Actor, slotId: number, v: Vote | null, note?: string | null) {
   const [row] = await db.select({ slot: meetingSlots, meeting: meetings }).from(meetingSlots)
     .innerJoin(meetings, eq(meetings.id, meetingSlots.meetingId))
     .where(and(eq(meetingSlots.id, slotId), eq(meetings.projectId, p.id)));
@@ -197,8 +198,9 @@ export async function vote(p: Project, actor: Actor, slotId: number, v: Vote | n
   if (!invited(row.meeting, actor.id)) throw new RuleError('Only invited people can vote', 'forbidden');
   if (v === null) await db.delete(meetingVotes).where(and(eq(meetingVotes.slotId, slotId), eq(meetingVotes.userId, actor.id)));
   else {
-    await db.insert(meetingVotes).values({ slotId, userId: actor.id, vote: v })
-      .onConflictDoUpdate({ target: [meetingVotes.slotId, meetingVotes.userId], set: { vote: v } });
+    const n = v === 'maybe' ? note?.trim() || null : null;
+    await db.insert(meetingVotes).values({ slotId, userId: actor.id, vote: v, note: n })
+      .onConflictDoUpdate({ target: [meetingVotes.slotId, meetingVotes.userId], set: { vote: v, note: n } });
   }
   await changed(p);
 }

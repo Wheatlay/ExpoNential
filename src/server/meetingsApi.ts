@@ -62,8 +62,8 @@ export async function registerMeetings(app: FastifyInstance) {
     });
     r.put<{ Params: { id: string } }>('/api/meeting-slots/:id/vote', async (req) => {
       const { p, actor } = await scope(req);
-      const { vote } = z.object({ vote: z.enum(['yes', 'maybe', 'no']).nullable() }).parse(req.body);
-      await mt.vote(p, actor, Number(req.params.id), vote);
+      const { vote, note } = z.object({ vote: z.enum(['yes', 'maybe', 'no']).nullable(), note: z.string().max(200).nullable().optional() }).parse(req.body);
+      await mt.vote(p, actor, Number(req.params.id), vote, note);
       return { ok: true };
     });
     r.post<{ Params: { id: string } }>('/api/meetings/:id/pick', async (req) => {

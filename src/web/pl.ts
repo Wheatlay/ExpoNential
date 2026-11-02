@@ -997,5 +997,6 @@ export const pl: Record<string, string> = {
   "Sprint review is for the whole team": "Sprint review jest dla całego zespołu",
   "not invited": "bez zaproszenia",
   "Show meetings I am not invited to": "Pokaż spotkania, na które nie mam zaproszenia",
+  "Why maybe": "Dlaczego może",
   "A suggested time becomes a new column; invited people get a ping to vote on it.": "Zaproponowany termin staje się nową kolumną; zaproszeni dostają ping, żeby zagłosować.",
 };

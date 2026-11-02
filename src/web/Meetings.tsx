@@ -303,6 +303,10 @@ function PollDialog({ m }: { m: Meeting }) {
   const voters = new Set(m.slots.flatMap((s) => s.votes.map((v) => v.userId))).size;
 
   const myVote = (s: MeetingSlot) => s.votes.find((v) => v.userId === me?.id)?.vote;
+  const myNote = (s: MeetingSlot) => s.votes.find((v) => v.userId === me?.id)?.note ?? '';
+  const saveNote = (s: MeetingSlot, note: string) => {
+    if (note.trim() !== myNote(s)) void api(`/api/meeting-slots/${s.id}/vote`, { method: 'PUT', body: { vote: 'maybe', note } }).then(refresh);
+  };
   const setVote = (s: MeetingSlot, v: Vote) => void api(`/api/meeting-slots/${s.id}/vote`, { method: 'PUT', body: { vote: myVote(s) === v ? null : v } }).then(refresh);
   const addTime = async () => {
     if (!suggest.date || !suggest.time) return;
@@ -347,7 +351,9 @@ function PollDialog({ m }: { m: Meeting }) {
             <div className="poll-person"><Avatar user={u} size={20} />{u.name}</div>
             {m.slots.map((s) => {
               const v = s.votes.find((x) => x.userId === u.id)?.vote;
-              return <div key={s.id} className="poll-cell" style={{ color: v ? VOTE_COLOR[v] : 'var(--text-quaternary)', fontWeight: 600 }}>{v ? VOTE_LABEL[v] : '–'}</div>;
+              const note = s.votes.find((x) => x.userId === u.id)?.note;
+              // Powód przy "Może" zastępuje samo słowo (ten sam kolor).
+              return <div key={s.id} className="poll-cell" style={{ color: v ? VOTE_COLOR[v] : 'var(--text-quaternary)', fontWeight: 600, overflowWrap: 'anywhere' }}>{v ? (v === 'maybe' && note ? note : VOTE_LABEL[v]) : '–'}</div>;
             })}
           </div>
         ))}
@@ -356,11 +362,17 @@ function PollDialog({ m }: { m: Meeting }) {
             <div className="poll-person" style={{ fontWeight: 600 }}><Avatar user={people.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={20} />{t('You')}</div>
             {m.slots.map((s) => (
               <Tooltip key={s.id} text={notInvited}>
-                <div className="poll-cell" style={{ display: 'flex', gap: 4 }}>
-                  {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
-                    <button key={v} className={`chip ${myVote(s) === v ? 'on' : ''}`} style={myVote(s) === v ? { borderColor: VOTE_COLOR[v], color: VOTE_COLOR[v] } : undefined}
-                      disabled={!!notInvited} onClick={() => setVote(s, v)}>{VOTE_LABEL[v]}</button>
-                  ))}
+                <div className="poll-cell" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
+                      <button key={v} className={`chip ${myVote(s) === v ? 'on' : ''}`} style={myVote(s) === v ? { borderColor: VOTE_COLOR[v], color: VOTE_COLOR[v] } : undefined}
+                        disabled={!!notInvited} onClick={() => setVote(s, v)}>{VOTE_LABEL[v]}</button>
+                    ))}
+                  </div>
+                  {myVote(s) === 'maybe' && (
+                    <input className="input" placeholder={t('Why? (optional)')} aria-label={t('Why maybe')} autoFocus={!myNote(s)} defaultValue={myNote(s)}
+                      onBlur={(e) => saveNote(s, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+                  )}
                 </div>
               </Tooltip>
             ))}

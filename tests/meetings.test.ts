@@ -111,7 +111,7 @@ describe('time poll', () => {
     await expect(mt.proposeSlot(P, pawel, meetingId, { startsAt: at('2026-10-21T10:00:00Z') })).rejects.toThrow(/already proposed/);
     const [m] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === meetingId);
     const s = m.slots.find((x) => x.id === slot.id)!;
-    expect([s.proposedBy, s.reason, s.votes]).toEqual([pawel.id, '11:00 mam call', [{ userId: pawel.id, vote: 'yes' }]]);
+    expect([s.proposedBy, s.reason, s.votes]).toEqual([pawel.id, '11:00 mam call', [{ userId: pawel.id, vote: 'yes', note: null }]]);
   });
 
   it('votes can be changed and removed', async () => {
@@ -121,8 +121,19 @@ describe('time poll', () => {
     await mt.vote(P, alice, m.slots[1].id, 'yes');
     await mt.vote(P, alice, m.slots[1].id, null);
     const [m2] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === meetingId);
-    expect(m2.slots[0].votes).toEqual([{ userId: alice.id, vote: 'no' }]);
+    expect(m2.slots[0].votes).toEqual([{ userId: alice.id, vote: 'no', note: null }]);
     expect(m2.slots[1].votes.some((v) => v.userId === alice.id)).toBe(false);
+  });
+
+  it('"maybe" keeps a reason; another vote clears it', async () => {
+    const [m] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === meetingId);
+    await mt.vote(P, alice, m.slots[1].id, 'maybe', ' dopiero od 12:30 ');
+    let [m2] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === meetingId);
+    expect(m2.slots[1].votes.find((v) => v.userId === alice.id)).toEqual({ userId: alice.id, vote: 'maybe', note: 'dopiero od 12:30' });
+    await mt.vote(P, alice, m.slots[1].id, 'yes', 'ignored');
+    [m2] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === meetingId);
+    expect(m2.slots[1].votes.find((v) => v.userId === alice.id)?.note).toBeNull();
+    await mt.vote(P, alice, m.slots[1].id, null);
   });
 
   it('only the organizer (or a project admin) picks the time; then voting is closed', async () => {

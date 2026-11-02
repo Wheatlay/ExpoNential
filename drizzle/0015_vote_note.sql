@@ -1,0 +1,1 @@
+ALTER TABLE "meeting_votes" ADD COLUMN "note" text;

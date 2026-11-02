@@ -17,7 +17,7 @@ export type Meta = { statuses: Status[]; labels: Label[]; users: User[]; priorit
 export type Sprint = { id: number; name: string; startsAt: string; endsAt: string; status: 'planned' | 'active' | 'ended' | 'reviewed'; reviewNotes: string };
 
 export type Vote = 'yes' | 'maybe' | 'no';
-export type MeetingSlot = { id: number; startsAt: string; endsAt: string; proposedBy: number | null; reason: string | null; votes: { userId: number; vote: Vote }[] };
+export type MeetingSlot = { id: number; startsAt: string; endsAt: string; proposedBy: number | null; reason: string | null; votes: { userId: number; vote: Vote; note?: string | null }[] };
 export type Meeting = {
   id: number; title: string; kind: 'poll' | 'fixed' | 'sprint_review'; status: 'polling' | 'scheduled' | 'cancelled';
   startsAt: string | null; endsAt: string | null; locationUrl: string; sprintId: number | null; createdBy: number | null;

@@ -358,6 +358,8 @@ export const meetingVotes = pgTable('meeting_votes', {
   slotId: integer('slot_id').notNull().references(() => meetingSlots.id, { onDelete: 'cascade' }),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   vote: text('vote').$type<Vote>().notNull(),
+  // Powód przy "maybe" (np. "mogę dopiero od 12:30"); przy innych głosach puste.
+  note: text('note'),
 }, (t) => [primaryKey({ columns: [t.slotId, t.userId] })]);
 
 /** Przypomnienia wybrane w spotkaniu: minuty przed startem (1440, 60, 15, 0). */
