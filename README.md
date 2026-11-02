@@ -72,7 +72,7 @@ npm run dev                            # API on :3000, migrations run at start
 npm run dev:web                        # UI on :5173, proxied to the API
 ```
 
-Log in without GitHub: start the API with `DEV_LOGIN=1` and open `http://localhost:5173/auth/dev?login=you` (ignored when `NODE_ENV=production`).
+Log in without GitHub: start the API with `DEV_LOGIN=1` and just open `http://localhost:5173`: you are signed in automatically as the first active admin (or first active user). `/auth/dev?login=you` signs in as someone else, `/login` shows the normal login screen. Ignored when `NODE_ENV=production`.
 
 Sign-in methods: GitHub, Google, and e-mail + password. New people get in through a one-time project invite link (Settings › People › Invite link; valid 7 days) or are added by an admin by GitHub login or e-mail. A workspace admin can create a one-time password link for an account (Settings › Accounts › Password link).
 

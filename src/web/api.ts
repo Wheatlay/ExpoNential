@@ -12,7 +12,7 @@ export type User = { id: number; login: string; name: string; avatarUrl: string 
 export type ProjectSummary = { id: number; key: string; name: string; color: string; role: 'admin' | 'member'; memberCount: number; githubRepo: string; askedMe: number };
 export type Me = { id: number; name: string; login: string; isAdmin: boolean; hasPassword: boolean; localAgentAt: string | null; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean;
   setupDoneAt: string | null; aiStatus: { client: boolean; clientName: string | null; clientAt: string | null; workTrace: boolean; agent: boolean } };
-export type AppConfig = { demo: boolean; repoUrl: string | null; providers: { github: boolean; google: boolean } };
+export type AppConfig = { demo: boolean; repoUrl: string | null; providers: { github: boolean; google: boolean }; devLogin?: boolean };
 export type Meta = { statuses: Status[]; labels: Label[]; users: User[]; priorities: string[] };
 export type Sprint = { id: number; name: string; startsAt: string; endsAt: string; status: 'planned' | 'active' | 'ended' | 'reviewed'; reviewNotes: string };
 

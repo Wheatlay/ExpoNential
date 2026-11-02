@@ -74,6 +74,8 @@ function App() {
   const invite = /^\/invite\/([\w-]+)\/?$/.exec(path);
   if (invite) return <Invite token={invite[1]} loggedIn={!!me.data} />;
   if (!me.data && demoMode && path !== '/login') return <Landing />;
+  // Lokalny serwer z DEV_LOGIN=1: od razu do środka (/login zostaje do zmiany konta).
+  if (!me.data && config.data?.devLogin && path !== '/login') { location.replace('/auth/dev'); return null; }
   if (!me.data || path === '/login') return <Login />;
   if (projects.isLoading || wanted !== projectKey) return null;
   if (mine && !mine.length) return <NoProjects />;

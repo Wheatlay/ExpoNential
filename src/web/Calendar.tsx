@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
 import { api, awaitsMyVote, isInvited, useMe, useMeetings, useMeta, type Meeting } from './api.ts';
 import { Avatar, Icon } from './icons.tsx';
@@ -5,7 +6,7 @@ import { Tooltip, openMenu } from './menu.tsx';
 import { linkProps } from './router.ts';
 import { toast } from './toast.ts';
 import {
-  KIND_COLOR, POLL_COLOR, fmtDay, fmtTime, joinLabel, openMeeting, openNewMeeting, sameDay, whenLabel,
+  fmtDay, meetingColor, fmtTime, joinLabel, openMeeting, openNewMeeting, sameDay, whenLabel,
 } from './Meetings.tsx';
 import { locale, t, tn } from './i18n.ts';
 
@@ -138,6 +139,7 @@ export function Calendar() {
             </>
           )}
           <span className="spacer" />
+          <Legend />
           <button className="icon-btn round" title={t('Display options')} aria-label={t('Display options')} onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             openMenu({ x: r.right, y: r.bottom + 4, alignRight: true }, { items: [{
@@ -179,7 +181,7 @@ export function Calendar() {
         <div className="props-group">
           <h4>{t('Next meeting')}</h4>
           {next ? (
-            <div className="next-meeting" style={{ '--kind': KIND_COLOR[next.kind] } as React.CSSProperties}>
+            <div className="next-meeting" style={{ '--kind': meetingColor(next) } as React.CSSProperties}>
               <button className="next-title" onClick={() => openMeeting(next.id)}>{next.title}</button>
               <div className="hint">{whenLabel(next, now)}</div>
               <Tooltip text={next.locationUrl ? null : t('No meeting link set for this meeting')}>
@@ -196,7 +198,7 @@ export function Calendar() {
             <h4>{t('This week')}</h4>
             {thisWeek.map((m) => (
               <button key={m.id} className="prop week-item" onClick={() => openMeeting(m.id)}>
-                <span className="dot" style={{ background: KIND_COLOR[m.kind] }} />
+                <span className="dot" style={{ background: meetingColor(m) }} />
                 {new Date(m.startsAt!).toLocaleDateString(locale, { weekday: 'short' })} {fmtTime(m.startsAt!)} · {m.title}
               </button>
             ))}
@@ -204,6 +206,40 @@ export function Calendar() {
         )}
       </aside>
     </div>
+  );
+}
+
+/** Mała legenda kalendarza: najechanie albo klik na "?" pokazuje, co znaczy obramowanie i kolor. */
+function Legend() {
+  const [hover, setHover] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [at, setAt] = useState<{ right: number; top: number } | null>(null);
+  const open = (hover || pinned) && at;
+  // Pasek narzędzi przewija się w poziomie (overflow), więc dymek idzie do body w pozycji fixed.
+  const place = (el: HTMLElement) => { const r = el.getBoundingClientRect(); setAt({ right: window.innerWidth - r.right, top: r.bottom + 6 }); };
+  useEffect(() => {
+    if (!pinned) return;
+    const close = (e: MouseEvent) => { if (!(e.target as HTMLElement).closest('.cal-legend-wrap')) setPinned(false); };
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [pinned]);
+  const row = (cls: string, label: string) => (
+    <div className="cal-legend-row"><span className={`cal-legend-swatch ${cls}`} />{label}</div>
+  );
+  return (
+    <span className="cal-legend-wrap" onMouseEnter={(e) => { place(e.currentTarget); setHover(true); }} onMouseLeave={() => setHover(false)}>
+      <button className="icon-btn round" aria-label={t('Legend')} aria-expanded={!!open} onClick={(e) => { place(e.currentTarget); setPinned((v) => !v); }}><Icon.question size={15} /></button>
+      {open && createPortal(
+        <div className="cal-legend cal-legend-wrap" role="note" style={{ right: at.right, top: at.top }}>
+          {row('', t('Meeting'))}
+          {row('option', t('Poll option, still voting'))}
+          {row('is-review', t('Sprint review'))}
+          {row('other', t('Not invited'))}
+          <div className="hint">{t('Color tells meetings apart; options of one poll share it.')}</div>
+        </div>,
+        document.body,
+      )}
+    </span>
   );
 }
 
@@ -230,8 +266,8 @@ function MonthGrid({ month, meetings, now, onOpenWeek, meId }: { month: Date; me
             title={t('Double-click to plan a meeting')} onDoubleClick={(e) => { if (e.target === e.currentTarget) openNewMeeting(day); }}>
             <button className="cal-month-num" title={t('Open this week')} onClick={() => onOpenWeek(day)}>{day.getDate()}</button>
             {items.slice(0, 3).map((it) => (
-              <button key={it.key} className={`cal-month-item ${it.option ? 'option' : ''} ${isInvited(it.meeting, meId) ? '' : 'other'}`}
-                style={{ '--kind': !isInvited(it.meeting, meId) ? OTHER_COLOR : it.option ? POLL_COLOR : KIND_COLOR[it.meeting.kind] } as React.CSSProperties}
+              <button key={it.key} className={`cal-month-item ${it.option ? 'option' : ''} ${it.meeting.kind === 'sprint_review' ? 'is-review' : ''} ${isInvited(it.meeting, meId) ? '' : 'other'}`}
+                style={{ '--kind': !isInvited(it.meeting, meId) ? OTHER_COLOR : meetingColor(it.meeting) } as React.CSSProperties}
                 title={`${fmtTime(it.startsAt)} ${it.meeting.title}${it.option ? ` ${t('(poll option)')}` : ''}${isInvited(it.meeting, meId) ? '' : ` · ${t('not invited')}`}`}
                 onClick={(e) => { e.stopPropagation(); openMeeting(it.meeting.id); }}>
                 <span className="dot" />{fmtTime(it.startsAt)} {it.meeting.title}{it.option ? ' ?' : ''}
@@ -249,9 +285,9 @@ function CalendarCard({ item, users, meId }: { item: Item; users: { id: number; 
   const m = item.meeting;
   // Cudze spotkanie (nie jestem zaproszony): szare, bez koloru rodzaju, z podpisem, żeby nie myliło się z moimi.
   const mine = isInvited(m, meId);
-  const color = !mine ? OTHER_COLOR : item.option ? POLL_COLOR : KIND_COLOR[m.kind];
+  const color = !mine ? OTHER_COLOR : meetingColor(m);
   return (
-    <button className={`cal-card ${item.option ? 'option' : ''} ${mine ? '' : 'other'}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
+    <button className={`cal-card ${item.option ? 'option' : ''} ${m.kind === 'sprint_review' ? 'is-review' : ''} ${mine ? '' : 'other'}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
       <div className="cal-card-time">{item.option ? `${fmtTime(item.startsAt)} · ${t('option')}` : `${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}{mine ? '' : ` · ${t('not invited')}`}</div>
       <div className="cal-card-title">{m.title}{item.option ? ' ?' : ''}</div>
       {!item.option && (

@@ -999,4 +999,9 @@ export const pl: Record<string, string> = {
   "Show meetings I am not invited to": "Pokaż spotkania, na które nie mam zaproszenia",
   "Why maybe": "Dlaczego może",
   "A suggested time becomes a new column; invited people get a ping to vote on it.": "Zaproponowany termin staje się nową kolumną; zaproszeni dostają ping, żeby zagłosować.",
+  "Legend": "Legenda",
+  "Meeting": "Spotkanie",
+  "Poll option, still voting": "Termin z ankiety, trwa głosowanie",
+  "Not invited": "Bez zaproszenia",
+  "Color tells meetings apart; options of one poll share it.": "Kolor odróżnia spotkania; terminy jednej ankiety mają ten sam.",
 };

@@ -97,6 +97,8 @@
   --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px; --radius-xl: 12px; --radius-full: 9999px;
   --control-sm: 28px; --control-md: 32px; --control-lg: 36px;
   --text-xs: 11px; --text-sm: 12px; --text-md: 13px; --text-lg: 14px; --text-xl: 16px; --text-2xl: 20px; --text-3xl: 24px;
+  /* Kolory tożsamości (projekty, spotkania w kalendarzu); nigdy stan. */
+  --project-1: #5e6ad2; --project-2: #2563eb; --project-3: #26b5ce; --project-4: #059669; --project-5: #d97706; --project-6: #e5484d; --project-7: #a855f7;
 }
 
 
@@ -847,11 +849,21 @@ a.sub-row > button { display: inline-flex; }
 .cal-card { text-align: left; border-radius: var(--radius-lg); padding: 10px; background: color-mix(in srgb, var(--kind) 20%, var(--bg-secondary)); border: 1px solid var(--kind); display: flex; flex-direction: column; gap: 2px; color: var(--text-primary); }
 .cal-card:hover { background: color-mix(in srgb, var(--kind) 30%, var(--bg-secondary)); }
 .cal-card.option { background: transparent; border-style: dashed; }
+/* Sprint review: druga linia obramowania (rodzaj pokazuje obramowanie, kolor to samo spotkanie). */
+.cal-card.is-review { outline: 1px solid var(--kind); outline-offset: 2px; }
 .cal-card.option:hover { background: color-mix(in srgb, var(--kind) 8%, transparent); }
 /* Spotkanie, na które nie jestem zaproszony: widoczne, ale wyciszone. */
 .cal-card.other { background: transparent; border-color: var(--border-secondary); color: var(--text-tertiary); }
 .cal-card.other:hover { background: var(--bg-hover); }
-.cal-card.other .cal-card-time { color: var(--text-tertiary); }
+.cal-card.other /* Legenda kalendarza (przycisk "?" w pasku). */
+.cal-legend-wrap { display: inline-flex; }
+.cal-legend { position: fixed; z-index: 200; width: 260px; background: var(--bg-popover); border-radius: var(--radius-lg); box-shadow: var(--shadow-popover); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; font-size: var(--text-sm); color: var(--text-secondary); }
+.cal-legend-row { display: flex; align-items: center; gap: 10px; }
+.cal-legend-swatch { --kind: var(--project-1); width: 24px; height: 14px; flex-shrink: 0; border-radius: var(--radius-sm); border: 1px solid var(--kind); background: color-mix(in srgb, var(--kind) 20%, var(--bg-secondary)); }
+.cal-legend-swatch.option { background: transparent; border-style: dashed; }
+.cal-legend-swatch.is-review { outline: 1px solid var(--kind); outline-offset: 2px; }
+.cal-legend-swatch.other { background: transparent; border-color: var(--border-secondary); }
+.cal-card-time { color: var(--text-tertiary); }
 .cal-card-time { font-size: var(--text-sm); color: color-mix(in srgb, var(--kind) 55%, var(--text-primary)); }
 .cal-card-title { font-weight: 600; overflow-wrap: anywhere; }
 .cal-card-people { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
@@ -955,6 +967,7 @@ a.sub-row > button { display: inline-flex; }
 .cal-month-item:hover { background: color-mix(in srgb, var(--kind) 18%, transparent); }
 .cal-month-item .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--kind); flex-shrink: 0; }
 .cal-month-item.other { color: var(--text-tertiary); }
+.cal-month-item.is-review .dot { box-shadow: 0 0 0 1px var(--bg-primary), 0 0 0 2px var(--kind); }
 .cal-month-item.option .dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--kind); }
 .cal-month-more { font-size: var(--text-xs); padding-left: 4px; }
 @media (max-width: 900px) {

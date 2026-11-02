@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { and, eq, gt, isNull, sql as dsql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { apiTokens, sessions, users } from '../db/schema.ts';
 import { ensureSomeMembership } from './projects.ts';
@@ -274,9 +274,12 @@ export async function registerAuth(app: FastifyInstance) {
 
   // Logowanie bez GitHuba tylko lokalnie i tylko po jawnym włączeniu.
   if (!isProd && process.env.DEV_LOGIN === '1') {
-    app.get<{ Querystring: { login: string } }>('/auth/dev', async (req, reply) => {
-      const [u] = await db.select().from(users).where(dsql`lower(${users.login}) = lower(${req.query.login})`);
-      const id = u?.id ?? (await db.insert(users).values({ login: req.query.login, name: req.query.login, isAdmin: true }).returning())[0].id;
+    app.get<{ Querystring: { login?: string } }>('/auth/dev', async (req, reply) => {
+      // Bez ?login=: pierwszy aktywny admin z bazy (lokalnie to zwykle właściciel), inaczej pierwsza aktywna osoba, a w pustej bazie "dev".
+      const [first] = req.query.login ? [] : await db.select({ login: users.login }).from(users).where(eq(users.active, true)).orderBy(desc(users.isAdmin), users.id).limit(1);
+      const login = req.query.login || first?.login || 'dev';
+      const [u] = await db.select().from(users).where(dsql`lower(${users.login}) = lower(${login})`);
+      const id = u?.id ?? (await db.insert(users).values({ login, name: login, isAdmin: true }).returning())[0].id;
       await ensureSomeMembership(id);
       await createSession(reply, id);
       return reply.redirect('/');

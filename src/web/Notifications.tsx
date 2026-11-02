@@ -5,7 +5,7 @@ import { Icon } from './icons.tsx';
 import { Tooltip } from './menu.tsx';
 import { toast } from './toast.ts';
 import { useNow } from './Calendar.tsx';
-import { KIND_COLOR, fmtTime, openMeeting } from './Meetings.tsx';
+import { fmtTime, meetingColor, openMeeting } from './Meetings.tsx';
 import { disablePush, enablePush, pushPermission, pushSupported, refreshPush } from './push.ts';
 import { t, tn } from './i18n.ts';
 
@@ -39,7 +39,7 @@ export function MeetingBanner() {
       {soon.map((m) => {
         const mins = Math.round((new Date(m.startsAt!).getTime() - now.getTime()) / 60000);
         return (
-          <div key={m.id} className="meeting-banner" style={{ '--kind': KIND_COLOR[m.kind] } as React.CSSProperties}>
+          <div key={m.id} className="meeting-banner" style={{ '--kind': meetingColor(m) } as React.CSSProperties}>
             <span className="pulse" />
             <button className="banner-text" onClick={() => openMeeting(m.id)}>
               <div style={{ fontWeight: 600 }}>{m.title} {mins > 0 ? t('starts in {n} min', { n: mins }) : t('is starting now')}</div>

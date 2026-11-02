@@ -36,6 +36,8 @@ export async function registerDemo(app: FastifyInstance) {
   app.get('/api/config', async () => ({
     demo: isDemo(), repoUrl: process.env.PUBLIC_REPO_URL ?? null,
     providers: { github: !!process.env.GITHUB_CLIENT_ID, google: !!process.env.GOOGLE_CLIENT_ID },
+    // Lokalnie z DEV_LOGIN=1 front loguje sam (bez ekranu logowania); nigdy w produkcji.
+    devLogin: process.env.NODE_ENV !== 'production' && process.env.DEV_LOGIN === '1',
   }));
   if (!isDemo()) return;
 

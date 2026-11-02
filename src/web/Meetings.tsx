@@ -14,9 +14,8 @@ import { locale, t, tn } from './i18n.ts';
 
 // ---------- czas (przeglądarka zespołu jest w czasie polskim) ----------
 
-// Ankieta z wybranym terminem wygląda jak zwykłe spotkanie; pomarańczowe są tylko opcje do głosowania.
-export const KIND_COLOR: Record<Meeting['kind'], string> = { sprint_review: 'var(--ai)', fixed: 'var(--tech)', poll: 'var(--tech)' };
-export const POLL_COLOR = 'var(--warning)';
+// Kolor = które spotkanie (stały, z id), obramowanie = rodzaj (pełne, przerywane opcje ankiety, podwójne review).
+export const meetingColor = (m: Pick<Meeting, 'id'>) => `var(--project-${(m.id % 7) + 1})`;
 const VOTE_COLOR: Record<Vote, string> = { yes: 'var(--success-text)', maybe: 'var(--progress-text)', no: 'var(--danger-text)' };
 const VOTE_LABEL: Record<Vote, string> = { yes: t('Yes'), maybe: t('Maybe'), no: t('No') };
 
@@ -422,7 +421,7 @@ function ScheduledDialog({ m }: { m: Meeting }) {
   return (
     <Backdrop width={560}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 4 }}>
-        <span style={{ width: 10, height: 10, borderRadius: '50%', background: KIND_COLOR[m.kind] }} />
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: meetingColor(m) }} />
         <div style={{ fontSize: 18, fontWeight: 600 }}>{m.title}</div>
       </div>
       <div className="hint" style={{ marginBottom: 16 }}>

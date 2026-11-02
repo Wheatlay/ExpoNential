@@ -28,10 +28,11 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
   - `progress` — w toku: deploy trwa, ktoś był niedawno.
   - `ai` — wszystko, co robi Claude: analiza, przyciski AI, cudze przeciąganie.
   - `info` — nowe, nieprzeczytane.
-  - `tech` — notatki techniczne, spotkania stałe i ankiety.
+  - `tech` — notatki techniczne.
 - Na pełnym wypełnieniu: `on-accent` (biały) na `accent`, `danger`, `ai`, `info`; `on-warning` (ciemny) na `warning`.
 - Stan nigdy nie jest tylko kolorem: obok jest słowo, ikona albo podpowiedź (deploy ma `aria-label` i `title` ze słowem statusu).
 - `avatar-1…8` i `project-1…7` to kolory tożsamości (awatary, kolory projektów). Nigdy nie oznaczają stanu.
+- Spotkania w kalendarzu: kolor mówi, które to spotkanie (`project-1…7` z id, ten sam dla opcji jednej ankiety), obramowanie mówi, jaki to rodzaj: pełne z wypełnieniem = stały termin, przerywane bez wypełnienia = opcja ankiety, podwójne (`outline` 1px z odstępem 2px) = sprint review. Spotkanie bez mojego zaproszenia: szare (`text-quaternary`, `border-secondary`), bez koloru, z podpisem „not invited”. `warning` zostaje tylko na „Vote” i „Waiting for your vote”.
 
 ## Typografia
 
