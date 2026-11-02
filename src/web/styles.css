@@ -167,7 +167,7 @@ code, pre { font-family: 'Berkeley Mono', 'SFMono-Regular', Consolas, monospace;
 .chip .x { color: var(--text-tertiary); margin-left: 2px; }
 
 /* ---------- board ---------- */
-.board { flex: 1; overflow: auto; padding: 0 8px 8px; position: relative; }
+.board { flex: 1; overflow: auto; padding: 0 8px 8px; position: relative; container-type: inline-size; }
 .board-inner { min-width: max-content; }
 .col-heads { display: flex; gap: 8px; position: sticky; top: 0; z-index: 3; background: var(--bg-primary); padding-top: 4px; }
 .col-head {
@@ -180,7 +180,8 @@ code, pre { font-family: 'Berkeley Mono', 'SFMono-Regular', Consolas, monospace;
 .row-group { margin-top: 0; }
 .row-head {
   position: sticky; left: 0; display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px;
-  background: var(--bg-row); border-radius: var(--radius-md); margin: 6px 0; font-weight: 500; width: calc(100vw - 280px); max-width: 100%;
+  /* 100cqw = widoczna szerokość tablicy (bez paddingu): pasek kończy się przy jej brzegu, niezależnie od paneli obok. */
+  background: var(--bg-row); border-radius: var(--radius-md); margin: 6px 0; font-weight: 500; width: 100cqw;
 }
 .row-head .n { color: var(--text-tertiary); font-weight: 400; }
 .row-head .caret { color: var(--text-tertiary); transition: transform 0.12s; }
@@ -511,7 +512,6 @@ textarea.md-edit {
   .sidebar.open { transform: none; }
   .main { margin: 0; border-radius: 0; border: 0; }
   .col-head, .col { width: 84vw; }
-  .row-head { width: calc(100vw - 16px); }
   .issue-content { padding: 20px 16px 40px; }
   .settings { padding: 16px; }
   .header { padding-left: 8px; }
