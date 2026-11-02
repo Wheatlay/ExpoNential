@@ -677,8 +677,8 @@ textarea.md-edit {
 .fold.open .fold-caret { transform: none; }
 .fold-name { font-weight: 500; white-space: nowrap; }
 .fold-meta { white-space: nowrap; }
-.fold-tools { display: inline-flex; gap: 4px; min-width: 0; flex-shrink: 1; }
-.fold-tools .pill { min-width: 0; }
+.fold-tools { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; min-width: 0; flex-shrink: 1; }
+.fold-tools .pill { flex-shrink: 0; }
 .fold-tools .btn { flex-shrink: 0; }
 .pill-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .fold-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); }
