@@ -164,6 +164,8 @@ code, pre { font-family: 'Berkeley Mono', 'SFMono-Regular', Consolas, monospace;
 }
 .chip:hover { background: var(--bg-hover); }
 .chip.on { background: var(--bg-active); color: var(--text-primary); border-color: var(--border-tertiary); }
+.chip:disabled, .prop-chip:disabled { opacity: 0.5; cursor: not-allowed; }
+.chip:disabled:hover { background: none; }
 .chip .x { color: var(--text-tertiary); margin-left: 2px; }
 
 /* ---------- board ---------- */
@@ -846,6 +848,10 @@ a.sub-row > button { display: inline-flex; }
 .cal-card:hover { background: color-mix(in srgb, var(--kind) 30%, var(--bg-secondary)); }
 .cal-card.option { background: transparent; border-style: dashed; }
 .cal-card.option:hover { background: color-mix(in srgb, var(--kind) 8%, transparent); }
+/* Spotkanie, na które nie jestem zaproszony: widoczne, ale wyciszone. */
+.cal-card.other { background: transparent; border-color: var(--border-secondary); color: var(--text-tertiary); }
+.cal-card.other:hover { background: var(--bg-hover); }
+.cal-card.other .cal-card-time { color: var(--text-tertiary); }
 .cal-card-time { font-size: var(--text-sm); color: color-mix(in srgb, var(--kind) 55%, var(--text-primary)); }
 .cal-card-title { font-weight: 600; overflow-wrap: anywhere; }
 .cal-card-people { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
@@ -948,6 +954,7 @@ a.sub-row > button { display: inline-flex; }
 .cal-month-item { display: flex; align-items: center; gap: 5px; font-size: var(--text-sm); text-align: left; padding: 2px 4px; border-radius: var(--radius-sm); border: 0; background: transparent; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .cal-month-item:hover { background: color-mix(in srgb, var(--kind) 18%, transparent); }
 .cal-month-item .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--kind); flex-shrink: 0; }
+.cal-month-item.other { color: var(--text-tertiary); }
 .cal-month-item.option .dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--kind); }
 .cal-month-more { font-size: var(--text-xs); padding-left: 4px; }
 @media (max-width: 900px) {

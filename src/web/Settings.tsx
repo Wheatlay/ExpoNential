@@ -329,7 +329,7 @@ function ClaudeConnect() {
 
 type ProjectDetail = {
   id: number; key: string; name: string; color: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
-  sprintLengthDays: number; reviewTime: string; reviewMinutes: number;
+  sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
   githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; agentTeamQueue: boolean;
   defaultModels: { analyze: string; deep: string };
@@ -364,6 +364,7 @@ function ProjectGeneral() {
   const [days, setDays] = useState<number | null>(null);
   if (!c) return null;
   const { p, ro, patch, qc } = c;
+  const off = p.reviewMeeting ? null : t('Turn on the sprint review meeting first');
   return (
     <div className="s-card">
       <div className="s-row">
@@ -389,13 +390,17 @@ function ProjectGeneral() {
       </div>
       <div className="s-row">
         <span className="s-label">{t('Sprint review')}</span>
-        <span className="hint">{t('last working day at')}</span>
         <Tooltip text={ro}>
-          <TimeInput value={p.reviewTime} disabled={!!ro} aria-label={t('Sprint review time')} onChange={(v) => void patch({ reviewTime: v })} />
+          <button className={`switch ${p.reviewMeeting ? 'on' : ''}`} role="switch" aria-checked={p.reviewMeeting} aria-label={t('Plan a sprint review meeting')} disabled={!!ro}
+            onClick={() => void patch({ reviewMeeting: !p.reviewMeeting }).then(() => qc.invalidateQueries({ queryKey: ['meetings'] }))} />
+        </Tooltip>
+        <span className="hint">{t('meeting in the calendar on the last working day at')}</span>
+        <Tooltip text={ro ?? off}>
+          <TimeInput value={p.reviewTime} disabled={!!(ro ?? off)} aria-label={t('Sprint review time')} onChange={(v) => void patch({ reviewTime: v })} />
         </Tooltip>
         <span className="hint">{t('for')}</span>
-        <Tooltip text={ro}>
-          <input className="input" type="number" min={5} max={480} step={5} key={p.reviewMinutes} defaultValue={p.reviewMinutes} disabled={!!ro} style={{ width: 80 }}
+        <Tooltip text={ro ?? off}>
+          <input className="input" type="number" min={5} max={480} step={5} key={p.reviewMinutes} defaultValue={p.reviewMinutes} disabled={!!(ro ?? off)} style={{ width: 80 }}
             onBlur={(e) => Number(e.target.value) !== p.reviewMinutes && void patch({ reviewMinutes: Number(e.target.value) })} />
         </Tooltip>
         <span className="hint">min</span>

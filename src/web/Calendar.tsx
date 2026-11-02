@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { api, awaitsMyVote, useMe, useMeetings, useMeta, type Meeting } from './api.ts';
+import { api, awaitsMyVote, isInvited, useMe, useMeetings, useMeta, type Meeting } from './api.ts';
 import { Avatar, Icon } from './icons.tsx';
-import { Tooltip } from './menu.tsx';
+import { Tooltip, openMenu } from './menu.tsx';
 import { linkProps } from './router.ts';
 import { toast } from './toast.ts';
 import {
@@ -25,7 +25,9 @@ export function useNow(ms = 30_000) {
   return now;
 }
 
-type Item = { key: string; meeting: Meeting; startsAt: Date; endsAt: Date; option: boolean };
+const OTHER_COLOR = 'var(--text-quaternary)';
+
+type Item ={ key: string; meeting: Meeting; startsAt: Date; endsAt: Date; option: boolean };
 
 /** Na dany dzień: zaplanowane spotkania i terminy z trwających ankiet ("option"). */
 function itemsOn(meetings: Meeting[], day: Date): Item[] {
@@ -56,7 +58,15 @@ export function Calendar() {
   const [month, setMonth] = useState(() => monthStart(new Date()));
   // Starsze tygodnie/miesiące: API domyślnie oddaje 14 dni wstecz, więc dla przeszłości prosimy o więcej.
   const from = view === 'month' ? weekStart(month) : week;
-  const meetings = useMeetings(from < addDays(new Date(), -13) ? from : undefined).data ?? [];
+  const all = useMeetings(from < addDays(new Date(), -13) ? from : undefined).data ?? [];
+  // Spotkania, na które nie jestem zaproszony: widoczne (wyciszone) albo ukryte; wybór osoby, w tej przeglądarce.
+  // Domyślnie ukryte; włącza się w opcjach widoku.
+  const [showOthers, setShowOthers] = useState(() => { try { return localStorage.getItem('calendar.showOthers') === '1'; } catch { return false; } });
+  const toggleOthers = () => {
+    setShowOthers((v) => { try { localStorage.setItem('calendar.showOthers', v ? '0' : '1'); } catch { /* prywatne okno */ } return !v; });
+  };
+  const othersCount = all.filter((m) => !isInvited(m, me?.id)).length;
+  const meetings = showOthers ? all : all.filter((m) => isInvited(m, me?.id));
   const pickView = (v: 'week' | 'month') => {
     setView(v);
     // Przełączenie trzyma ten sam okres: miesiąc oglądanego tygodnia i odwrotnie.
@@ -79,7 +89,8 @@ export function Calendar() {
   const days = [0, 1, 2, 3, 4].map((i) => addDays(week, i));
   const nextDays = [7, 8].map((i) => addDays(week, i));
 
-  const scheduled = meetings.filter((m) => m.status === 'scheduled' && m.startsAt);
+  // Panel z prawej (najbliższe, ten tydzień) tylko ze spotkań, na które jestem zaproszony.
+  const scheduled = meetings.filter((m) => m.status === 'scheduled' && m.startsAt && isInvited(m, me?.id));
   const next = scheduled.find((m) => new Date(m.endsAt!) > now);
   const waiting = meetings.filter((m) => awaitsMyVote(m, me?.id));
   const thisWeek = scheduled.filter((m) => new Date(m.startsAt!) >= weekStart(now) && new Date(m.startsAt!) < addDays(weekStart(now), 7));
@@ -98,7 +109,7 @@ export function Calendar() {
       <div key={day.toISOString()} className={`cal-day ${today ? 'today' : ''} ${nextWeek ? 'next' : ''}`}
         onDoubleClick={(e) => { if (e.target === e.currentTarget) openNewMeeting(day); }}>
         <div className="cal-day-head">{fmtDay(day)} {today ? <span className="hint">{t('today')}</span> : nextWeek ? <span className="hint">{t('next week')}</span> : null}</div>
-        {itemsOn(meetings, day).map((it) => <CalendarCard key={it.key} item={it} users={meta?.users ?? []} />)}
+        {itemsOn(meetings, day).map((it) => <CalendarCard key={it.key} item={it} users={meta?.users ?? []} meId={me?.id} />)}
       </div>
     );
   };
@@ -127,6 +138,13 @@ export function Calendar() {
             </>
           )}
           <span className="spacer" />
+          <button className="icon-btn round" title={t('Display options')} aria-label={t('Display options')} onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            openMenu({ x: r.right, y: r.bottom + 4, alignRight: true }, { items: [{
+              key: 'others', checked: showOthers, onSelect: toggleOthers,
+              label: `${t('Show meetings I am not invited to')}${othersCount ? ` (${othersCount})` : ''}`,
+            }] });
+          }}><Icon.display size={15} /></button>
           <button className="btn sm" onClick={() => void copyIcs()} title={t('Copy a private link to subscribe in Google Calendar or Outlook (read only)')}><Icon.link size={12} /> {t('Subscribe (.ics)')}</button>
           <button className="btn sm primary" onClick={() => openNewMeeting()}><Icon.plus size={12} /> {t('New meeting')}</button>
         </div>
@@ -137,7 +155,7 @@ export function Calendar() {
             {nextDays.map((d) => column(d, true))}
           </div>
         ) : (
-          <MonthGrid month={month} meetings={meetings} now={now} onOpenWeek={openWeek} />
+          <MonthGrid month={month} meetings={meetings} now={now} onOpenWeek={openWeek} meId={me?.id} />
         )}
       </div>
 
@@ -171,7 +189,7 @@ export function Calendar() {
               </Tooltip>
               {next.kind === 'sprint_review' && <a className="hint" {...linkProps('/review')}>{t('Open sprint review')} ›</a>}
             </div>
-          ) : <div className="hint">{t('Nothing planned. Sprint reviews appear here automatically.')}</div>}
+          ) : <div className="hint">{t('Nothing planned.')}</div>}
         </div>
         {thisWeek.length > 0 && (
           <div className="props-group">
@@ -197,7 +215,7 @@ const sameMonth = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a
  * Miesiąc w siatce pon–nd (pełne tygodnie). W dniu do 3 pozycji, reszta jako "+N more".
  * Klik w numer dnia otwiera jego tydzień, dwuklik w tło dnia zakłada spotkanie, klik w pozycję otwiera spotkanie.
  */
-function MonthGrid({ month, meetings, now, onOpenWeek }: { month: Date; meetings: Meeting[]; now: Date; onOpenWeek: (d: Date) => void }) {
+function MonthGrid({ month, meetings, now, onOpenWeek, meId }: { month: Date; meetings: Meeting[]; now: Date; onOpenWeek: (d: Date) => void; meId: number | undefined }) {
   const first = weekStart(month);
   const weeks = Math.ceil(((month.getTime() - first.getTime()) / 864e5 + new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()) / 7);
   const cells = Array.from({ length: weeks * 7 }, (_, i) => addDays(first, i));
@@ -212,9 +230,9 @@ function MonthGrid({ month, meetings, now, onOpenWeek }: { month: Date; meetings
             title={t('Double-click to plan a meeting')} onDoubleClick={(e) => { if (e.target === e.currentTarget) openNewMeeting(day); }}>
             <button className="cal-month-num" title={t('Open this week')} onClick={() => onOpenWeek(day)}>{day.getDate()}</button>
             {items.slice(0, 3).map((it) => (
-              <button key={it.key} className={`cal-month-item ${it.option ? 'option' : ''}`}
-                style={{ '--kind': it.option ? POLL_COLOR : KIND_COLOR[it.meeting.kind] } as React.CSSProperties}
-                title={`${fmtTime(it.startsAt)} ${it.meeting.title}${it.option ? ` ${t('(poll option)')}` : ''}`}
+              <button key={it.key} className={`cal-month-item ${it.option ? 'option' : ''} ${isInvited(it.meeting, meId) ? '' : 'other'}`}
+                style={{ '--kind': !isInvited(it.meeting, meId) ? OTHER_COLOR : it.option ? POLL_COLOR : KIND_COLOR[it.meeting.kind] } as React.CSSProperties}
+                title={`${fmtTime(it.startsAt)} ${it.meeting.title}${it.option ? ` ${t('(poll option)')}` : ''}${isInvited(it.meeting, meId) ? '' : ` · ${t('not invited')}`}`}
                 onClick={(e) => { e.stopPropagation(); openMeeting(it.meeting.id); }}>
                 <span className="dot" />{fmtTime(it.startsAt)} {it.meeting.title}{it.option ? ' ?' : ''}
               </button>
@@ -227,16 +245,18 @@ function MonthGrid({ month, meetings, now, onOpenWeek }: { month: Date; meetings
   );
 }
 
-function CalendarCard({ item, users }: { item: Item; users: { id: number; name: string; avatarUrl: string | null; active: boolean }[] }) {
+function CalendarCard({ item, users, meId }: { item: Item; users: { id: number; name: string; avatarUrl: string | null; active: boolean }[]; meId: number | undefined }) {
   const m = item.meeting;
-  const color = item.option ? POLL_COLOR : KIND_COLOR[m.kind];
+  // Cudze spotkanie (nie jestem zaproszony): szare, bez koloru rodzaju, z podpisem, żeby nie myliło się z moimi.
+  const mine = isInvited(m, meId);
+  const color = !mine ? OTHER_COLOR : item.option ? POLL_COLOR : KIND_COLOR[m.kind];
   return (
-    <button className={`cal-card ${item.option ? 'option' : ''}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
-      <div className="cal-card-time">{item.option ? `${fmtTime(item.startsAt)} · ${t('option')}` : `${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}</div>
+    <button className={`cal-card ${item.option ? 'option' : ''} ${mine ? '' : 'other'}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
+      <div className="cal-card-time">{item.option ? `${fmtTime(item.startsAt)} · ${t('option')}` : `${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}{mine ? '' : ` · ${t('not invited')}`}</div>
       <div className="cal-card-title">{m.title}{item.option ? ' ?' : ''}</div>
       {!item.option && (
         <div className="cal-card-people">
-          {users.filter((u) => u.active).slice(0, 6).map((u) => <Avatar key={u.id} user={u} size={18} />)}
+          {users.filter((u) => u.active && isInvited(m, u.id)).slice(0, 6).map((u) => <Avatar key={u.id} user={u} size={18} />)}
         </div>
       )}
     </button>

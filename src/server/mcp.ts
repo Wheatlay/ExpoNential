@@ -299,6 +299,7 @@ function buildServer(user: SessionUser) {
       return (await listMeetings(p, new Date(Date.now() - 864e5))).map((m) => ({
         title: m.title, kind: m.kind, status: m.status, startsAt: m.startsAt, endsAt: m.endsAt, where: m.locationUrl || null,
         organizer: name(m.createdBy), url: meetingUrl(p, m.id),
+        invited: m.attendeeIds ? m.attendeeIds.map(name) : 'whole team',
         poll: m.status === 'polling' ? m.slots.map((s) => ({
           startsAt: s.startsAt, proposedBy: name(s.proposedBy), reason: s.reason,
           votes: s.votes.map((v) => `${name(v.userId)}: ${v.vote}`),

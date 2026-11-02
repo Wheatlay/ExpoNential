@@ -65,9 +65,31 @@ async function memberIds(p: Project) {
     .where(and(eq(projectMembers.projectId, p.id), eq(users.active, true)))).map((r) => r.id);
 }
 
-/** Na kanał idzie, chyba że organizator wyłączył u siebie Discorda (sprint review: zawsze). */
-async function discordAllowed(m: { createdBy: number | null }) {
+type Invite = { attendeeIds: number[] | null; createdBy: number | null };
+
+/** Spotkanie dla wybranych osób (organizator jest zawsze w środku). */
+function invited(m: Invite, userId: number) {
+  return !m.attendeeIds || m.attendeeIds.includes(userId) || m.createdBy === userId;
+}
+
+/** Kogo powiadomić: cały projekt albo tylko zaproszeni. */
+async function recipients(p: Project, m: Invite) {
+  return (await memberIds(p)).filter((id) => invited(m, id));
+}
+
+/** Na kanał idzie, chyba że organizator wyłączył u siebie Discorda (sprint review: zawsze). Spotkań dla wybranych osób nie ogłaszamy na kanale. */
+async function discordAllowed(m: Invite) {
+  if (m.attendeeIds) return false;
   return m.createdBy == null || (await getNotifySettings(m.createdBy)).discord;
+}
+
+/** Pusta lista albo cały zespół = null; tylko członkowie projektu. */
+async function checkAttendees(p: Project, ids: number[] | null | undefined, organizer: number | null) {
+  if (!ids?.length) return null;
+  const members = await memberIds(p);
+  const set = [...new Set(organizer == null ? ids : [organizer, ...ids])];
+  if (set.some((id) => !members.includes(id))) throw new RuleError('Attendees must be project members', 'invalid');
+  return set.length >= members.length ? null : set;
 }
 
 function checkRange(startsAt: Date, endsAt: Date) {
@@ -99,19 +121,22 @@ export type NewMeeting = {
   endsAt?: Date;
   locationUrl?: string;
   reminders?: number[];
+  /** Puste/brak = cały projekt. */
+  attendeeIds?: number[] | null;
 };
 
 export async function createMeeting(p: Project, actor: Actor, input: NewMeeting, log?: Log) {
   const title = input.title.trim();
   if (!title) throw new RuleError('Title cannot be empty', 'invalid');
   const reminders = checkReminders(input.reminders ?? DEFAULT_REMINDERS);
+  const attendeeIds = await checkAttendees(p, input.attendeeIds, actor.id);
   let m: typeof meetings.$inferSelect;
   if (input.kind === 'poll') {
     const slots = input.slots ?? [];
     if (!slots.length) throw new RuleError('Propose at least one time', 'invalid');
     slots.forEach((s) => checkRange(s.startsAt, s.endsAt));
     [m] = await db.insert(meetings).values({
-      projectId: p.id, title, kind: 'poll', status: 'polling', locationUrl: input.locationUrl?.trim() ?? '', createdBy: actor.id,
+      projectId: p.id, title, kind: 'poll', status: 'polling', locationUrl: input.locationUrl?.trim() ?? '', createdBy: actor.id, attendeeIds,
     }).returning();
     await db.insert(meetingSlots).values(slots.map((s) => ({ meetingId: m.id, startsAt: s.startsAt, endsAt: s.endsAt, proposedBy: actor.id })));
   } else {
@@ -119,13 +144,13 @@ export async function createMeeting(p: Project, actor: Actor, input: NewMeeting,
     checkRange(input.startsAt, input.endsAt);
     [m] = await db.insert(meetings).values({
       projectId: p.id, title, kind: 'fixed', status: 'scheduled', startsAt: input.startsAt, endsAt: input.endsAt,
-      locationUrl: input.locationUrl?.trim() ?? '', createdBy: actor.id,
+      locationUrl: input.locationUrl?.trim() ?? '', createdBy: actor.id, attendeeIds,
     }).returning();
   }
   await setReminders(m.id, reminders);
   await changed(p);
 
-  const others = (await memberIds(p)).filter((id) => id !== actor.id);
+  const others = (await recipients(p, m)).filter((id) => id !== actor.id);
   const url = meetingUrl(p, m.id);
   if (m.kind === 'poll') {
     const n = input.slots!.length;
@@ -143,6 +168,7 @@ export async function createMeeting(p: Project, actor: Actor, input: NewMeeting,
 export async function proposeSlot(p: Project, actor: Actor, meetingId: number, input: { startsAt: Date; endsAt?: Date; reason?: string }, log?: Log) {
   const m = await requireMeeting(p, meetingId);
   if (m.status !== 'polling') throw new RuleError('Voting on this meeting is closed', 'invalid');
+  if (!invited(m, actor.id)) throw new RuleError('Only invited people can propose a time', 'forbidden');
   const [first] = await db.select().from(meetingSlots).where(eq(meetingSlots.meetingId, m.id)).orderBy(asc(meetingSlots.id)).limit(1);
   const len = first ? first.endsAt.getTime() - first.startsAt.getTime() : 60 * MIN;
   const endsAt = input.endsAt ?? new Date(input.startsAt.getTime() + len);
@@ -157,7 +183,7 @@ export async function proposeSlot(p: Project, actor: Actor, meetingId: number, i
   if (await discordAllowed(m)) {
     await sendDiscord(p, { title: st('New time proposal: {title}', { title: m.title }), description: st('{name} proposes {when}{reason}. Vote.', { name: actor.name, when: formatDateTime(slot.startsAt), reason: reason ? st(' (“{reason}”)', { reason }) : '' }), url, color: 0xf2994a }, log);
   }
-  const others = (await memberIds(p)).filter((id) => id !== actor.id);
+  const others = (await recipients(p, m)).filter((id) => id !== actor.id);
   await sendPush(others, { title: `New time for ${m.title}`, body: `${actor.name} suggests ${formatTime(slot.startsAt)}${reason ? `: ${reason}` : ''}`, url, tag: `meeting-${m.id}` }, log);
   return slot;
 }
@@ -168,6 +194,7 @@ export async function vote(p: Project, actor: Actor, slotId: number, v: Vote | n
     .where(and(eq(meetingSlots.id, slotId), eq(meetings.projectId, p.id)));
   if (!row) throw new RuleError('Time not found', 'not_found');
   if (row.meeting.status !== 'polling') throw new RuleError('Voting on this meeting is closed', 'invalid');
+  if (!invited(row.meeting, actor.id)) throw new RuleError('Only invited people can vote', 'forbidden');
   if (v === null) await db.delete(meetingVotes).where(and(eq(meetingVotes.slotId, slotId), eq(meetingVotes.userId, actor.id)));
   else {
     await db.insert(meetingVotes).values({ slotId, userId: actor.id, vote: v })
@@ -191,12 +218,12 @@ export async function pickSlot(p: Project, actor: Actor, isAdmin: boolean, meeti
   await changed(p);
   const url = meetingUrl(p, m.id);
   if (await discordAllowed(m)) await sendDiscord(p, { title: st('Time picked: {title}', { title: m.title }), description: `${formatDateTime(slot.startsAt)}${m.locationUrl ? ` · ${m.locationUrl}` : ''}`, url, color: 0x4cb782 }, log);
-  const others = (await memberIds(p)).filter((id) => id !== actor.id);
+  const others = (await recipients(p, m)).filter((id) => id !== actor.id);
   await sendPush(others, { title: `${m.title}: time picked`, body: `${formatTime(slot.startsAt)} · picked by ${actor.name}`, url, tag: `meeting-${m.id}` }, log);
 }
 
 export async function updateMeeting(p: Project, actor: Actor, isAdmin: boolean, id: number, patch: {
-  title?: string; locationUrl?: string; reminders?: number[]; startsAt?: Date; endsAt?: Date;
+  title?: string; locationUrl?: string; reminders?: number[]; startsAt?: Date; endsAt?: Date; attendeeIds?: number[] | null;
 }) {
   const m = await requireMeeting(p, id);
   if (!canEdit(m, actor, isAdmin)) throw new RuleError('Only the organizer or a project admin can change this meeting', 'forbidden');
@@ -206,6 +233,10 @@ export async function updateMeeting(p: Project, actor: Actor, isAdmin: boolean, 
     set.title = patch.title.trim();
   }
   if (patch.locationUrl !== undefined) set.locationUrl = patch.locationUrl.trim();
+  if (patch.attendeeIds !== undefined) {
+    if (m.kind === 'sprint_review') throw new RuleError('Sprint review is for the whole team', 'invalid');
+    set.attendeeIds = await checkAttendees(p, patch.attendeeIds, m.createdBy);
+  }
   if (patch.startsAt || patch.endsAt) {
     if (m.status !== 'scheduled') throw new RuleError('Pick a time from the poll first', 'invalid');
     const startsAt = patch.startsAt ?? m.startsAt!;
@@ -242,6 +273,14 @@ export function reviewSlot(p: Pick<Project, 'reviewTime' | 'reviewMinutes'>, spr
 export async function ensureSprintReviews(p: Project) {
   const list = await db.select().from(sprints).where(and(eq(sprints.projectId, p.id), inArray(sprints.status, ['planned', 'active'])));
   if (!list.length) return;
+  // Wyłączone w ustawieniach: nadchodzące review znikają z kalendarza (włączenie tworzy je od nowa).
+  if (!p.reviewMeeting) {
+    const gone = await db.delete(meetings).where(and(
+      inArray(meetings.sprintId, list.map((s) => s.id)), eq(meetings.kind, 'sprint_review'), gte(meetings.startsAt, new Date()),
+    )).returning({ id: meetings.id });
+    if (gone.length) await changed(p);
+    return;
+  }
   const existing = await db.select().from(meetings).where(inArray(meetings.sprintId, list.map((s) => s.id)));
   let touched = false;
   for (const s of list) {
@@ -314,7 +353,7 @@ export async function runReminders(now = new Date(), log?: Log) {
     const url = meetingUrl(p, m.id);
     // Tylko identyfikatory: SSE idzie do wszystkich, szczegóły klient pobiera z API (z kontrolą członkostwa).
     await publish({ type: 'meeting_reminder', projectKey: p.key, meetingId: m.id });
-    await sendPush(await memberIds(p), {
+    await sendPush(await recipients(p, m), {
       title: m.title, body: `${whenText(offset, m.startsAt!)[0].toUpperCase()}${whenText(offset, m.startsAt!).slice(1)}.${m.locationUrl ? ' Click to join.' : ''}`,
       url: m.locationUrl || url, tag: `meeting-${m.id}`,
     }, log);
@@ -337,6 +376,8 @@ export async function icsFor(userId: number, now = new Date()) {
   const stamp = icsDate(now);
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Tracker//Meetings//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Tracker meetings'];
   for (const { m, key, projectName } of rows) {
+    // Do zewnętrznego kalendarza trafiają tylko spotkania, na które osoba jest zaproszona.
+    if (!invited(m, userId)) continue;
     const url = `${BASE_URL}/calendar?project=${key}&meeting=${m.id}`;
     lines.push(
       'BEGIN:VEVENT',

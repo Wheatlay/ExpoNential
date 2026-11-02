@@ -1,0 +1,1 @@
+ALTER TABLE "projects" ADD COLUMN "review_meeting" boolean DEFAULT false NOT NULL;

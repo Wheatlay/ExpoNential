@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { DateInput, TimeInput } from './DateTime.tsx';
 import { askConfirm } from './Confirm.tsx';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, useMe, useMeetings, useMeta, type Meeting, type MeetingSlot, type Vote } from './api.ts';
+import { api, isInvited, useMe, useMeetings, useMeta, type Meeting, type MeetingSlot, type Vote } from './api.ts';
 import { Avatar, Icon } from './icons.tsx';
 import { Tooltip } from './menu.tsx';
 import { linkProps } from './router.ts';
@@ -126,6 +126,34 @@ function ReminderChips({ value, onChange, disabled }: { value: number[]; onChang
   );
 }
 
+/**
+ * Kogo zaprosić: domyślnie cały zespół (null). Lista osób pokazuje się dopiero po "Choose people",
+ * żeby zwykłe spotkanie nie miało rzędu awatarów. Organizator jest zawsze zaproszony.
+ */
+function InviteePicker({ value, onChange, organizer, disabled }: {
+  value: number[] | null; onChange: (v: number[] | null) => void; organizer: number | null | undefined; disabled?: string | null;
+}) {
+  const people = (useMeta().data?.users ?? []).filter((u) => u.active && u.id !== organizer);
+  const [open, setOpen] = useState(value !== null);
+  const toggle = (id: number) => {
+    const cur = value ?? [];
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    onChange(next.length ? next : null);
+  };
+  return (
+    <Tooltip text={disabled}>
+      <div className="prop-chips">
+        <button className={`prop-chip ${value === null ? 'on' : ''}`} disabled={!!disabled} onClick={() => { onChange(null); setOpen(false); }}>{t('Whole team')}</button>
+        {open
+          ? people.map((u) => (
+            <button key={u.id} className={`prop-chip ${value?.includes(u.id) ? 'on' : ''}`} disabled={!!disabled} onClick={() => toggle(u.id)}>{u.name}</button>
+          ))
+          : <button className="prop-chip" disabled={!!disabled} onClick={() => setOpen(true)}>{t('Choose people…')}</button>}
+      </div>
+    </Tooltip>
+  );
+}
+
 const LOCATION_KEY = () => `meetingLocation:${getProjectKey()}`;
 
 function NewMeeting({ date }: { date?: Date }) {
@@ -142,6 +170,8 @@ function NewMeeting({ date }: { date?: Date }) {
   // Ostatnio wpisane miejsce wygrywa, inaczej domyślny kanał projektu (Settings › Project).
   const location = typed ?? defaultPlace;
   const [reminders, setReminders] = useState([60, 15, 0]);
+  const [invitees, setInvitees] = useState<number[] | null>(null);
+  const me = useMe().data;
   const [busy, setBusy] = useState(false);
 
   const times = slots.map((s) => fromInputs(s.date, s.time)).filter((d) => !Number.isNaN(d.getTime()));
@@ -152,8 +182,8 @@ function NewMeeting({ date }: { date?: Date }) {
     try {
       const range = (d: Date) => ({ startsAt: d.toISOString(), endsAt: new Date(d.getTime() + minutes * 60000).toISOString() });
       const body = mode === 'poll'
-        ? { title, kind: 'poll', slots: times.map(range), locationUrl: location, reminders }
-        : { title, kind: 'fixed', ...range(times[0]), locationUrl: location, reminders };
+        ? { title, kind: 'poll', slots: times.map(range), locationUrl: location, reminders, attendeeIds: invitees }
+        : { title, kind: 'fixed', ...range(times[0]), locationUrl: location, reminders, attendeeIds: invitees };
       await api('/api/meetings', { method: 'POST', body });
       try { localStorage.setItem(LOCATION_KEY(), location); } catch { /* prywatne okno */ }
       await qc.invalidateQueries({ queryKey: ['meetings'] });
@@ -174,13 +204,13 @@ function NewMeeting({ date }: { date?: Date }) {
       <div style={{ display: 'flex', gap: 6, margin: '12px 0 16px' }}>
         <button className={`chip ${mode === 'poll' ? 'on' : ''}`} onClick={() => { setMode('poll'); }}>{t('Poll for a time')}</button>
         <button className={`chip ${mode === 'fixed' ? 'on' : ''}`} onClick={() => { setMode('fixed'); setSlots((s) => s.slice(0, 1)); }}>{t('Fixed time')}</button>
-        <Tooltip text={t('Created automatically for every sprint (last day of the sprint). Change the default time in Settings › Project, or move a single review from the calendar.')}>
+        <Tooltip text={t('Created for every sprint (last working day) when turned on in Settings › Project. Move a single review from the calendar.')}>
           <button className="chip" disabled>{t('Sprint review (auto)')}</button>
         </Tooltip>
       </div>
 
       <div className="meeting-form">
-        <div className="meeting-label">{mode === 'poll' ? <>{t('Proposed times')} <span className="hint">· {t('everyone in {name} votes', { name: project?.name })}</span></> : t('When')}</div>
+        <div className="meeting-label">{mode === 'poll' ? <>{t('Proposed times')} <span className="hint">· {invitees ? t('invited people vote') : t('everyone in {name} votes', { name: project?.name })}</span></> : t('When')}</div>
         <div className="slot-grid">
           {slots.map((s, i) => (
             <div key={i} className="slot-edit">
@@ -217,9 +247,15 @@ function NewMeeting({ date }: { date?: Date }) {
         </div>
       </div>
 
+      <div className="meeting-form" style={{ paddingBottom: 16 }}>
+        <div className="meeting-label">{t('Who')}</div>
+        <InviteePicker value={invitees} onChange={setInvitees} organizer={me?.id} />
+      </div>
+
       <div className="foot">
         <span className="hint">
-          {mode === 'poll' ? `${t('Everyone in {name} gets the poll.', { name: project?.name })} ` : ''}{t('Reminders go through the channels each person turned on in their settings.')}
+          {mode === 'poll' && !invitees ? `${t('Everyone in {name} gets the poll.', { name: project?.name })} ` : ''}
+          {invitees ? `${t('Only invited people get notified; the rest of the team still sees it in the calendar.')} ` : ''}{t('Reminders go through the channels each person turned on in their settings.')}
         </span>
         <span className="spacer" />
         <button className="btn" onClick={closeDialog}>{t('Cancel')}</button>
@@ -257,8 +293,9 @@ function PollDialog({ m }: { m: Meeting }) {
   const first = m.slots[0] ? new Date(m.slots[0].startsAt) : new Date();
   const [suggest, setSuggest] = useState({ date: dateInput(first), time: '', reason: '' });
   const refresh = () => qc.invalidateQueries({ queryKey: ['meetings'] });
-  const people = (meta?.users ?? []).filter((u) => u.active);
+  const people = (meta?.users ?? []).filter((u) => u.active && isInvited(m, u.id));
   const others = people.filter((u) => u.id !== me?.id);
+  const notInvited = isInvited(m, me?.id) ? null : t('You are not invited to this meeting');
   const name = (uid: number | null) => (uid === me?.id ? t('you') : meta?.users.find((u) => u.id === uid)?.name ?? t('someone'));
   const organizer = name(m.createdBy);
   const canPick = !!me && (m.createdBy === me.id || canManage({ createdBy: -1, kind: 'poll' }));
@@ -318,12 +355,14 @@ function PollDialog({ m }: { m: Meeting }) {
           <div className="poll-row mine" style={{ gridTemplateColumns: cols }}>
             <div className="poll-person" style={{ fontWeight: 600 }}><Avatar user={people.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={20} />{t('You')}</div>
             {m.slots.map((s) => (
-              <div key={s.id} className="poll-cell" style={{ display: 'flex', gap: 4 }}>
-                {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
-                  <button key={v} className={`chip ${myVote(s) === v ? 'on' : ''}`} style={myVote(s) === v ? { borderColor: VOTE_COLOR[v], color: VOTE_COLOR[v] } : undefined}
-                    onClick={() => setVote(s, v)}>{VOTE_LABEL[v]}</button>
-                ))}
-              </div>
+              <Tooltip key={s.id} text={notInvited}>
+                <div className="poll-cell" style={{ display: 'flex', gap: 4 }}>
+                  {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
+                    <button key={v} className={`chip ${myVote(s) === v ? 'on' : ''}`} style={myVote(s) === v ? { borderColor: VOTE_COLOR[v], color: VOTE_COLOR[v] } : undefined}
+                      disabled={!!notInvited} onClick={() => setVote(s, v)}>{VOTE_LABEL[v]}</button>
+                  ))}
+                </div>
+              </Tooltip>
             ))}
           </div>
         )}
@@ -331,17 +370,17 @@ function PollDialog({ m }: { m: Meeting }) {
 
       <div className="suggest-row">
         <span style={{ fontWeight: 600 }}>{t('Suggest another time')}</span>
-        <DateInput aria-label={t('Day')} value={suggest.date} onChange={(v) => setSuggest((s) => ({ ...s, date: v }))} />
-        <TimeInput aria-label={t('Time')} value={suggest.time} onChange={(v) => setSuggest((s) => ({ ...s, time: v }))} />
-        <input className="input" placeholder={t('Why? (optional)')} aria-label={t('Reason')} value={suggest.reason} style={{ flex: 1, minWidth: 140 }}
+        <DateInput aria-label={t('Day')} value={suggest.date} disabled={!!notInvited} onChange={(v) => setSuggest((s) => ({ ...s, date: v }))} />
+        <TimeInput aria-label={t('Time')} value={suggest.time} disabled={!!notInvited} onChange={(v) => setSuggest((s) => ({ ...s, time: v }))} />
+        <input className="input" placeholder={t('Why? (optional)')} aria-label={t('Reason')} value={suggest.reason} style={{ flex: 1, minWidth: 140 }} disabled={!!notInvited}
           onChange={(e) => setSuggest((s) => ({ ...s, reason: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') void addTime(); }} />
-        <Tooltip text={suggest.time ? null : t('Pick a day and time')}>
-          <button className="btn sm" disabled={!suggest.time} onClick={() => void addTime()}>{t('Add')}</button>
+        <Tooltip text={notInvited ?? (suggest.time ? null : t('Pick a day and time'))}>
+          <button className="btn sm" disabled={!!notInvited || !suggest.time} onClick={() => void addTime()}>{t('Add')}</button>
         </Tooltip>
       </div>
 
       <div className="foot" style={{ marginTop: 16 }}>
-        <span className="hint">{t('A suggested time becomes a new column; everyone gets a Discord ping to vote on it.')}</span>
+        <span className="hint">{m.attendeeIds ? t('A suggested time becomes a new column; invited people get a ping to vote on it.') : t('A suggested time becomes a new column; everyone gets a Discord ping to vote on it.')}</span>
         <span className="spacer" />
         <button className="btn" onClick={closeDialog}>{t('Close')}</button>
         <Tooltip text={canPick ? null : t('Only {name} or a project admin can pick the time', { name: organizer })}>
@@ -359,6 +398,7 @@ function ScheduledDialog({ m }: { m: Meeting }) {
   const meta = useMeta().data;
   const canManage = useCanManageMeeting();
   const ro = canManage(m) ? null : t('Only the organizer or a project admin can change this meeting');
+  const roInvite = m.kind === 'sprint_review' ? t('Sprint review is for the whole team') : ro;
   const s = new Date(m.startsAt!);
   const [when, setWhen] = useState({ date: dateInput(s), time: timeInput(s) });
   const [location, setLocation] = useState(m.locationUrl);
@@ -403,6 +443,8 @@ function ScheduledDialog({ m }: { m: Meeting }) {
         </div>
         <span className="hint">{t('Reminders')}</span>
         <ReminderChips value={m.reminders} disabled={ro} onChange={(r) => void patch({ reminders: r })} />
+        <span className="hint">{t('Who')}</span>
+        <InviteePicker value={m.attendeeIds} organizer={m.createdBy} disabled={roInvite} onChange={(v) => void patch({ attendeeIds: v })} />
       </div>
 
       <div className="foot" style={{ marginTop: 18 }}>

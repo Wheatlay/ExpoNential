@@ -92,6 +92,20 @@
       "when": 1793224606598,
       "tag": "0012_setup_done",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1793641857492,
+      "tag": "0013_meeting_attendees",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1793643208933,
+      "tag": "0014_review_meeting_optional",
+      "breakpoints": true
     }
   ]
 }

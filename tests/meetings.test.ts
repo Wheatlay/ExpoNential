@@ -155,8 +155,41 @@ describe('time poll', () => {
   });
 });
 
+describe('invited people', () => {
+  it('meeting for chosen people: no channel post, only invitees vote, others do not get it in .ics', async () => {
+    const c = await pr.addMember({ id: 0, isAdmin: true }, P.id, 'carol');
+    const carol = { id: c.id, name: 'Carol' };
+    discord.length = 0;
+    const m = await mt.createMeeting(P, alice, {
+      title: 'Jeden na jeden', kind: 'poll', attendeeIds: [pawel.id],
+      slots: [{ startsAt: at('2026-11-20T09:00:00Z'), endsAt: at('2026-11-20T10:00:00Z') }],
+    });
+    expect(m.attendeeIds?.sort()).toEqual([alice.id, pawel.id].sort());
+    expect(discord).toHaveLength(0);
+    const [listed] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === m.id);
+    await mt.vote(P, pawel, listed.slots[0].id, 'yes');
+    await expect(mt.vote(P, carol, listed.slots[0].id, 'yes')).rejects.toThrow(/invited/);
+    await expect(mt.proposeSlot(P, carol, m.id, { startsAt: at('2026-11-21T09:00:00Z') })).rejects.toThrow(/invited/);
+    await mt.pickSlot(P, alice, false, m.id, listed.slots[0].id);
+    expect(await mt.icsFor(carol.id, at('2026-11-01'))).not.toContain('Jeden na jeden');
+    expect(await mt.icsFor(pawel.id, at('2026-11-01'))).toContain('Jeden na jeden');
+
+    // Wszyscy zaznaczeni albo pusta lista = cały zespół.
+    await mt.updateMeeting(P, alice, false, m.id, { attendeeIds: [pawel.id, carol.id] });
+    expect((await mt.listMeetings(P, at('2026-01-01'))).find((x) => x.id === m.id)!.attendeeIds).toBeNull();
+    await expect(mt.createMeeting(P, alice, { title: 'x', kind: 'fixed', startsAt: at('2026-11-20T09:00:00Z'), endsAt: at('2026-11-20T10:00:00Z'), attendeeIds: [99999] })).rejects.toThrow(/members/);
+    await pr.removeMember(P.id, carol.id);
+  });
+});
+
 describe('sprint review', () => {
+  it('is not created while the project setting is off (default)', async () => {
+    await sp.ensureSprints();
+    expect((await mt.listMeetings(P, at('2000-01-01'))).filter((m) => m.kind === 'sprint_review')).toHaveLength(0);
+  });
+
   it('is created for every planned and active sprint on its last day at the project time', async () => {
+    P = (await pr.updateProject(P.id, { reviewMeeting: true }))!;
     await sp.ensureSprints();
     const sprints = await sp.listSprints(P);
     const reviews = (await mt.listMeetings(P, at('2000-01-01'))).filter((m) => m.kind === 'sprint_review');
@@ -183,6 +216,16 @@ describe('sprint review', () => {
     await mt.cancelMeeting(P, alice, true, b.id);
     await sp.ensureProjectSprints(P);
     expect((await mt.listMeetings(P, at('2000-01-01'))).filter((m) => m.kind === 'sprint_review').map((m) => m.id)).toEqual([a.id]);
+  });
+
+  it('turning the setting off removes upcoming reviews; turning it on brings them back', async () => {
+    P = (await pr.updateProject(P.id, { reviewMeeting: false }))!;
+    await sp.ensureProjectSprints(P);
+    const upcoming = (await mt.listMeetings(P, at('2000-01-01'))).filter((m) => m.kind === 'sprint_review' && m.startsAt! > new Date());
+    expect(upcoming).toHaveLength(0);
+    P = (await pr.updateProject(P.id, { reviewMeeting: true }))!;
+    await sp.ensureProjectSprints(P);
+    expect((await mt.listMeetings(P, at('2000-01-01'))).filter((m) => m.kind === 'sprint_review').length).toBeGreaterThan(0);
   });
 });
 
@@ -213,7 +256,9 @@ describe('calendar feed', () => {
     expect(ics).toContain('DTSTART:20261021T100000Z');
     expect(ics).toContain('LOCATION:https://discord.com/channels/1/2');
     expect(ics.split('\r\n').every((l) => Buffer.byteLength(l) <= 75)).toBe(true);
-    const outsider = await pr.addMember({ id: 0, isAdmin: true }, (await pr.getProjectByKey('WEB'))!.id, 'outsider');
+    const web = (await pr.updateProject((await pr.getProjectByKey('WEB'))!.id, { reviewMeeting: true }))!;
+    await sp.ensureProjectSprints(web);
+    const outsider = await pr.addMember({ id: 0, isAdmin: true }, web.id, 'outsider');
     const theirs = await mt.icsFor(outsider.id, at('2026-10-01T00:00:00Z'));
     expect(theirs).toContain('project=WEB');
     expect(theirs).not.toContain('Planowanie Q4');

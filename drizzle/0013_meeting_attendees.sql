@@ -1,0 +1,1 @@
+ALTER TABLE "meetings" ADD COLUMN "attendee_ids" integer[];

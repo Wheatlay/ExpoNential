@@ -230,7 +230,8 @@ export function Tooltip({ text, children }: { text: string | null | undefined; c
       onMouseLeave={() => setPos(null)}
     >
       {children}
-      {pos && <span className="tooltip" style={{ left: Math.min(pos.x, window.innerWidth - 290), top: pos.y }}>{text}</span>}
+      {/* Portal: animacja okna (transform) przesuwałaby position: fixed względem okna i ucinała dymek. */}
+      {pos && createPortal(<span className="tooltip" style={{ left: Math.min(pos.x, window.innerWidth - 290), top: pos.y }}>{text}</span>, document.body)}
     </span>
   );
 }

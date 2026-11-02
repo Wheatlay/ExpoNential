@@ -44,6 +44,8 @@ export const projects = pgTable('projects', {
   meetingLocationUrl: text('meeting_location_url').notNull().default(''),
   sprintLengthDays: integer('sprint_length_days').notNull().default(14),
   // Domyślny termin sprint review: ostatni dzień sprintu o tej godzinie (HH:MM, czas Polski).
+  // Spotkanie sprint review w kalendarzu (z przypomnieniami); strona przeglądu sprintu działa bez niego.
+  reviewMeeting: boolean('review_meeting').notNull().default(false),
   reviewTime: text('review_time').notNull().default('15:00'),
   reviewMinutes: integer('review_minutes').notNull().default(45),
   // Szablony poleceń dla Claude Code (guziki Start, Analyze, okno Done). Pusty = domyślny z prompts.ts.
@@ -335,6 +337,8 @@ export const meetings = pgTable('meetings', {
   sprintId: integer('sprint_id').references(() => sprints.id, { onDelete: 'cascade' }),
   // Ręcznie przesunięte sprint review nie wraca na termin z ustawień projektu.
   manuallyEdited: boolean('manually_edited').notNull().default(false),
+  // Zaproszone osoby; null = cały projekt. Niezaproszeni widzą spotkanie, ale bez powiadomień.
+  attendeeIds: integer('attendee_ids').array(),
   createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('meetings_project_idx').on(t.projectId, t.startsAt), uniqueIndex('meetings_sprint_uniq').on(t.sprintId)]);

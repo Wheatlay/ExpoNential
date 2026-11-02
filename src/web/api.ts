@@ -21,6 +21,8 @@ export type MeetingSlot = { id: number; startsAt: string; endsAt: string; propos
 export type Meeting = {
   id: number; title: string; kind: 'poll' | 'fixed' | 'sprint_review'; status: 'polling' | 'scheduled' | 'cancelled';
   startsAt: string | null; endsAt: string | null; locationUrl: string; sprintId: number | null; createdBy: number | null;
+  /** null = cały projekt */
+  attendeeIds: number[] | null;
   reminders: number[]; slots: MeetingSlot[];
 };
 export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; notifyPromptShown: boolean; pushKey: string | null };
@@ -144,8 +146,13 @@ export const useMeetings = (since?: Date) => useQuery({
 export const useNotifySettings = () => useQuery({ queryKey: ['notify-settings'], queryFn: () => api<NotifySettings>('/api/notify-settings'), staleTime: Infinity });
 
 /** Ankieta czeka na mój głos: trwa i nie zagłosowałem na żaden termin. */
+/** Spotkanie całego zespołu (attendeeIds = null) albo osoba jest na liście; organizator zawsze. */
+export function isInvited(m: Pick<Meeting, 'attendeeIds' | 'createdBy'>, userId: number | undefined) {
+  return !m.attendeeIds || (userId != null && (m.attendeeIds.includes(userId) || m.createdBy === userId));
+}
+
 export function awaitsMyVote(m: Meeting, meId: number | undefined) {
-  return m.status === 'polling' && !!meId && !m.slots.some((s) => s.votes.some((v) => v.userId === meId));
+  return m.status === 'polling' && !!meId && isInvited(m, meId) && !m.slots.some((s) => s.votes.some((v) => v.userId === meId));
 }
 
 export const useConfig = () => useQuery({ queryKey: ['config'], queryFn: () => api<AppConfig>('/api/config'), staleTime: Infinity, retry: false });

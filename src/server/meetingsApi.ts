@@ -13,6 +13,8 @@ import * as nt from './notify.ts';
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173';
 const date = z.coerce.date();
 const reminders = z.array(z.number().int()).max(4);
+// null albo [] = cały projekt
+const attendees = z.array(z.number().int()).max(200).nullable().optional();
 
 async function scope(req: FastifyRequest) {
   const { project, role } = await ctx(req);
@@ -35,7 +37,7 @@ export async function registerMeetings(app: FastifyInstance) {
         title: z.string().max(200), kind: z.enum(['poll', 'fixed']),
         slots: z.array(z.object({ startsAt: date, endsAt: date })).max(20).optional(),
         startsAt: date.optional(), endsAt: date.optional(),
-        locationUrl: z.string().max(500).optional(), reminders: reminders.optional(),
+        locationUrl: z.string().max(500).optional(), reminders: reminders.optional(), attendeeIds: attendees,
       }).parse(req.body);
       return mt.createMeeting(p, actor, b, req.log);
     });
@@ -43,7 +45,7 @@ export async function registerMeetings(app: FastifyInstance) {
       const { p, actor, isAdmin } = await scope(req);
       const b = z.object({
         title: z.string().max(200).optional(), locationUrl: z.string().max(500).optional(), reminders: reminders.optional(),
-        startsAt: date.optional(), endsAt: date.optional(),
+        startsAt: date.optional(), endsAt: date.optional(), attendeeIds: attendees,
       }).parse(req.body);
       await mt.updateMeeting(p, actor, isAdmin, Number(req.params.id), b);
       return { ok: true };

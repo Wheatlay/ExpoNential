@@ -192,7 +192,7 @@ export async function registerApi(app: FastifyInstance) {
       const p = await manage(req, req.params.key);
       const body = z.object({
         name: z.string().optional(), color: z.string().optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).optional(),
-        sprintLengthDays: z.number().int().optional(), reviewTime: z.string().optional(), reviewMinutes: z.number().int().optional(),
+        sprintLengthDays: z.number().int().optional(), reviewMeeting: z.boolean().optional(), reviewTime: z.string().optional(), reviewMinutes: z.number().int().optional(),
                 analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
         githubRepo: z.string().max(200).optional(), deployBranch: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(), deploySourceRef: z.string().max(200).optional(),
         agentTeamQueue: z.boolean().optional(), agentsMayClone: z.boolean().optional(),
