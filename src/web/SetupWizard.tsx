@@ -257,8 +257,6 @@ export function SetupWizardHost() {
   );
   const bodies: Record<Goal, ReactNode> = { 1: step1, 2: step2, 3: step3 };
 
-  // Wszystkie kroki celu poza otwartym: zrobione z ptaszkiem, czekające przerywane (da się do nich przejść bez kończenia poprzednich).
-  const chips = needed.filter((n) => n !== openStep);
   const chipText: Record<Goal, string> = { 1: ai?.clientName ?? t('Client'), 2: t('Work trace'), 3: t('Agent') };
   const level = (n: Goal) => ([1, 2, 3] as Goal[]).filter((x) => x <= n).every((x) => done[x]);
 
@@ -301,10 +299,11 @@ export function SetupWizardHost() {
                   ))}
                 </fieldset>
                 <div className="wiz-steps">
-                  {chips.length > 0 && (
-                    <div className="wiz-chips">
-                      {chips.map((n) => (
-                        <button key={n} type="button" className={`wiz-chip${done[n] ? '' : ' todo'}`} title={done[n] ? doneText[n] : stepTitle[n]} onClick={() => setStep(n)}>
+                  {/* Kroki celu jako zakładki (ten sam przełącznik co wybór klienta): widać, że da się klikać i który jest otwarty. */}
+                  {needed.length > 1 && (
+                    <div className="seg wiz-steptabs" role="tablist" aria-label={t('Steps')}>
+                      {needed.map((n) => (
+                        <button key={n} type="button" role="tab" aria-selected={openStep === n} className={openStep === n ? 'on' : ''} title={done[n] ? doneText[n] : stepTitle[n]} onClick={() => setStep(n)}>
                           {done[n] ? <span className="wiz-chip-check"><Icon.check size={12} /></span> : <span className="wiz-chip-n">{n}</span>}{chipText[n]}
                         </button>
                       ))}

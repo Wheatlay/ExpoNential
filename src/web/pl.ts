@@ -986,6 +986,7 @@ export const pl: Record<string, string> = {
   'Your AI client can list, read and update issues.': 'Klient AI może listować, czytać i aktualizować zgłoszenia.',
   'Required': 'Wymagane',
   'Work trace': 'Ślad pracy',
+  'Steps': 'Kroki',
   'Claude Code writes what it did into the issue.': 'Claude Code zapisuje w zgłoszeniu, co zrobił.',
   'Claude Code only': 'Tylko Claude Code',
   'What gets installed': 'Co zostanie zainstalowane',

@@ -1202,11 +1202,9 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .wiz-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); animation: wiz-pulse 1.2s ease-in-out infinite; }
 @keyframes wiz-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 .wiz-steps { display: flex; flex-direction: column; gap: 10px; }
-.wiz-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.wiz-chip { display: inline-flex; align-items: center; gap: 6px; height: var(--control-sm); padding: 0 10px; border: 1px solid var(--border-secondary); border-radius: var(--radius-full); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--text-sm); cursor: pointer; }
-.wiz-chip:hover { background: var(--bg-hover); }
 .wiz-chip-check { color: var(--success-text); display: inline-flex; }
-.wiz-chip.todo { border-style: dashed; color: var(--text-tertiary); }
+.wiz-steptabs { display: flex; width: 100%; }
+.wiz-steptabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wiz-chip-n { font-size: var(--text-xs); color: var(--text-tertiary); }
 .wiz-block { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border-secondary); border-radius: var(--radius-lg); }
 .wiz-mark.cur { border-color: var(--accent); color: var(--text-primary); font-size: var(--text-xs); }
