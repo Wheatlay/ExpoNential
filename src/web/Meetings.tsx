@@ -306,6 +306,8 @@ function PollDialog({ m }: { m: Meeting }) {
   const organizer = name(m.createdBy);
   const isOrganizer = !!me && m.createdBy === me.id;
   const canPick = !!me && (isOrganizer ||canManage({ createdBy: -1, kind: 'poll' }));
+  const roDetails = canManage(m) ? null : t('Only the organizer or a project admin can change this meeting');
+  const patchDetails = (body: object, msg = t('Saved')) => api(`/api/meetings/${m.id}`, { method: 'PATCH', body }).then(() => { toast(msg); return refresh(); });
   const target = m.slots.find((s) => s.id === picked) ?? best ?? m.slots[0];
   const voters = new Set(m.slots.flatMap((s) => s.votes.map((v) => v.userId))).size;
 
@@ -395,6 +397,11 @@ function PollDialog({ m }: { m: Meeting }) {
         </Tooltip>
       </div>
 
+      {/* Kto, gdzie, przypomnienia: można zmieniać już w trakcie głosowania (serwer na to pozwala), nie dopiero po wyborze terminu. */}
+      <div className="meeting-grid" style={{ marginTop: 16 }}>
+        <MeetingDetails m={m} ro={roDetails} roInvite={roDetails} patch={patchDetails} />
+      </div>
+
       <div className="foot" style={{ marginTop: 16 }}>
         <span className="hint">{m.attendeeIds ? t('A suggested time becomes a new column; invited people get a ping to vote on it.') : t('A suggested time becomes a new column; everyone gets a Discord ping to vote on it.')}</span>
         <span className="spacer" />
@@ -481,6 +488,26 @@ function PollVotes({ m }: { m: Meeting }) {
   );
 }
 
+/** Gdzie, przypomnienia, kto: te same wiersze w ankiecie i w ustalonym spotkaniu (wewnątrz .meeting-grid). */
+function MeetingDetails({ m, ro, roInvite, patch }: { m: Meeting; ro: string | null; roInvite: string | null; patch: (body: object) => Promise<unknown> }) {
+  const [location, setLocation] = useState(m.locationUrl);
+  return (
+    <>
+      <label className="hint" htmlFor={`meeting-where-${m.id}`}>{t('Where')}</label>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input id={`meeting-where-${m.id}`} className="input" style={{ flex: 1 }} placeholder={t('Meeting link (Teams, Discord, Meet…)')} value={location} disabled={!!ro} onChange={(e) => setLocation(e.target.value)} />
+        <Tooltip text={ro}>
+          <button className="btn sm" disabled={!!ro || location === m.locationUrl} onClick={() => void patch({ locationUrl: location })}>{t('Save')}</button>
+        </Tooltip>
+      </div>
+      <span className="hint">{t('Reminders')}</span>
+      <ReminderChips value={m.reminders} disabled={ro} onChange={(r) => void patch({ reminders: r })} />
+      <span className="hint">{t('Who')}</span>
+      <InviteePicker value={m.attendeeIds} organizer={m.createdBy} disabled={roInvite} onChange={(v) => void patch({ attendeeIds: v })} />
+    </>
+  );
+}
+
 function ScheduledDialog({ m }: { m: Meeting }) {
   const qc = useQueryClient();
   const meta = useMeta().data;
@@ -489,7 +516,6 @@ function ScheduledDialog({ m }: { m: Meeting }) {
   const roInvite = m.kind === 'sprint_review' ? t('Sprint review is for the whole team') : ro;
   const s = new Date(m.startsAt!);
   const [when, setWhen] = useState({ date: dateInput(s), time: timeInput(s) });
-  const [location, setLocation] = useState(m.locationUrl);
   const refresh = () => qc.invalidateQueries({ queryKey: ['meetings'] });
   const patch = (body: object, msg = t('Saved')) => api(`/api/meetings/${m.id}`, { method: 'PATCH', body }).then(() => { toast(msg); return refresh(); });
   const moved = when.date !== dateInput(s) || when.time !== timeInput(s);
@@ -531,17 +557,7 @@ function ScheduledDialog({ m }: { m: Meeting }) {
             <button className="btn sm" disabled={!!ro || !moved} onClick={() => void move()}>{t('Move')}</button>
           </Tooltip>
         </div>
-        <label className="hint" htmlFor="meeting-where-edit">{t('Where')}</label>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input id="meeting-where-edit" className="input" style={{ flex: 1 }} placeholder={t('Meeting link (Teams, Discord, Meet…)')} value={location} disabled={!!ro} onChange={(e) => setLocation(e.target.value)} />
-          <Tooltip text={ro}>
-            <button className="btn sm" disabled={!!ro || location === m.locationUrl} onClick={() => void patch({ locationUrl: location })}>{t('Save')}</button>
-          </Tooltip>
-        </div>
-        <span className="hint">{t('Reminders')}</span>
-        <ReminderChips value={m.reminders} disabled={ro} onChange={(r) => void patch({ reminders: r })} />
-        <span className="hint">{t('Who')}</span>
-        <InviteePicker value={m.attendeeIds} organizer={m.createdBy} disabled={roInvite} onChange={(v) => void patch({ attendeeIds: v })} />
+        <MeetingDetails m={m} ro={ro} roInvite={roInvite} patch={patch} />
       </div>
       {m.kind === 'poll' && m.slots.length > 0 && <PollVotes m={m} />}
 

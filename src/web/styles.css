@@ -915,7 +915,7 @@ a.sub-row > button { display: inline-flex; }
 .poll-row.mine .poll-cell .input { width: 100%; }
 /* Powód "Maybe": rośnie w dół razem z tekstem zamiast go ucinać. */
 /* textarea.input: inaczej ".modal textarea" (border: 0, background: none) wygrywa specyficznością i pole traci ramkę. */
-textarea.input.vote-note { background: var(--bg-primary); border: 1px solid var(--border-secondary); }
+textarea.input.vote-note { background: var(--bg-primary); border: 1px solid var(--border-secondary); min-height: var(--control-md); resize: none; }
 textarea.input.vote-note:focus { border-color: var(--accent); }
 .vote-note { height: auto; min-height: var(--control-md); field-sizing: content; resize: none; padding: 6px 10px; line-height: 1.4; }
 /* Głosy po wyborze terminu: tabela na szerokim ekranie, lista terminów na telefonie (patrz @media niżej). */
