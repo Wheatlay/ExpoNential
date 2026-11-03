@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - A connection error that healed by itself (for example the server restarting during a deploy) is no longer shown as "Error" or marked for attention once the computer is back online; real errors stay.
 - The agent reports errors without the request's query string (device id, repo map).
+- Tray menu: state and agent version, "AI settings", "Start with Windows" toggle, "Uninstall…" (opens the installer window with Disconnect).
 
 ## Agent [0.2.2] - 03.11.2026
 
