@@ -5,11 +5,13 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -174,6 +176,7 @@ func candidateFolders() []string {
 			raw = append(raw, vscodeStoragePaths(readFile(filepath.Join(ad, app, "User", "globalStorage", "storage.json")))...)
 		}
 	}
+	raw = append(raw, codexProjectPaths(readFile(codexConfigPath()))...)
 	raw = uniquePaths(raw)
 	if len(raw) > maxCandidates {
 		raw = raw[:maxCandidates]
@@ -237,11 +240,17 @@ func discoverRepos(a *Auth) int {
 	if len(todo) == 0 {
 		return 0
 	}
+	// Nothing changed since the last pass (same history files, same projects to find): skip the folder walk.
+	sig := discoverSignature(todo)
+	if sig == lastDiscoverSig {
+		return 0
+	}
+	lastDiscoverSig = sig
 	cands := candidateFolders()
 	found := map[string]string{}
 	for _, p := range todo {
 		for _, c := range cands {
-			if validateRepo(c, p.repo()) == "" {
+			if hasRemote(c, p.repo()) {
 				found[p.Key] = c
 				break
 			}
@@ -261,6 +270,110 @@ func discoverRepos(a *Auth) int {
 		}
 	})
 	return n
+}
+
+var lastDiscoverSig string
+
+// codexConfigPath: Codex keeps folders the user trusted as [projects."<path>"] tables in $CODEX_HOME/config.toml.
+func codexConfigPath() string {
+	if h := os.Getenv("CODEX_HOME"); h != "" {
+		return filepath.Join(h, "config.toml")
+	}
+	home, _ := os.UserHomeDir()
+	if home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".codex", "config.toml")
+}
+
+var codexProjectRe = regexp.MustCompile(`(?m)^\s*\[projects\.(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\]`)
+
+// codexProjectPaths reads the project table names from Codex's config.toml (basic or literal TOML strings).
+func codexProjectPaths(data []byte) []string {
+	var out []string
+	for _, m := range codexProjectRe.FindAllSubmatch(data, -1) {
+		p := string(m[2])
+		if len(m[1]) > 0 {
+			if u, err := strconv.Unquote(`"` + string(m[1]) + `"`); err == nil {
+				p = u
+			}
+		}
+		if p = normPath(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// historyFiles: the files candidate folders come from. Their modification times decide whether to look again.
+func historyFiles() []string {
+	var fs []string
+	if home, _ := os.UserHomeDir(); home != "" {
+		fs = append(fs, filepath.Join(home, ".claude.json"))
+		if ents, err := os.ReadDir(filepath.Join(home, ".claude-accounts")); err == nil {
+			for _, e := range ents {
+				if e.IsDir() {
+					fs = append(fs, filepath.Join(home, ".claude-accounts", e.Name(), ".claude.json"))
+				}
+			}
+		}
+	}
+	if d := os.Getenv("CLAUDE_CONFIG_DIR"); d != "" {
+		fs = append(fs, filepath.Join(d, ".claude.json"))
+	}
+	if ad := os.Getenv("APPDATA"); ad != "" {
+		for _, app := range []string{"Code", "Cursor"} {
+			fs = append(fs, filepath.Join(ad, app, "User", "globalStorage", "storage.json"))
+		}
+	}
+	if c := codexConfigPath(); c != "" {
+		fs = append(fs, c)
+	}
+	return fs
+}
+
+func discoverSignature(todo []Project) string {
+	var b strings.Builder
+	for _, f := range historyFiles() {
+		if st, err := os.Stat(f); err == nil {
+			fmt.Fprintf(&b, "%s|%d|%d;", f, st.ModTime().UnixNano(), st.Size())
+		}
+	}
+	for _, p := range todo {
+		fmt.Fprintf(&b, "%s=%s;", p.Key, strings.ToLower(p.repo()))
+	}
+	return b.String()
+}
+
+// hasRemote reads the repo's git config directly (no git process) and says whether a remote points to githubRepo.
+// Handles worktrees and submodules, where .git is a file pointing to the real git dir.
+func hasRemote(dir, githubRepo string) bool {
+	want := strings.ToLower(githubRepo)
+	gitDir := filepath.Join(dir, ".git")
+	if st, err := os.Stat(gitDir); err == nil && !st.IsDir() {
+		line := strings.TrimSpace(string(readFile(gitDir)))
+		if !strings.HasPrefix(line, "gitdir:") {
+			return false
+		}
+		gitDir = strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
+		if !filepath.IsAbs(gitDir) {
+			gitDir = filepath.Join(dir, gitDir)
+		}
+		// A worktree's own git dir has "commondir" pointing to the main repository, where the config lives.
+		if c := strings.TrimSpace(string(readFile(filepath.Join(gitDir, "commondir")))); c != "" {
+			if !filepath.IsAbs(c) {
+				c = filepath.Join(gitDir, c)
+			}
+			gitDir = c
+		}
+	}
+	for _, l := range strings.Split(string(readFile(filepath.Join(gitDir, "config"))), "\n") {
+		l = strings.TrimSpace(l)
+		if k, v, ok := strings.Cut(l, "="); ok && strings.TrimSpace(k) == "url" && slug(strings.TrimSpace(v)) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // discoverLoop runs discovery now and then every discoverEvery.

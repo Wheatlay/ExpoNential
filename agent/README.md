@@ -18,7 +18,7 @@ Go 1.27 (`winget install GoLang.Go`).
 
 ```
 cd agent
-./build.ps1 [-Version 0.2.1]    # plugin copy, icon (tools/mkicon, only if assets/exponential.ico is missing), go-winres (icon + version info, winres/winres.template.json), builds dist/exponential-agent.exe
+./build.ps1 [-Version 0.2.2]    # plugin copy, icon (tools/mkicon, only if assets/exponential.ico is missing), go-winres (icon + version info, winres/winres.template.json), builds dist/exponential-agent.exe
 go vet ./...
 go test ./...
 ```

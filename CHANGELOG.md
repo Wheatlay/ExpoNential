@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.2.2] - 03.11.2026
+
+- Repo discovery looks again only when Claude Code, VS Code, Cursor or Codex history changed, and reads remotes straight from `.git/config` (worktrees included) instead of starting `git`: the hourly check is a few file timestamps.
+- Also finds folders trusted in Codex (`[projects."…"]` in `~/.codex/config.toml`), so Codex used only in the terminal is covered.
+
 ## Server [1.2.1], Agent [0.2.1] - 03.11.2026
 
 - Agent finds repos by itself in folders already opened in Claude Code (`~/.claude.json` projects, also per account) and in VS Code / Cursor recent folders, including one level below an opened folder; no disk scan, never overrides a mapping set by hand.
