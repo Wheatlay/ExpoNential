@@ -363,6 +363,9 @@ export async function recordRun(user: User, r: RunReport) {
 }
 
 /** Moje komputery do Ustawień. */
+/** Błędy połączenia, które mijają same: 5xx, brak odpowiedzi, brak połączenia z serwerem. */
+const TRANSIENT_ERROR = /HTTP 5\d\d|did not answer|cannot reach|ECONNREFUSED|ECONNRESET|ETIMEDOUT|timeout/i;
+
 export async function myAgents(user: User) {
   // Komputer niewidziany od 14 dni znika z listy (np. odinstalowany, gdy serwer był niedostępny); dane zużycia zostają.
   const rows = await db.select().from(agents).where(and(eq(agents.userId, user.id),
@@ -392,7 +395,8 @@ export async function myAgents(user: User) {
     teamProjects: joined.filter((j) => j.agentId === a.id).map((j) => j.key),
     teamInvites: invites.filter((j) => j.agentId === a.id).map((j) => j.key),
     // Błąd starszy niż 24 h już nie jest istotny.
-    lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 ? a.lastError : '', lastErrorAt: a.lastErrorAt }));
+    // Błąd starszy niż 24 h już nie jest istotny, a chwilowy błąd połączenia (np. restart serwera przy wdrożeniu) znika, gdy komputer znów jest online.
+    lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 && !(isOnline(a.lastSeenAt) && TRANSIENT_ERROR.test(a.lastError ?? '')) ? a.lastError : '', lastErrorAt: a.lastErrorAt }));
 }
 
 

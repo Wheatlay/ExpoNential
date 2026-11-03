@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.2.2], Agent [0.2.3] - 03.11.2026
+
+- A connection error that healed by itself (for example the server restarting during a deploy) is no longer shown as "Error" or marked for attention once the computer is back online; real errors stay.
+- The agent reports errors without the request's query string (device id, repo map).
+
 ## Agent [0.2.2] - 03.11.2026
 
 - Repo discovery looks again only when Claude Code, VS Code, Cursor or Codex history changed, and reads remotes straight from `.git/config` (worktrees included) instead of starting `git`: the hourly check is a few file timestamps.

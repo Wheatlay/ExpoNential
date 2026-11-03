@@ -177,7 +177,8 @@ func request(a *Auth, method, path string, body any, timeout time.Duration, out 
 				msg = msg[:150]
 			}
 		}
-		m := fmt.Sprintf("%s %s: HTTP %d", method, path, status)
+		// Without the query string: it carries the device id and repo map, which say nothing in Settings.
+		m := fmt.Sprintf("%s %s: HTTP %d", method, strings.SplitN(path, "?", 2)[0], status)
 		if msg != "" {
 			m += " " + msg
 		}

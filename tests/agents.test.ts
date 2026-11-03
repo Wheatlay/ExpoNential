@@ -540,3 +540,18 @@ describe('inactive computers', () => {
     expect(mine.find((a) => a.id === quiet)).toMatchObject({ inactive: true, online: false });
   });
 });
+
+describe('agent errors in Settings', () => {
+  it('hides a connection error that healed (computer back online), keeps a real one', async () => {
+    const healed = 'a1a1a1a1-0000-4000-8000-000000000502';
+    const broken = 'a1a1a1a1-0000-4000-8000-000000000500';
+    const now = new Date();
+    await dbmod.db.insert(schema.agents).values([
+      { id: healed, userId: alice.id, name: 'HEALED-PC', lastSeenAt: now, lastError: '15:32 GET /api/agent/work: HTTP 502', lastErrorAt: now },
+      { id: broken, userId: alice.id, name: 'BROKEN-PC', lastSeenAt: now, lastError: '15:40 claude exited with code 1', lastErrorAt: now },
+    ]);
+    const mine = await ag.myAgents(alice);
+    expect(mine.find((a) => a.id === healed)!.lastError).toBe('');
+    expect(mine.find((a) => a.id === broken)!.lastError).toContain('exited');
+  });
+});
