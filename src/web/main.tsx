@@ -13,7 +13,7 @@ import { SprintReview } from './SprintReview.tsx';
 import { Settings } from './Settings.tsx';
 import { CommandMenu } from './CommandMenu.tsx';
 import { MenuHost } from './menu.tsx';
-import { PersonCardHost } from './PersonCard.tsx';
+import { PersonCardHost, PersonLink } from './PersonCard.tsx';
 import { InboxBell } from './Inbox.tsx';
 import { NewIssueHost, openNewIssue } from './NewIssue.tsx';
 import { AskHost } from './AskModal.tsx';
@@ -150,8 +150,11 @@ function Sidebar({ page }: { page: string }) {
         {item('/settings', 'settings', <Icon.settings size={15} />, t('Settings'), !me.demo && me.aiStatus && !me.aiStatus.client ? <span className="nav-dot" role="img" aria-label={t('AI is not connected')} title={t('AI is not connected')} /> : undefined)}
         <div style={{ marginTop: 'auto' }}><DeployStatus /></div>
         <div className="sidebar-bottom" style={{ marginTop: 0 }}>
-          <Avatar user={useMeta().data?.users.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={22} />
-          <span className="me-name" style={{ flex: 1, fontWeight: 500 }}>{me.name}</span>
+          {/* Ja jak każda osoba w aplikacji: klik otwiera moją kartę (tagi, nad czym pracuję, moje issues). */}
+          <PersonLink userId={me.id} className="me-link">
+            <Avatar user={useMeta().data?.users.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={22} />
+            <span className="me-name" style={{ fontWeight: 500 }}>{me.name}</span>
+          </PersonLink>
           <button className="icon-btn" title={t('Log out')} onClick={() => void api('/auth/logout', { method: 'POST' }).then(() => location.assign('/login'))}><Icon.logout size={15} /></button>
         </div>
       </nav>

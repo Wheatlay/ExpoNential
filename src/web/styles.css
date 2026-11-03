@@ -150,6 +150,9 @@ code, pre { font-family: 'Berkeley Mono', 'SFMono-Regular', Consolas, monospace;
 .nav-item.active { background: var(--bg-active); color: var(--text-primary); }
 .nav-item .count { margin-left: auto; color: var(--text-tertiary); font-size: var(--text-sm); }
 .sidebar-bottom { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 6px; }
+/* Ja na dole sidebara: cały wiersz (awatar + imię) otwiera moją kartę; hover jak pozycja menu, nie podkreślenie. */
+.sidebar-bottom .me-link { flex: 1; gap: 8px; padding: 4px 6px; margin: -4px -6px; border-radius: var(--radius-md); }
+.sidebar-bottom .me-link:hover { background: var(--bg-hover); text-decoration: none; }
 .main {
   flex: 1; min-width: 0; margin: 8px 8px 8px 0; background: var(--bg-primary);
   border: 1px solid var(--border-primary); border-radius: var(--radius-lg); display: flex; flex-direction: column; overflow: hidden;
