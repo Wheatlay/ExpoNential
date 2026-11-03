@@ -1,6 +1,15 @@
 import { toast } from './toast.ts';
 import { t } from './i18n.ts';
 
+/** Wgrywa wybrany plik obrazka (zdjęcie profilu, logo); zwraca URL albo null po błędzie (toast już pokazany). */
+export async function uploadImageFile(file: File, maxBytes: number): Promise<string | null> {
+  if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(file.type)) { toast(t('Only PNG, JPEG, GIF and WebP images'), 'err'); return null; }
+  if (file.size > maxBytes) { toast(t('Image is larger than {mb} MB', { mb: Math.round(maxBytes / 1024 / 1024) }), 'err'); return null; }
+  const res = await fetch('/api/uploads', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+  if (!res.ok) { toast(t('Upload failed ({status})', { status: res.status }), 'err'); return null; }
+  return ((await res.json()) as { url: string }).url;
+}
+
 /**
  * Wklejony obrazek (zrzut ekranu) idzie na serwer; zwraca jego URL albo null, gdy w schowku nie ma obrazka.
  * Firefox podaje zrzut przez clipboardData.items, Chrome także przez files: sprawdzamy oba.

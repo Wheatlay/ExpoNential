@@ -2,6 +2,7 @@ import { and, asc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { agentRepos, projectMembers, projects, statuses, users, type StatusType } from '../db/schema.ts';
 import { RuleError, isEmail, isProjectKey } from './rules.ts';
+import { uploadPath } from './account.ts';
 
 export type Project = typeof projects.$inferSelect;
 export type ProjectUser = { id: number; isAdmin: boolean };
@@ -87,13 +88,14 @@ export async function createProject(creatorId: number, input: { key: string; nam
 }
 
 export type ProjectPatch = Partial<{
-  name: string; color: string; discordWebhookUrl: string | null; meetingLocationUrl: string; sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
+  name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; meetingLocationUrl: string; sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
   githubRepo: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean; agentsMayClone: boolean;
 }>;
 
 export async function updateProject(projectId: number, patch: ProjectPatch) {
   if (patch.name !== undefined && !patch.name.trim()) throw new RuleError('Project name cannot be empty', 'invalid');
+  if (patch.logoUrl) uploadPath(patch.logoUrl); // pusty = bez logo
   if (patch.sprintLengthDays !== undefined && (!Number.isInteger(patch.sprintLengthDays) || patch.sprintLengthDays < 1 || patch.sprintLengthDays > 90)) {
     throw new RuleError('Sprint length must be 1-90 days', 'invalid');
   }

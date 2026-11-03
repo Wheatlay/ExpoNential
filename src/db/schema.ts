@@ -17,6 +17,9 @@ export const users = pgTable('users', {
   name: text('name').notNull(),
   email: text('email'),
   avatarUrl: text('avatar_url'),
+  // Zdjęcie od GitHuba/Google (odświeżane przy logowaniu) i znacznik własnego zdjęcia: wtedy logowanie nie nadpisuje avatarUrl.
+  providerAvatarUrl: text('provider_avatar_url'),
+  avatarCustom: boolean('avatar_custom').notNull().default(false),
   isAdmin: boolean('is_admin').notNull().default(false),
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -36,6 +39,8 @@ export const projects = pgTable('projects', {
   key: text('key').notNull().unique(),
   name: text('name').notNull(),
   color: text('color').notNull().default('#5e6ad2'),
+  // Logo projektu (ścieżka /uploads/...); puste = plakietka z inicjałami w kolorze projektu.
+  logoUrl: text('logo_url').notNull().default(''),
   discordWebhookUrl: text('discord_webhook_url'),
   // Ostatnia nieudana wysyłka na Discorda (bez adresu webhooka), żeby zepsuty webhook nie milczał.
   discordLastError: text('discord_last_error').notNull().default(''),

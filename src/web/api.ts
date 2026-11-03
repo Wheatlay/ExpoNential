@@ -9,8 +9,8 @@ export type StatusType = 'backlog' | 'unstarted' | 'started' | 'completed' | 'ca
 export type Status = { id: number; name: string; type: StatusType; color: string; position: number; hiddenOnBoard: boolean; role: 'need_info' | 'testing' | null };
 export type Label = { id: number; name: string; color: string };
 export type User = { id: number; login: string; name: string; avatarUrl: string | null; isAdmin: boolean; active: boolean; role?: 'admin' | 'member'; tagIds?: number[] };
-export type ProjectSummary = { id: number; key: string; name: string; color: string; role: 'admin' | 'member'; memberCount: number; githubRepo: string; askedMe: number };
-export type Me = { id: number; name: string; login: string; isAdmin: boolean; hasPassword: boolean; localAgentAt: string | null; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean;
+export type ProjectSummary = { id: number; key: string; name: string; color: string; logoUrl: string; role: 'admin' | 'member'; memberCount: number; githubRepo: string; askedMe: number };
+export type Me = { id: number; name: string; login: string; avatarUrl: string | null; avatarCustom: boolean; provider: 'github' | 'google' | null; isAdmin: boolean; hasPassword: boolean; localAgentAt: string | null; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean;
   setupDoneAt: string | null; aiStatus: { client: boolean; clientName: string | null; clientAt: string | null; workTrace: boolean; agent: boolean } };
 export type AppConfig = { demo: boolean; repoUrl: string | null; providers: { github: boolean; google: boolean }; devLogin?: boolean };
 export type TagColor = 'green' | 'teal' | 'sky' | 'violet' | 'pink' | 'amber' | 'blue' | 'slate';

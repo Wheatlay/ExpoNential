@@ -148,6 +148,13 @@
       "when": 1793700153195,
       "tag": "0020_drop_deploy_branch",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793700615540,
+      "tag": "0021_profile_logo",
+      "breakpoints": true
     }
   ]
 }

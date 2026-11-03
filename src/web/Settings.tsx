@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { TimeInput } from './DateTime.tsx';
 import { askConfirm } from './Confirm.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,7 @@ import { Tooltip } from './menu.tsx';
 import { agentHere, agentInstallCommand } from './startWork.ts';
 import { openSetupWizard } from './SetupWizard.tsx';
 import { lang, setLang, t, type Lang } from './i18n.ts';
+import { uploadImageFile } from './paste.ts';
 
 export type Theme = 'dark' | 'light' | 'oled';
 
@@ -45,6 +46,7 @@ export function Settings() {
   const p = useProjectDetail().data;
   const groups: { name: ReactNode; items: Section[] }[] = [
     { name: t('You'), items: [
+      { id: 'profile', name: t('Profile'), render: () => <ProfileSettings /> },
       { id: 'appearance', name: t('Appearance'), render: () => <Appearance /> },
       { id: 'notifications', name: t('Notifications'), render: () => <NotificationSettings /> },
       { id: 'claude', name: 'Claude Code', render: () => <ClaudeConnect /> },
@@ -106,6 +108,7 @@ const HINTS: Record<string, Hint[]> = {
     { label: t('Connect this computer'), to: 'claude', target: 'claude-connect' },
     { label: t('Your computers'), to: 'claude', target: 'your-computers' },
   ],
+  profile: [{ label: t('Your notifications'), to: 'notifications' }],
   notifications: [
     { label: t('Project Discord channel'), to: 'integrations', target: 'discord' },
     { label: t('Tags'), to: 'tags', target: 'project-tags' },
@@ -174,6 +177,10 @@ function SettingsHints({ current, groups, isAdmin }: { current: string; groups: 
  */
 type SearchEntry = Hint & { keywords?: string[] };
 const SEARCH: SearchEntry[] = [
+  // Ty › Profil
+  { label: t('Photo'), to: 'profile', target: 'profile-photo', keywords: ['avatar', 'zdjecie', 'logo', 'picture', 'image', 'obrazek', 'github', 'google'] },
+  { label: t('Your name'), to: 'profile', target: 'profile-name', keywords: ['imie', 'nazwisko', 'name', 'profil', 'profile', 'rename'] },
+  { label: t('Delete account'), to: 'profile', target: 'profile-danger', keywords: ['usun', 'konto', 'delete', 'account', 'remove', 'anonymize'] },
   // Ty › Wygląd
   { label: t('Theme'), to: 'appearance', target: 'theme', keywords: ['dark', 'light', 'oled', 'motyw', 'ciemny', 'jasny', 'wyglad', 'appearance'] },
   { label: t('Language'), to: 'appearance', target: 'language', keywords: ['polski', 'english', 'jezyk', 'pl', 'en'] },
@@ -193,6 +200,7 @@ const SEARCH: SearchEntry[] = [
   // Projekt › Ogólne
   { label: t('Name'), to: 'project', target: 'project-name', keywords: ['project', 'projekt', 'nazwa', 'rename'] },
   { label: t('Project color'), to: 'project', target: 'project-name', keywords: ['kolor', 'color', 'project', 'projekt'] },
+  { label: t('Logo'), to: 'project', target: 'project-name', keywords: ['logo projektu', 'project logo', 'ikona', 'icon', 'obrazek', 'image', 'badge', 'plakietka'] },
   { label: t('Sprint length'), to: 'project', target: 'sprint-length', keywords: ['days', 'dni', 'sprint', 'dlugosc', 'length'] },
   { label: t('Sprint review'), to: 'project', target: 'sprint-review', keywords: ['meeting', 'spotkanie', 'przeglad', 'review', 'kalendarz', 'calendar'] },
   { label: t('Sprint review time'), to: 'project', target: 'sprint-review', keywords: ['godzina', 'hour', 'time', 'meeting', 'spotkanie', 'minuty', 'minutes'] },
@@ -274,6 +282,67 @@ function SettingsSearch({ groups, isAdmin, query, setQuery }: { groups: Groups; 
         </div>
       )}
     </div>
+  );
+}
+
+/** Profil: zdjęcie i nazwa (widoczne dla wszystkich w projektach) oraz usunięcie konta. */
+function ProfileSettings() {
+  const me = useMe().data;
+  const qc = useQueryClient();
+  const pickFile = useRef<HTMLInputElement>(null);
+  const [rev, setRev] = useState(0);
+  if (!me) return null;
+  const demo = !!me.demo;
+  const reason = demo ? t('Disabled in the demo') : null;
+  const refresh = () => { for (const k of ['me', 'meta', 'projects']) void qc.invalidateQueries({ queryKey: [k] }); };
+  const save = (body: { name?: string; avatar?: string | null }) => api('/api/me', { method: 'PUT', body }).then(() => { toast(t('Saved')); refresh(); });
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    const url = await uploadImageFile(file, 2 * 1024 * 1024);
+    if (url) await save({ avatar: url });
+  };
+  const providerName = me.provider === 'github' ? 'GitHub' : me.provider === 'google' ? 'Google' : null;
+  const rename = (v: string) => {
+    const name = v.trim();
+    // Pusta albo bez zmian: pole wraca do zapisanej nazwy.
+    if (!name || name === me.name) { setRev((r) => r + 1); return; }
+    save({ name }).catch(() => setRev((r) => r + 1));
+  };
+  const remove = () => void askConfirm({ title: t('Delete your account?'), action: t('Delete account'), type: me.login })
+    .then((ok) => { if (ok) return api('/api/me', { method: 'DELETE', body: { confirm: me.login } }).then(() => location.assign('/login')); });
+  return (
+    <>
+      <div className="s-card">
+        <div id="profile-photo" className="s-row">
+          <span className="s-label">{t('Photo')}</span>
+          <Tooltip text={reason}>
+            <button className="avatar-slot" aria-label={t('Change')} disabled={demo} onClick={() => pickFile.current?.click()}><Avatar user={me} size={40} /></button>
+          </Tooltip>
+          <input ref={pickFile} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void upload(f); }} />
+          <span className="spacer" />
+          <Tooltip text={reason}>
+            <button className="btn sm" disabled={demo} onClick={() => pickFile.current?.click()}>{t('Change')}</button>
+          </Tooltip>
+          {me.avatarCustom && (
+            <button className="btn sm" onClick={() => void save({ avatar: null })}>{providerName ? t('Use {provider} photo', { provider: providerName }) : t('Remove photo')}</button>
+          )}
+        </div>
+        <div id="profile-name" className="s-row">
+          <span className="s-label">{t('Your name')}</span>
+          <input className="input grow" key={`${me.name}-${rev}`} defaultValue={me.name} maxLength={60} aria-label={t('Your name')}
+            onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+        </div>
+      </div>
+      <div id="profile-danger" className="s-card" style={{ marginTop: 24 }}>
+        <div className="s-row">
+          <Tooltip text={t('Your issues and comments stay, signed as "Deleted user". You lose access to every project.')}><span className="grow">{t('Delete account')}</span></Tooltip>
+          <Tooltip text={reason}>
+            <button className="btn sm danger" disabled={demo} onClick={remove}>{t('Delete account…')}</button>
+          </Tooltip>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -458,7 +527,7 @@ function ClaudeConnect() {
 }
 
 type ProjectDetail = {
-  id: number; key: string; name: string; color: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
+  id: number; key: string; name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
   githubRepo: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean;
@@ -488,6 +557,30 @@ function useProject() {
   return { p, meta, ro, patch, refresh, qc };
 }
 
+/** Plakietka projektu w wierszu Nazwa: klik wgrywa logo; z logo pojawia się ×, bez logo obok jest wybór koloru. */
+function ProjectLogo({ p, ro, patch }: { p: ProjectDetail; ro: string | null; patch: (body: object, msg?: string) => Promise<void> }) {
+  const pickFile = useRef<HTMLInputElement>(null);
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    const url = await uploadImageFile(file, 2 * 1024 * 1024);
+    if (url) await patch({ logoUrl: url });
+  };
+  return (
+    <>
+      <Tooltip text={ro ?? t('Click to upload a logo. Without a logo the badge uses the colour.')}>
+        <button className="avatar-slot" aria-label={t('Logo')} disabled={!!ro} onClick={() => pickFile.current?.click()}><ProjectBadge project={p} size={30} /></button>
+      </Tooltip>
+      <input ref={pickFile} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif"
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; void upload(f); }} />
+      {p.logoUrl && (
+        <Tooltip text={ro ?? t('Remove logo')}>
+          <button className="icon-btn" aria-label={t('Remove logo')} disabled={!!ro} onClick={() => void patch({ logoUrl: '' })}><Icon.close size={12} /></button>
+        </Tooltip>
+      )}
+    </>
+  );
+}
+
 function ProjectGeneral() {
   const c = useProject();
   const sprintData = useSprints().data;
@@ -503,10 +596,11 @@ function ProjectGeneral() {
           <input className="input grow" key={p.name} defaultValue={p.name} disabled={!!ro}
             onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== p.name && void patch({ name: e.target.value.trim() })} />
         </Tooltip>
-        <Tooltip text={ro}>
+        <ProjectLogo p={p} ro={ro} patch={patch} />
+        {!p.logoUrl && <Tooltip text={ro}>
           <input type="color" key={p.color} defaultValue={toHex(p.color)} disabled={!!ro} aria-label={t('Project color')}
             onBlur={(e) => e.target.value !== toHex(p.color) && void patch({ color: e.target.value })} style={{ width: 30, height: 30, border: 0, background: 'none' }} />
-        </Tooltip>
+        </Tooltip>}
       </div>
       <div id="sprint-length" className="s-row">
         <span className="s-label">{t('Sprint length')}</span>

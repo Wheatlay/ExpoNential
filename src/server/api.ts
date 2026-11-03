@@ -4,10 +4,11 @@ import { and, asc, desc, eq, inArray, isNull, notInArray, sql as dsql } from 'dr
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.ts';
 import { TAG_COLORS, apiTokens, inboxItems, issues, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
-import { createApiToken, requireAdmin, requireUser } from './auth.ts';
+import { clearSessionCookie, createApiToken, requireAdmin, requireUser } from './auth.ts';
 import * as inv from './invites.ts';
 import { hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
 import * as svc from './service.ts';
+import * as acc from './account.ts';
 import * as sp from './sprints.ts';
 import * as pr from './projects.ts';
 import * as ag from './agents.ts';
@@ -95,14 +96,37 @@ export async function registerApi(app: FastifyInstance) {
   app.register(async (r) => {
     r.addHook('preHandler', requireUser);
 
-    r.get('/api/me', async (req) => {
-      const [u] = await db.select({ localAgentAt: users.localAgentAt, setupDoneAt: users.setupDoneAt, passwordHash: users.passwordHash }).from(users).where(eq(users.id, req.user!.id));
+    const meShape = async (req: FastifyRequest) => {
+      const [u] = await db.select({
+        localAgentAt: users.localAgentAt, setupDoneAt: users.setupDoneAt, passwordHash: users.passwordHash,
+        avatarUrl: users.avatarUrl, avatarCustom: users.avatarCustom, providerAvatarUrl: users.providerAvatarUrl, githubId: users.githubId,
+      }).from(users).where(eq(users.id, req.user!.id));
       const mine = await ag.myAgents(req.user!);
       const lastSeen = mine.map((a) => a.lastSeenAt).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
-      return { ...req.user, hasPassword: !!u?.passwordHash, localAgentAt: u?.localAgentAt ?? null, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
+      // provider: skąd wraca zdjęcie po "Use … photo"; null = konto bez zdjęcia od dostawcy (zostają inicjały).
+      return { ...req.user, avatarUrl: u?.avatarUrl ?? null, avatarCustom: !!u?.avatarCustom, provider: u?.providerAvatarUrl ? (u.githubId ? 'github' : 'google') : null,
+        hasPassword: !!u?.passwordHash, localAgentAt: u?.localAgentAt ?? null, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
         setupDoneAt: u?.setupDoneAt ?? null, aiStatus: await ag.aiStatus(req.user!, mine),
         // Stara wersja skryptów na którymś PC, albo instalacja sprzed agenta w tle (jest znacznik, nie ma żadnego komputera).
         agentOutdated: !!u?.localAgentAt && (!mine.length || mine.some((a) => a.outdated)), demo: process.env.DEMO_MODE === '1' };
+    };
+    r.get('/api/me', meShape);
+
+    // Własny profil: nazwa i zdjęcie (avatar: ścieżka z /api/uploads albo null = zdjęcie od dostawcy). Bez projectKey, żeby odświeżyli się wszyscy.
+    r.put('/api/me', async (req) => {
+      const body = z.object({ name: z.string().max(200).optional(), avatar: z.string().max(300).nullable().optional() }).parse(req.body);
+      await acc.updateProfile(req.user!.id, body);
+      await svc.publish({ type: 'meta' });
+      return meShape(req);
+    });
+    // Usunięcie własnego konta (anonimizacja, patrz account.ts).
+    r.delete('/api/me', async (req, reply) => {
+      const body = z.object({ confirm: z.string().max(200) }).parse(req.body ?? {});
+      await acc.deleteAccount(req.user!.id, body.confirm);
+      clearSessionCookie(reply);
+      await svc.publish({ type: 'meta' });
+      await svc.publish({ type: 'projects' });
+      return { ok: true };
     });
 
     // Zmiana własnego hasła; jeśli konto ma już hasło, wymaga obecnego.
@@ -173,7 +197,7 @@ export async function registerApi(app: FastifyInstance) {
         .groupBy(issues.projectId);
       const askedBy = new Map(asked.map((a) => [a.projectId, a.n]));
       return (await pr.projectsOf(req.user!)).map(({ project, role, memberCount }) => ({
-        id: project.id, key: project.key, name: project.name, color: project.color, role, memberCount, githubRepo: project.githubRepo,
+        id: project.id, key: project.key, name: project.name, color: project.color, logoUrl: project.logoUrl, role, memberCount, githubRepo: project.githubRepo,
         agentsMayClone: project.agentsMayClone,
         askedMe: askedBy.get(project.id) ?? 0,
       }));
@@ -194,7 +218,7 @@ export async function registerApi(app: FastifyInstance) {
     r.patch<{ Params: { key: string } }>('/api/projects/:key', async (req) => {
       const p = await manage(req, req.params.key);
       const body = z.object({
-        name: z.string().optional(), color: z.string().optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).optional(),
+        name: z.string().optional(), color: z.string().optional(), logoUrl: z.string().max(300).optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).optional(),
         sprintLengthDays: z.number().int().optional(), reviewMeeting: z.boolean().optional(), reviewTime: z.string().optional(), reviewMinutes: z.number().int().optional(),
                 analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
         githubRepo: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(),

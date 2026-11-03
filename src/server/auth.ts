@@ -28,6 +28,10 @@ declare module 'fastify' {
 
 export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
+export function clearSessionCookie(reply: FastifyReply) {
+  reply.clearCookie(COOKIE, { path: '/' });
+}
+
 export async function createSession(reply: FastifyReply, userId: number) {
   const id = randomBytes(32).toString('base64url');
   await db.insert(sessions).values({ id: sha256(id), userId, expiresAt: new Date(Date.now() + SESSION_DAYS * 864e5) });
@@ -298,17 +302,17 @@ export async function upsertGithubUser(gh: { id: number; login: string; name: st
   const existing = byGithub ?? byLogin;
   if (existing) {
     if (!existing.active) return null;
-    await db.update(users).set({ githubId: gh.id, login: gh.login, avatarUrl: gh.avatar_url }).where(eq(users.id, existing.id));
+    await db.update(users).set({ githubId: gh.id, login: gh.login, providerAvatarUrl: gh.avatar_url, ...(existing.avatarCustom ? {} : { avatarUrl: gh.avatar_url }) }).where(eq(users.id, existing.id));
     return existing.id;
   }
   if (!ADMIN_LOGINS.includes(gh.login.toLowerCase())) {
     // Nowe konto tylko z ważnym zaproszeniem (członkostwo dodaje consumeInvite).
     if (!opts.invite || !(await inviteInfo(opts.invite))) return null;
-    const [row] = await db.insert(users).values({ githubId: gh.id, login: gh.login, name: gh.name || gh.login, avatarUrl: gh.avatar_url }).returning();
+    const [row] = await db.insert(users).values({ githubId: gh.id, login: gh.login, name: gh.name || gh.login, avatarUrl: gh.avatar_url, providerAvatarUrl: gh.avatar_url }).returning();
     return row.id;
   }
   const [row] = await db.insert(users).values({
-    githubId: gh.id, login: gh.login, name: gh.name || gh.login, email: gh.email, avatarUrl: gh.avatar_url, isAdmin: true,
+    githubId: gh.id, login: gh.login, name: gh.name || gh.login, email: gh.email, avatarUrl: gh.avatar_url, providerAvatarUrl: gh.avatar_url, isAdmin: true,
   }).returning();
   await ensureSomeMembership(row.id);
   return row.id;
@@ -330,13 +334,13 @@ export async function upsertGoogleUser(profile: GoogleProfile, opts: { invite?: 
     if (!existing.active) return null;
     // Konto z tym e-mailem należy już do innego konta Google: nie przejmujemy go.
     if (existing.googleId && existing.googleId !== profile.sub) return null;
-    await db.update(users).set({ googleId: profile.sub, avatarUrl: existing.avatarUrl ?? profile.picture ?? null }).where(eq(users.id, existing.id));
+    await db.update(users).set({ googleId: profile.sub, providerAvatarUrl: profile.picture ?? existing.providerAvatarUrl, ...(existing.avatarCustom ? {} : { avatarUrl: existing.avatarUrl ?? profile.picture ?? null }) }).where(eq(users.id, existing.id));
     return existing.id;
   }
   const admin = adminEmails().includes(email.toLowerCase());
   if (!admin && !(opts.invite && (await inviteInfo(opts.invite)))) return null;
   const [row] = await db.insert(users).values({
-    googleId: profile.sub, login: email, name: profile.name || email, email, avatarUrl: profile.picture ?? null, isAdmin: admin,
+    googleId: profile.sub, login: email, name: profile.name || email, email, avatarUrl: profile.picture ?? null, providerAvatarUrl: profile.picture ?? null, isAdmin: admin,
   }).returning();
   if (admin) await ensureSomeMembership(row.id);
   return row.id;
