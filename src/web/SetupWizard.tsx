@@ -85,7 +85,7 @@ export function SetupWizardHost() {
   const qc = useQueryClient();
   const narrow = useNarrow();
   const live = open && !!meNow && !meNow.demo;
-  const modalRef = useModal();
+  const modalRef = useModal(closeSetupWizard);
   // Odpytujemy tylko /api/agents (co 5 s, nie w ukrytej karcie); /api/me odświeża się po powrocie do okna przeglądarki.
   const me = meNow;
   const agents = useQuery({ queryKey: ['agents'], queryFn: () => api<AgentRow[]>('/api/agents'), enabled: live, refetchInterval: live ? () => (document.hidden ? false : 5000) : false });
