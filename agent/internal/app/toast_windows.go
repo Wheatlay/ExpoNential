@@ -5,6 +5,7 @@ package app
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -75,7 +76,7 @@ func toastThread() {
 			fail()
 		}
 	}()
-	dataPath := filepath.Join(os.TempDir(), "exponential-agent-webview-toast")
+	dataPath := filepath.Join(os.TempDir(), fmt.Sprintf("exponential-agent-webview-toast-%d", os.Getpid()))
 	sc := dpiScale()
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		DataPath:  dataPath,

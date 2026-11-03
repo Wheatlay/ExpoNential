@@ -61,7 +61,7 @@ func runInstallerWindow() (shown bool) {
 			shown = false
 		}
 	}()
-	dataPath := filepath.Join(os.TempDir(), "exponential-agent-webview")
+	dataPath := filepath.Join(os.TempDir(), fmt.Sprintf("exponential-agent-webview-%d", os.Getpid())) // per process: a shared folder in use by the running agent blocks a second WebView2
 	sc := dpiScale()
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		DataPath:  dataPath,

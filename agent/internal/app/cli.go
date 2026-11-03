@@ -230,6 +230,10 @@ func Main(args []string) {
 			fmt.Println("Autostart off.")
 		}
 	case "uninstall":
+		if contains(rest, "--ask") {
+			askUninstall()
+			break
+		}
 		if !contains(rest, "--yes") {
 			fmt.Printf("This removes autostart and deletes %s (config, token, logs, clones). Re-run with --yes.\n", dataDir())
 			break
@@ -255,4 +259,32 @@ func Main(args []string) {
 		fmt.Fprintf(os.Stderr, "error: %s\n", err)
 		os.Exit(1)
 	}
+}
+
+// askUninstall: from the tray. The installer window shows this computer with Disconnect; when the window cannot open,
+// a Yes/No question does the same, so uninstalling never depends on WebView2.
+func askUninstall() {
+	if runInstallerWindow() {
+		return
+	}
+	pl := uiLang() == "pl"
+	q := "Uninstall the Exponential agent from this computer?"
+	if pl {
+		q = "Odinstalować agenta Exponential z tego komputera?"
+	}
+	if msgBox(q, dlgAsk) != idYes {
+		return
+	}
+	forgot, err := uninstallAll()
+	msg, kind := "Exponential agent was removed.", uint32(dlgInfo)
+	if pl {
+		msg = "Agent Exponential został odinstalowany."
+	}
+	if err != nil {
+		msg, kind = err.Error(), dlgError
+	} else if !forgot {
+		msg += "\n" + forgetFailedMsg(uiLang())
+		kind = dlgError
+	}
+	msgBox(msg, kind)
 }

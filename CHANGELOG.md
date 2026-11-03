@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.3.1] - 03.11.2026
+
+- "Uninstall…" in the tray and the settings window works again: it opens the window with Disconnect in its own process, and asks Yes/No when that window cannot open. Each agent window uses its own WebView2 data folder per process, so a running agent no longer blocks a second window.
+
 ## Server [1.3.0], Agent [0.3.0] - 03.11.2026
 
 - Installer sets up every level up to the goal chosen in Connect AI: issue access in Claude Code (MCP on every account, key issued during pairing), work trace (plugin), background agent. Connect AI is one "Download and run" button; manual commands moved under a link.

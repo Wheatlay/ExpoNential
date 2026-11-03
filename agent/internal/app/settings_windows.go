@@ -4,6 +4,7 @@ package app
 
 import (
 	_ "embed"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -105,9 +106,11 @@ func openApp() {
 
 // launchUninstall: the installer window (no arguments) shows this computer with "Disconnect": the same place
 // as a reinstall, with a confirmation, no system dialogs.
+// launchUninstall starts a separate process in the uninstall-confirm mode ("uninstall --ask"): the installer window
+// with Disconnect, or a Yes/No question when the window cannot open, so the menu item always leads somewhere.
 func launchUninstall() {
 	if exe, err := os.Executable(); err == nil {
-		c := exec.Command(exe)
+		c := exec.Command(exe, "uninstall", "--ask")
 		detachCmd(c)
 		if c.Start() == nil {
 			_ = c.Process.Release()
@@ -144,7 +147,7 @@ func openSettings() {
 				logf("settings window: %v", r)
 			}
 		}()
-		dataPath := filepath.Join(os.TempDir(), "exponential-agent-webview-settings")
+		dataPath := filepath.Join(os.TempDir(), fmt.Sprintf("exponential-agent-webview-settings-%d", os.Getpid()))
 		sc := dpiScale()
 		w := webview2.NewWithOptions(webview2.WebViewOptions{
 			DataPath:  dataPath,
