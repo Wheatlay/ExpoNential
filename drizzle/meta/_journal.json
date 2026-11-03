@@ -211,6 +211,13 @@
       "when": 1793800000000,
       "tag": "0029_agent_grant_device",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1793900000000,
+      "tag": "0030_audit_hardening",
+      "breakpoints": true
     }
   ]
 }

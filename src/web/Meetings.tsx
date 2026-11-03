@@ -1,4 +1,6 @@
+import { isHttpUrl } from './links.ts';
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useModal } from './modal.ts';
 import { DateInput, TimeInput } from './DateTime.tsx';
 import { askConfirm } from './Confirm.tsx';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,7 +12,7 @@ import { toast } from './toast.ts';
 import { CurrentProjectBadge, useCurrentProject } from './ProjectSwitcher.tsx';
 import { getProjectKey } from './project.ts';
 import { PersonLink } from './PersonCard.tsx';
-import { useProjectDetail } from './Settings.tsx';
+import { useProjectDetail } from './projectDetail.ts';
 import { locale, t, tn } from './i18n.ts';
 
 // ---------- czas (przeglądarka zespołu jest w czasie polskim) ----------
@@ -103,9 +105,10 @@ function Backdrop({ children, width }: { children: React.ReactNode; width: numbe
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+  const modalRef = useModal();
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) closeDialog(); }}>
-      <div className="modal meeting-modal" style={{ width }} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') closeDialog(); }}>
+      <div className="modal meeting-modal" style={{ width }} role="dialog" aria-modal="true" aria-label={t('Calendar')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') closeDialog(); }}>
         {children}
       </div>
     </div>
@@ -347,7 +350,7 @@ function PollDialog({ m }: { m: Meeting }) {
         <div style={{ fontSize: 18, fontWeight: 600 }}>{m.title}</div>
         <div className="hint">
           {organizer[0].toUpperCase() + organizer.slice(1)} {tn(m.slots.filter((s) => s.proposedBy === m.createdBy).length, 'proposed {n} time', 'proposed {n} times')} · {t('anyone can suggest another')}
-          {m.locationUrl ? <> · <a href={m.locationUrl} target="_blank" rel="noreferrer">{m.locationUrl.replace(/^https?:\/\//, '')}</a></> : null}
+          {isHttpUrl(m.locationUrl) ? <> · <a href={m.locationUrl} target="_blank" rel="noreferrer">{m.locationUrl.replace(/^https?:\/\//, '')}</a></> : null}
         </div>
       </div>
 
@@ -541,8 +544,8 @@ function ScheduledDialog({ m }: { m: Meeting }) {
       </div>
       {asAdmin && <div className="hint" style={{ color: 'var(--warning-text)', marginBottom: 12 }}>{t('This is {name}\'s meeting. You can change it as an admin; every change reaches everyone invited.', { name: asAdmin })}</div>}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
-        <Tooltip text={m.locationUrl ? null : t('No meeting link set for this meeting')}>
-          {m.locationUrl
+        <Tooltip text={isHttpUrl(m.locationUrl) ? null : t('No meeting link set for this meeting')}>
+          {isHttpUrl(m.locationUrl)
             ? <a className="btn primary" href={m.locationUrl} target="_blank" rel="noreferrer">{joinLabel(m.locationUrl)}</a>
             : <button className="btn primary" disabled>{t('Join meeting')}</button>}
         </Tooltip>

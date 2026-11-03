@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ErrorState, LoadingState } from './states.tsx';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, useIssues, useMeta, useSprints, useUpdateIssue, type IssueRow, type Meta, type Sprint } from './api.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
@@ -15,9 +16,12 @@ import { t, tn } from './i18n.ts';
  * Domyślnie pokazuje sprint czekający na przegląd, a jak go nie ma, bieżący.
  */
 export function SprintReview() {
-  const meta = useMeta().data;
-  const issues = useIssues().data;
-  const data = useSprints().data;
+  const metaQ = useMeta();
+  const issuesQ = useIssues();
+  const sprintsQ = useSprints();
+  const meta = metaQ.data;
+  const issues = issuesQ.data;
+  const data = sprintsQ.data;
   const qc = useQueryClient();
   const update = useUpdateIssue();
   const sprints = data?.sprints ?? [];
@@ -29,7 +33,27 @@ export function SprintReview() {
   useEffect(() => setNotes(sprint?.reviewNotes ?? ''), [sprint?.id, sprint?.reviewNotes]);
 
   const typeOf = useMemo(() => new Map((meta?.statuses ?? []).map((s) => [s.id, s.type])), [meta]);
-  if (!meta || !issues || !sprint) return <div className="review" />;
+  if (!meta || !issues || !data) {
+    const failed = [metaQ, issuesQ, sprintsQ].find((q) => q.isError);
+    return <div className="review">{failed ? <ErrorState error={failed.error} onRetry={() => { void metaQ.refetch(); void issuesQ.refetch(); void sprintsQ.refetch(); }} /> : <LoadingState />}</div>;
+  }
+  if (!sprint) {
+    // Bez sprintu do przeglądu (np. wszystkie już zamknięte): pusty stan, a wybór pozwala otworzyć dawny sprint.
+    const pickable = [...sprints].reverse().filter((s) => s.status !== 'planned');
+    return (
+      <div className="review" data-tour="review">
+        <div className="review-head">
+          <button className="chip on" disabled={!pickable.length} onClick={(e) => openMenu(e.currentTarget, {
+            searchable: false,
+            items: pickable.map((s) => ({ key: String(s.id), label: `${sprintLabel(s)} · ${t(s.status)}`, onSelect: () => setSelectedId(s.id) })),
+          })}>
+            <Icon.sprint size={13} /> {t('Select sprint')} <Icon.chevron size={12} />
+          </button>
+        </div>
+        <div className="hint" style={{ padding: 16 }}>{t('No sprint to review yet.')}</div>
+      </div>
+    );
+  }
 
   const inSprint = issues.filter((i) => i.sprintId === sprint.id && !i.parentId);
   // "Co zrobiliśmy": wszystko ukończone w czasie sprintu, także bez przypisania do niego.
@@ -154,7 +178,7 @@ export function SprintReview() {
           </h3>
           {planned.map((i) => (
             <ReviewCard key={i.id} issue={i} meta={meta} action={
-              <button className="icon-btn" title={t('Remove from sprint')} onClick={() => update.mutate({ number: i.number, patch: { sprintId: null } })}><Icon.close size={13} /></button>
+              <button className="icon-btn" title={t('Remove from sprint')} aria-label={t('Remove from sprint')} onClick={() => update.mutate({ number: i.number, patch: { sprintId: null } })}><Icon.close size={13} /></button>
             } />
           ))}
           {!planned.length && <div className="hint" style={{ padding: 8 }}>{t('Add issues from Todo or Backlog.')}</div>}

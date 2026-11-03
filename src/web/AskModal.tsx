@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
+import { useModal } from './modal.ts';
 import { useMe, useMeta, useUpdateIssue, type IssuePatch } from './api.ts';
 import { Avatar, Icon } from './icons.tsx';
 import { enterToSubmit } from './keys.ts';
@@ -31,6 +32,7 @@ function AskModal({ ask }: { ask: Ask }) {
   // Albo #tag (odpowiada jego członek); wybór osoby i taga wyklucza się.
   const [tagId, setTagId] = useState<number | null>(null);
   const [q, setQ] = useState('');
+  const modalRef = useModal();
   if (!meta) return null;
   const people = meta.users.filter((u) => u.active && u.id !== me?.id);
   const tags = meta.tags ?? [];
@@ -41,7 +43,7 @@ function AskModal({ ask }: { ask: Ask }) {
   };
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="modal ask" onKeyDown={(e) => {
+      <div className="modal ask" role="dialog" aria-modal="true" aria-label={t('Need info')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === 'Escape') close();
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send();

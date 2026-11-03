@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, gt, inArray } from 'drizzle-orm';
 import { db, sql } from '../db/index.ts';
-import { projectMembers, users } from '../db/schema.ts';
-import { requireUser, type SessionUser } from './auth.ts';
+import { projectMembers, sessions, users } from '../db/schema.ts';
+import { requireUser, sha256, type SessionUser } from './auth.ts';
 import { publish } from './service.ts';
 import { projectsOf } from './projects.ts';
 
 /** Otwarty strumień z kluczami projektów, które dana osoba widzi: zdarzenia innych projektów do niej nie idą. */
-type Client = { reply: FastifyReply; user: SessionUser; keys: Set<string> };
+type Client = { reply: FastifyReply; user: SessionUser; keys: Set<string>; sessionHash: string | null };
 const clients = new Set<Client>();
 /** Ile otwartych kart trackera ma każda osoba: > 0 znaczy online. */
 const connections = new Map<number, number>();
@@ -24,12 +24,27 @@ export async function registerEvents(app: FastifyInstance) {
   await sql.listen('tracker_events', async (payload) => {
     const e = JSON.parse(payload) as { type: string; projectKey?: string; userIds?: number[] };
     // Zmiana członkostwa: najpierw odświeżamy, co kto widzi, potem rozdajemy zdarzenie.
-    if (e.type === 'projects') await Promise.all([...clients].map(refreshKeys));
+    if (e.type === 'projects') await Promise.all([...clients].filter((c) => !e.userIds || e.userIds.includes(c.user.id)).map(refreshKeys));
     for (const c of clients) if (e.userIds ? e.userIds.includes(c.user.id) : (!e.projectKey || c.keys.has(e.projectKey))) c.reply.raw.write(`data: ${payload}\n\n`);
   });
 
   // Proxy (Traefik w Coolify) zamyka bezczynne połączenia, więc co 25 s pusty komentarz.
-  const ping = setInterval(() => { for (const c of clients) c.reply.raw.write(': ping\n\n'); }, 25_000);
+  // Przy każdym pingu sprawdzamy, czy sesja (albo konto) nadal jest ważna; inaczej zamykamy strumień.
+  const stillValid = async (c: Client) => {
+    const [row] = c.sessionHash
+      ? await db.select({ id: users.id }).from(sessions).innerJoin(users, eq(users.id, sessions.userId))
+        .where(and(eq(sessions.id, c.sessionHash), gt(sessions.expiresAt, new Date()), eq(users.active, true)))
+      : await db.select({ id: users.id }).from(users).where(and(eq(users.id, c.user.id), eq(users.active, true)));
+    return !!row;
+  };
+  const ping = setInterval(() => {
+    for (const c of clients) {
+      void stillValid(c).then((ok) => {
+        if (ok) c.reply.raw.write(': ping\n\n');
+        else { clients.delete(c); c.reply.raw.end(); }
+      }).catch((e) => app.log.warn(e, 'event stream: session check'));
+    }
+  }, 25_000);
   app.addHook('onClose', async () => clearInterval(ping));
 
   app.get('/api/events', { preHandler: requireUser }, (req, reply) => {
@@ -40,7 +55,8 @@ export async function registerEvents(app: FastifyInstance) {
       'X-Accel-Buffering': 'no',
     });
     reply.raw.write('retry: 3000\n\n');
-    const client: Client = { reply, user: req.user!, keys: new Set() };
+    const rawSession = (req.cookies as Record<string, string | undefined> | undefined)?.tracker_session;
+    const client: Client = { reply, user: req.user!, keys: new Set(), sessionHash: req.authVia === 'session' && rawSession ? sha256(rawSession) : null };
     clients.add(client);
     void refreshKeys(client).catch((e) => app.log.warn(e, 'event stream: project keys'));
     const userId = req.user!.id;
@@ -66,7 +82,8 @@ export async function registerEvents(app: FastifyInstance) {
       ? (await db.selectDistinct({ id: projectMembers.userId }).from(projectMembers).where(inArray(projectMembers.projectId, projectIds))).map((x) => x.id)
       : [])]);
     const shown = (id: number) => !visible || visible.has(id);
-    const seen = await db.select({ id: users.id, lastSeenAt: users.lastSeenAt }).from(users);
+    const seen = await db.select({ id: users.id, lastSeenAt: users.lastSeenAt }).from(users)
+      .where(visible ? inArray(users.id, [...visible]) : undefined);
     return {
       online: onlineUserIds().filter(shown),
       lastSeen: Object.fromEntries(seen.filter((u) => u.lastSeenAt && shown(u.id)).map((u) => [u.id, u.lastSeenAt])),

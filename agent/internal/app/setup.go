@@ -268,6 +268,9 @@ func pairOnly(ctx *installCtx) (installResult, string) {
 	if status == 404 {
 		return installResult{Code: "expired"}, ""
 	}
+	if status == 429 {
+		return installResult{Code: "ratelimit"}, ""
+	}
 	var pr struct {
 		ClientID     string `json:"client_id"`
 		AccessToken  string `json:"access_token"`

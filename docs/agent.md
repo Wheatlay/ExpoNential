@@ -22,6 +22,18 @@ Installed by double-clicking the file downloaded from Settings > AI (it carries 
   - `HKCU\Software\Classes\AppUserModelId\Exponential agent` (name and icon of its notifications)
   - `HKCU\Environment\Path` gets the program folder appended (no duplicates), so the plugin's Claude Code hooks can run `exponential-agent hook ...`; uninstall removes it
 - Hook state in `<temp>/claude-tracker/`.
+- WebView2 profile folders of the agent windows: `%TEMP%\exponential-agent-webview-<pid>`, `...-webview-settings-<pid>`, `...-webview-toast-<pid>`. They are removed on exit; the agent also deletes leftovers of crashed processes (pid no longer running) at startup.
+- Lock files in the data folder: `agent.lock` (one agent per user) and `<KEY>.lock` (a running analysis), created exclusively.
+- Per-run `mcp-<pid>-<time>.json` (tracker address and bearer token for the AI engine): deleted when the run ends.
+- At rest, the tokens in `config.json` (refresh token, `trk_` token) are encrypted with Windows DPAPI for the current user (`dpapi:...` values; an old plain-text file is migrated on start). The short-lived access token stays plain.
+
+#### Safety rules for analyses run for other people
+- Claude runs with `--permission-mode default`; its deny list covers repo secret files (shared list in `agent/internal/app/secrets.go`) and absolute secrets: the agent data folder, `~/.claude/.credentials.json`, `~/.claude-accounts/**/.credentials.json`, `~/.ssh`, `~/.aws`, `~/.npmrc`, `~/.git-credentials`, `~/.config/gh`. A blanket `Read(//**)` deny is NOT used: deny rules win over allow rules in Claude Code, so it would block the repo too.
+- The tracker MCP of such a run carries `X-Exponential-Issue: <KEY>`; the server limits the tools to that issue.
+- Codex cannot be limited to the repo, so it refuses other people's jobs.
+- Repo paths from the server must be local drive paths (UNC `\\host\...`, `\\?\...` and non-existing drives are rejected); `githubRepo` must match `owner/name`. Folders inside `repos/` are always untrusted (project settings do not load) and a server entry never downgrades a local clone.
+- Team mode `auto` set on the server is ignored unless it is already set on this computer (tray menu / settings window); the agent keeps its local mode and tells the server. There is no extra confirmation card.
+- Self-update installs only a release whose `SHA256SUMS.sig` (ed25519 over `SHA256SUMS`, key built into the exe) verifies; the release workflow signs with the secret `AGENT_SIGNING_KEY`. The only copy of the private key outside GitHub is on the maintainer's PC: `C:\Users\krzys\.exponential-signing\agent-signing-key.pem` (public key next to it). Lost key = new key pair + a release that still verifies with the old key, otherwise installed agents can't update.
 
 Details: [agent/README.md](../agent/README.md).
 

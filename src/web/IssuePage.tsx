@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { ErrorState } from './states.tsx';
+import { useModal } from './modal.ts';
 import { askConfirm } from './Confirm.tsx';
-import { openAiHint } from './SetupWizard.tsx';
+import { openAiHint } from './setupWizardState.ts';
 import { Markdown, MentionHint } from './Markdown.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -9,13 +11,13 @@ import {
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu, isMenuOpen, Tooltip, type MenuSpec } from './menu.tsx';
 import { assigneeMenu, issueStatusIcon, labelMenu, priorityMenu, relationMenu, sprintLabel, sprintMenu, statusMenu, type PickTarget } from './pickers.tsx';
-import { isAskedTo, type IssueRow, type RelatedIssue, type RelationKind } from './api.ts';
+import { ApiError, isAskedTo, type IssueRow, type RelatedIssue, type RelationKind } from './api.ts';
 import { linkProps, navigate } from './router.ts';
 import { openNewIssue } from './NewIssue.tsx';
 import { copyText, toast } from './toast.ts';
-import { timeAgo, fullDate } from './time.ts';
+import { CLAIM_TTL_MIN, timeAgo, fullDate } from './time.ts';
 import { InlineCode } from './InlineCode.tsx';
-import { agentHere, issuePrompt, runLocalAnalysis, simulateAgent, startOnPc, startWork } from './startWork.ts';
+import { isTouchDevice, issuePrompt, simulateAgent, startOnPc, startWork } from './startWork.ts';
 import { AnalysisView } from './AnalysisView.tsx';
 import { Attachments, useAttachments } from './ImagePreviews.tsx';
 import { ImageBlock } from './ImageBlock.tsx';
@@ -145,7 +147,10 @@ export function IssuePage({ number }: { number: number }) {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  if (q.isError) return <div className="issue-page"><div className="issue-content"><h2>{t('{id} not found', { id: ident(number) })}</h2><a className="btn" {...linkProps('/')}>{t('Back to board')}</a></div></div>;
+  if (q.isError && !issue) {
+    if (q.error instanceof ApiError && q.error.status === 404) return <div className="issue-page"><div className="issue-content"><h2>{t('{id} not found', { id: ident(number) })}</h2><a className="btn" {...linkProps('/')}>{t('Back to board')}</a></div></div>;
+    return <div className="issue-page"><div className="issue-content"><ErrorState error={q.error} onRetry={() => void q.refetch()} /></div></div>;
+  }
   if (!issue || !meta || !target) return <div className="issue-page" />;
 
   const status = meta.statuses.find((s) => s.id === issue.statusId)!;
@@ -154,7 +159,7 @@ export function IssuePage({ number }: { number: number }) {
   const sprint = sprints.find((s) => s.id === issue.sprintId);
   const subDone = issue.children.filter((c) => ['completed', 'canceled', 'duplicate'].includes(meta.statuses.find((s) => s.id === c.statusId)?.type ?? '')).length;
 
-  const local = !!me?.localAgentAt;
+  const local = !!me?.hasAgent;
   // Stare skrypty na PC: serwer i tak nie wyda im zlecenia, więc nie dajemy go złożyć (powód + skrót do aktualizacji obok).
   const outdated = !!me?.agentOutdated && local && !me?.demo;
   const outdatedReason = t('This computer has an old agent. Update it first (Settings > My AI).');
@@ -167,20 +172,16 @@ export function IssuePage({ number }: { number: number }) {
     if (demo) { await simulateAgent(number, 'analyze'); return; }
     // Kolejka zespołu: zlecenie weźmie komputer kogoś z zespołu, więc bez podpowiedzi. Inaczej podpowiedź z możliwością zlecenia mimo to.
     if (aiMissing && anchor && !anyway && !issue.teamQueue) { openAiHint(anchor, 'analyze', 3, () => void analyze(deep, undefined, true)); return; }
-    // Na komputerze z agentem link tracker:// rusza od razu (local rezerwuje zlecenie dla tego PC na 60 s); gdzie indziej zlecenie czeka w kolejce.
-    const here = agentHere(me);
-    await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep, local: here } });
+    // Zlecenie czeka w kolejce, agent bierze je sam.
+    await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep } });
     void qc.invalidateQueries({ queryKey: ['issue', number] });
-    if (here) {
-      runLocalAnalysis(number, deep);
-      toast(deep ? t('Deep analysis started on your computer. It shows up here in a few minutes.') : t('Analysis started on your computer. It shows up here in a few minutes.'));
-    } else if (local) toast(me?.agentOnline ? t('Queued. It runs on your PC in a moment.') : t('Queued. Your PC is offline, it runs when it is on.'));
+    if (local) toast(me?.agentOnline ? t('Queued. It runs on your PC in a moment.') : t('Queued. Your PC is offline, it runs when it is on.'));
     else toast(t('AI analysis requested. A computer with the agent runs it.'));
   };
   // Stan zlecenia: czeka (jest online PC, który je weźmie) / czeka na PC (nikt nie słucha) / biegnie na PC (claim).
   // Utknięte liczymy od ostatniego sygnału zajętego agenta (claim jest odświeżany), nie od zlecenia: kolejka przy wyłączonym PC to nie awaria.
   const claimedAt = issue.analysisRequestedAt ? issue.analysisClaimedAt : null;
-  const stalled = !!claimedAt && Date.now() - new Date(claimedAt).getTime() > 15 * 60_000;
+  const stalled = !!claimedAt && Date.now() - new Date(claimedAt).getTime() > CLAIM_TTL_MIN * 60_000;
   // Nieudany przebieg nie wraca sam do kolejki: pokazujemy błąd i dajemy zlecić ponownie albo anulować.
   const failed = !!issue.analysisRequestedAt && !!issue.analysisFailedAt;
   const waitingForPc = !!issue.analysisRequestedAt && !claimedAt && !failed && !issue.analysisCanRun && !demo;
@@ -201,7 +202,7 @@ export function IssuePage({ number }: { number: number }) {
           )}
           <TitleField value={issue.title} onSave={(title) => save({ title })} />
           <div className="issue-actions">
-            {!demo && !!me?.localAgentAt && !agentHere(me) ? (
+            {!demo && local && isTouchDevice() ? (
               // Telefon (albo przeglądarka bez agenta): polecenie leci do agenta na moim komputerze. Wyłączone z powodem, nie ukryte.
               <Tooltip text={outdated ? outdatedReason : me?.agentOnline ? null : t('Your PC is offline')}>
                 <button className="btn sm start-btn" data-tour="start-work" disabled={outdated || !me?.agentOnline}
@@ -334,7 +335,7 @@ export function IssuePage({ number }: { number: number }) {
             {issue.labelIds.map((id) => meta.labels.find((l) => l.id === id)).map((l) => l && (
               <span key={l.id} className="label-chip"><span className="dot" style={{ background: l.color }} />{l.name}</span>
             ))}
-            <button className="icon-btn" title={t('Change labels (L)')} onClick={(e) => openMenu(e.currentTarget, labelMenu(meta, target, save))}><Icon.plus size={14} /></button>
+            <button className="icon-btn" title={t('Change labels (L)')} aria-label={t('Change labels (L)')} onClick={(e) => openMenu(e.currentTarget, labelMenu(meta, target, save))}><Icon.plus size={14} /></button>
           </div>
         </div>
         <div className="props-group">
@@ -408,6 +409,7 @@ function SubIssues({ issue, meta, done }: { issue: IssueDetail; meta: Meta; done
     await api('/api/issues', { method: 'POST', body: { title, parentNumber: issue.number, assigneeId: issue.assigneeId, sprintId: issue.sprintId } });
     setTitle('');
     void qc.invalidateQueries({ queryKey: ['issue', issue.number] });
+    void qc.invalidateQueries({ queryKey: ['issues'] });
   };
   if (!issue.children.length && !adding) {
     return (
@@ -421,8 +423,8 @@ function SubIssues({ issue, meta, done }: { issue: IssueDetail; meta: Meta; done
       <div className="section-head">
         {t('Sub-issues')} <span className="hint">{done}/{issue.children.length}</span>
         <span className="tools">
-          <Tooltip text={t('Open the full new-issue form')}><button className="icon-btn" onClick={() => openNewIssue({ parentNumber: issue.number, assigneeId: issue.assigneeId })}><Icon.edit size={14} /></button></Tooltip>
-          <button className="icon-btn" title={t('Add sub-issue')} onClick={() => setAdding(true)}><Icon.plus size={14} /></button>
+          <Tooltip text={t('Open the full new-issue form')}><button className="icon-btn" aria-label={t('Open the full new-issue form')} onClick={() => openNewIssue({ parentNumber: issue.number, assigneeId: issue.assigneeId })}><Icon.edit size={14} /></button></Tooltip>
+          <button className="icon-btn" title={t('Add sub-issue')} aria-label={t('Add sub-issue')} onClick={() => setAdding(true)}><Icon.plus size={14} /></button>
         </span>
       </div>
       {issue.children.map((c) => {
@@ -549,8 +551,8 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
               <span className="when" title={fullDate(c.createdAt)}>{timeAgo(c.createdAt)}{c.updatedAt !== c.createdAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 1000 ? ` ${t('(edited)')}` : ''}</span>
               {own && (
                 <span className="tools">
-                  <button className="icon-btn" title={t('Edit')} onClick={() => setEditing(c.id)}><Icon.edit size={14} /></button>
-                  <button className="icon-btn" title={t('Delete')} onClick={() => void askConfirm({ title: t('Delete this comment?') }).then((ok) => { if (ok) void api(`/api/comments/${c.id}`, { method: 'DELETE' }).then(refresh); })}><Icon.trash size={14} /></button>
+                  <button className="icon-btn" title={t('Edit')} aria-label={t('Edit')} onClick={() => setEditing(c.id)}><Icon.edit size={14} /></button>
+                  <button className="icon-btn" title={t('Delete')} aria-label={t('Delete')} onClick={() => void askConfirm({ title: t('Delete this comment?') }).then((ok) => { if (ok) void api(`/api/comments/${c.id}`, { method: 'DELETE' }).then(refresh); })}><Icon.trash size={14} /></button>
                 </span>
               )}
             </div>
@@ -629,7 +631,7 @@ function Relations({ issue, meta }: { issue: IssueDetail; meta: Meta }) {
     <div className="props-group">
       <h4 style={{ display: 'flex', alignItems: 'center' }}>
         {t('Relations')}
-        <button className="icon-btn" style={{ marginLeft: 'auto', width: 22, height: 22 }} title={t('Add relation')}
+        <button className="icon-btn" style={{ marginLeft: 'auto', width: 22, height: 22 }} title={t('Add relation')} aria-label={t('Add relation')}
           onClick={(e) => openMenu(e.currentTarget, relationMenu(qc.getQueryData<IssueRow[]>(['issues']) ?? [], issue.number, refresh, meta.statuses))}>
           <Icon.plus size={13} />
         </button>
@@ -645,7 +647,7 @@ function Relations({ issue, meta }: { issue: IssueDetail; meta: Meta }) {
               <div key={r.number} className={`relation-row ${blocking ? 'blocking' : ''}`}>
                 <StatusIcon status={st} fraction={startedFraction(meta.statuses, st)} size={12} />
                 <a {...linkProps(`/issue/${ident(r.number)}`)} title={r.title}>{ident(r.number)} <span>{r.title}</span></a>
-                <button className="icon-btn" title={t('Remove relation')} onClick={() => remove(kind, r.number)}><Icon.close size={12} /></button>
+                <button className="icon-btn" title={t('Remove relation')} aria-label={t('Remove relation')} onClick={() => remove(kind, r.number)}><Icon.close size={12} /></button>
               </div>
             );
           })}
@@ -752,6 +754,7 @@ function AnswerBox({ number }: { number: number }) {
 function DemoStartModal({ number, onClose }: { number: number; onClose: () => void }) {
   const prompt = useQuery({ queryKey: ['prompt', number, 'start'], queryFn: () => issuePrompt(number, 'start'), staleTime: 60_000 });
   const [busy, setBusy] = useState(false);
+  const modalRef = useModal();
   const run = async () => {
     setBusy(true);
     const ok = await simulateAgent(number, 'work');
@@ -760,7 +763,7 @@ function DemoStartModal({ number, onClose }: { number: number; onClose: () => vo
   };
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal guard demo-start" role="dialog" aria-label={t('Start work with Claude Code')} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }}>
+      <div className="modal guard demo-start" role="dialog" aria-modal="true" aria-label={t('Start work with Claude Code')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onClose(); }}>
         <div className="guard-head">
           <span className="guard-icon"><Icon.play size={16} /></span>
           <div>

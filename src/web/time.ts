@@ -1,4 +1,5 @@
 const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+import { useEffect, useState } from 'react';
 import { locale, t } from './i18n.ts';
 
 export function timeAgo(iso: string) {
@@ -16,3 +17,12 @@ export function timeAgo(iso: string) {
 export function fullDate(iso: string) {
   return new Date(iso).toLocaleString(locale, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+
+export function useNow(ms = 30_000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), ms); return () => clearInterval(t); }, [ms]);
+  return now;
+}
+
+/** Jak CLAIM_TTL_MIN na serwerze: po tylu minutach bez sygnału od agenta analiza liczy się jako utknięta. */
+export const CLAIM_TTL_MIN = 30;

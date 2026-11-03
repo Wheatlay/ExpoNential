@@ -15,11 +15,12 @@ import * as ag from './agents.ts';
 import { addRelation, removeRelation } from './relations.ts';
 import { RuleError, parseIdentifier } from './rules.ts';
 import { validTagName } from './mentions.ts';
+import { deployWebhookSecret } from './hooks.ts';
 import { DEFAULT_MODELS, DEFAULT_PROMPTS, MODELS, PROMPT_KINDS, analysisModel, renderPrompt } from './prompts.ts';
 
 export const issueInputSchema = z.object({
   title: z.string().max(500).optional(),
-  description: z.string().optional(),
+  description: z.string().max(100_000).optional(),
   statusId: z.number().int().optional(),
   assigneeId: z.number().int().nullable().optional(),
   priority: z.number().int().min(0).max(4).optional(),
@@ -27,9 +28,9 @@ export const issueInputSchema = z.object({
   parentNumber: z.number().int().nullable().optional(),
   sprintId: z.number().int().nullable().optional(),
   sortOrder: z.number().optional(),
-  analysis: z.string().optional(),
-  changeHuman: z.string().optional(),
-  changeAi: z.string().optional(),
+  analysis: z.string().max(50_000).optional(),
+  changeHuman: z.string().max(50_000).optional(),
+  changeAi: z.string().max(50_000).optional(),
   infoFromId: z.number().int().nullable().optional(),
   infoTagId: z.number().int().nullable().optional(),
   infoQuestion: z.string().max(2000).optional(),
@@ -98,17 +99,17 @@ export async function registerApi(app: FastifyInstance) {
 
     const meShape = async (req: FastifyRequest) => {
       const [u] = await db.select({
-        localAgentAt: users.localAgentAt, setupDoneAt: users.setupDoneAt, passwordHash: users.passwordHash,
+        setupDoneAt: users.setupDoneAt, passwordHash: users.passwordHash,
         avatarUrl: users.avatarUrl, avatarCustom: users.avatarCustom, providerAvatarUrl: users.providerAvatarUrl, githubId: users.githubId,
       }).from(users).where(eq(users.id, req.user!.id));
       const mine = await ag.agentsLite(req.user!, true);
       const lastSeen = mine.map((a) => a.lastSeenAt).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
       // provider: skąd wraca zdjęcie po "Use … photo"; null = konto bez zdjęcia od dostawcy (zostają inicjały).
       return { ...req.user, avatarUrl: u?.avatarUrl ?? null, avatarCustom: !!u?.avatarCustom, provider: u?.providerAvatarUrl ? (u.githubId ? 'github' : 'google') : null,
-        hasPassword: !!u?.passwordHash, localAgentAt: u?.localAgentAt ?? null, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
+        hasPassword: !!u?.passwordHash, hasAgent: mine.length > 0, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
         setupDoneAt: u?.setupDoneAt ?? null, aiStatus: await ag.aiStatus(req.user!, mine),
-        // Stara wersja skryptów na którymś PC, albo instalacja sprzed agenta w tle (jest znacznik, nie ma żadnego komputera).
-        agentOutdated: !!u?.localAgentAt && (!mine.length || mine.some((a) => a.outdated)), demo: process.env.DEMO_MODE === '1' };
+        // Któryś komputer ma agenta starszego niż MIN_EXE_AGENT.
+        agentOutdated: mine.some((a) => a.outdated), demo: process.env.DEMO_MODE === '1' };
     };
     r.get('/api/me', meShape);
 
@@ -149,20 +150,18 @@ export async function registerApi(app: FastifyInstance) {
       return { ok: true };
     });
 
-    // Agent na PC (tracker-agent.ps1): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
+    // Agent na PC (Go): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
     r.get<{ Querystring: Record<string, string> }>('/api/agent/work', async (req) => {
       const q = z.object({
-        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(300).default(''), engine: z.enum(['claude', 'codex']).optional(), setup: z.string().max(4000).optional(), skip: z.string().max(400).optional(),
+        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(1200).default('').transform((s) => s.slice(0, 300)), engine: z.enum(['claude', 'codex']).optional(), setup: z.string().max(4000).optional(), skip: z.string().max(1000).optional(),
       }).parse(req.query);
       // Zamknięte połączenie przerywa czekanie, żeby pętla nie trzymała zapytań do bazy po odejściu agenta.
       const ac = new AbortController();
       req.raw.on('close', () => ac.abort());
-      // repos: lista kluczy "ACME,WEB" (skrypty PS, nowy agent) albo JSON {KEY: ścieżka} / {KEY: {path, source, status, error}}.
-      let repoKeys: string[] = [], repos: Record<string, ag.RepoReport | string> | undefined;
-      if (q.repos.trim().startsWith('{')) {
-        try { repos = z.record(z.string(), z.union([z.string(), z.object({ path: z.string().optional(), source: z.string().optional(), status: z.string().optional(), error: z.string().nullable().optional() })])).parse(JSON.parse(q.repos)); } catch { repos = {}; }
-        repoKeys = Object.keys(repos);
-      } else repoKeys = q.repos.split(',').filter(Boolean);
+      // repos: JSON {KEY: {path, source, status: 'ok'|'error', error?}} (stare formaty: {KEY: ścieżka} i wpis bez statusu = ok).
+      let repos: Record<string, ag.RepoReport | string> | undefined;
+      try { repos = z.record(z.string(), z.union([z.string(), z.object({ path: z.string().optional(), source: z.string().optional(), status: z.string().optional(), error: z.string().nullable().optional().transform((e) => e?.slice(0, 300)) })])).parse(JSON.parse(q.repos || '{}')); } catch { repos = {}; }
+      const repoKeys = Object.keys(repos);
       return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error, ownOnly: q.engine === 'codex', setup: ag.parseSetup(q.setup), skip: ag.parseSkip(q.skip) }, ac.signal);
     });
     r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
@@ -179,12 +178,6 @@ export async function registerApi(app: FastifyInstance) {
       const body = z.object({ project: z.string().min(1).max(10), path: z.string().min(1).max(500) }).parse(req.body);
       return ag.setAgentRepo(req.user!, req.params.id, body.project, body.path);
     });
-    r.delete<{ Params: { id: string; project: string } }>('/api/agents/:id/repos/:project', async (req) => ag.removeAgentRepo(req.user!, req.params.id, req.params.project));
-    // Zgoda per projekt zastąpiona trybem zespołu per komputer (PATCH /api/agents/:id { teamMode }).
-    const gone = async (_req: unknown, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => reply.code(410).send({ error: 'Gone: use PATCH /api/agents/:id with teamMode' });
-    r.put('/api/agents/:id/team/:project', gone);
-    r.delete('/api/agents/:id/team/:project', gone);
-    r.post('/api/me/dismiss', async (req) => ag.dismiss(req.user!, z.object({ key: z.string().min(1).max(100) }).parse(req.body).key));
     r.delete<{ Params: { id: string } }>('/api/agents/:id', async (req) => ag.removeAgent(req.user!, req.params.id));
     r.patch<{ Params: { id: string } }>('/api/agents/:id', async (req) => {
       const b = z.object({ teamMode: z.enum(ag.TEAM_MODES).optional(), label: z.string().max(60).optional(), maxOthersTokensPerDay: z.number().int().min(0).max(10_000_000_000).nullable().optional() }).parse(req.body);
@@ -205,17 +198,13 @@ export async function registerApi(app: FastifyInstance) {
       }).parse(req.body);
       return ag.recordRun(req.user!, b);
     });
-    // Instalator lokalnej analizy zgłasza się tu tokenem MCP, deinstalator kasuje znacznik.
-    r.post('/api/me/local-agent', async (req) => { await db.update(users).set({ localAgentAt: new Date() }).where(eq(users.id, req.user!.id)); return { ok: true }; });
     r.put('/api/me/setup-done', async (req) => { await db.update(users).set({ setupDoneAt: new Date() }).where(eq(users.id, req.user!.id)); return { ok: true }; });
-    r.delete('/api/me/local-agent', async (req) => { await db.update(users).set({ localAgentAt: null }).where(eq(users.id, req.user!.id)); return { ok: true }; });
 
     // projekty
     r.get('/api/projects', async (req) => {
       const me = req.user!.id;
       return (await pr.projectsOf(req.user!)).map(({ project, role, memberCount }) => ({
         id: project.id, key: project.key, name: project.name, color: project.color, logoUrl: project.logoUrl, role, memberCount, githubRepo: project.githubRepo,
-        agentsMayClone: project.agentsMayClone,
       }));
     });
     r.post('/api/projects', async (req) => {
@@ -234,7 +223,7 @@ export async function registerApi(app: FastifyInstance) {
     r.patch<{ Params: { key: string } }>('/api/projects/:key', async (req) => {
       const p = await manage(req, req.params.key);
       const body = z.object({
-        name: z.string().optional(), color: z.string().optional(), logoUrl: z.string().max(300).optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).optional(),
+        name: z.string().optional(), color: z.string().optional(), logoUrl: z.string().max(300).optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).refine((u) => u === '' || /^https?:\/\/\S+$/i.test(u), 'Meeting location must be empty or an http(s) URL').optional(),
         sprintLengthDays: z.number().int().optional(), reviewMeeting: z.boolean().optional(), reviewTime: z.string().optional(), reviewMinutes: z.number().int().optional(),
                 analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
         githubRepo: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(),
@@ -247,6 +236,11 @@ export async function registerApi(app: FastifyInstance) {
       await svc.publish({ type: 'projects' });
       await svc.publish({ type: 'sprints', projectKey: p.key });
       return next;
+    });
+    // Sekret webhooka deployu: tylko admin projektu.
+    r.get<{ Params: { key: string } }>('/api/projects/:key/deploy-webhook-secret', async (req) => {
+      const p = await manage(req, req.params.key);
+      return { secret: await deployWebhookSecret(p.key) };
     });
     // Komputery z agentem online u członków projektu (kolejka zespołu).
     r.get<{ Params: { key: string } }>('/api/projects/:key/agents', async (req) => ag.projectAgents((await ctx(req, req.params.key)).project));
@@ -420,7 +414,8 @@ export async function registerApi(app: FastifyInstance) {
       const d = await svc.getIssueDetail(p, number);
       // Poprzednia wizyta: komentarze innych po niej podświetlamy jako nowe.
       const lastSeenAt = await svc.lastSeen(req.user!.id, d.id);
-      await svc.markSeen(req.user!.id, d.id);
+      // Token (agent, MCP) czytający zgłoszenie nie oznacza go jako przeczytanego przez człowieka.
+      if (req.authVia !== 'token') await svc.markSeen(req.user!.id, d.id);
       const runner = await ag.analysisRunner(p, d);
       return { ...d, projectKey: p.key, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, analysisNoCapablePc: runner.noCapablePc, teamQueue: p.agentTeamQueue };
     });
@@ -456,8 +451,8 @@ export async function registerApi(app: FastifyInstance) {
     });
     r.delete<{ Params: { id: string } }>('/api/issues/:id/analyze/claim', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
-      const b = deviceBody.extend({ error: z.string().max(2000).optional() }).parse(req.body);
-      return ag.releaseClaim(p, req.user!, number, b.deviceId, b.error);
+      const b = deviceBody.extend({ error: z.string().max(8000).optional().transform((e) => e?.slice(0, 2000)), requeue: z.boolean().optional() }).parse(req.body);
+      return ag.releaseClaim(p, req.user!, number, b.deviceId, b.error, b.requeue === true);
     });
     r.delete<{ Params: { id: string } }>('/api/issues/:id/analyze', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
@@ -472,13 +467,13 @@ export async function registerApi(app: FastifyInstance) {
       return svc.chooseDecision(p, req.user, number, b.index, b.option, b.other);
     });
 
-    // Gotowe polecenie dla Claude Code z szablonu projektu (guziki, lokalny skrypt analizy).
-    r.get<{ Params: { id: string; kind: string }; Querystring: { compact?: string; deep?: string } }>('/api/issues/:id/prompt/:kind', async (req) => {
+    // Gotowe polecenie dla Claude Code z szablonu projektu (guziki, agent na PC; ?engine=codex podmienia skill na get_procedure).
+    r.get<{ Params: { id: string; kind: string }; Querystring: { compact?: string; deep?: string; engine?: string } }>('/api/issues/:id/prompt/:kind', async (req) => {
       const { p, number } = await issueRef(req, req.params.id);
       const kind = z.enum(PROMPT_KINDS).parse(req.params.kind);
       const deep = req.query.deep === '1';
-      // Model tylko dla analizy: lokalny skrypt odpala z nim claude -p.
-      return { prompt: await renderPrompt(p, number, kind, req.query.compact === '1', deep), ...(kind === 'analyze' ? { model: analysisModel(p, deep) } : {}) };
+      // Model tylko dla analizy: agent odpala z nim claude -p.
+      return { prompt: await renderPrompt(p, number, kind, req.query.compact === '1', deep, req.query.engine === 'codex'), ...(kind === 'analyze' ? { model: analysisModel(p, deep) } : {}) };
     });
 
     // Ślad pracy z sesji Claude Code, wysyłany przez hooki dewelopera (token API).
@@ -486,10 +481,10 @@ export async function registerApi(app: FastifyInstance) {
       const { p, number } = await issueRef(req, req.params.id);
       const b = z.object({
         session: z.string().min(1).max(100),
-        repo: z.string().max(100).default(''),
-        files: z.array(z.string().max(300)).max(200).default([]),
-        commits: z.array(z.object({ sha: z.string().max(64), message: z.string().max(300) })).max(50).default([]),
-        prompts: z.array(z.string().max(400)).max(10).default([]),
+        repo: z.string().max(400).transform((s) => s.slice(0, 100)).default(''),
+        files: z.array(z.string().max(1200).transform((s) => s.slice(0, 300))).max(200).default([]),
+        commits: z.array(z.object({ sha: z.string().max(64), message: z.string().max(1200).transform((s) => s.slice(0, 300)) })).max(50).default([]),
+        prompts: z.array(z.string().max(1600).transform((s) => s.slice(0, 400))).max(10).default([]),
       }).parse(req.body);
       await svc.upsertWorklog(p, req.user, number, b);
       return { ok: true };
@@ -516,7 +511,7 @@ export async function registerApi(app: FastifyInstance) {
       return { ok: true };
     });
     r.post<{ Params: { id: string } }>('/api/issues/:id/comments', async (req) => {
-      const { body } = z.object({ body: z.string().min(1) }).parse(req.body);
+      const { body } = z.object({ body: z.string().min(1).max(50_000) }).parse(req.body);
       const { p, number } = await issueRef(req, req.params.id);
       return svc.addComment(p, req.user, number, body);
     });
@@ -529,7 +524,7 @@ export async function registerApi(app: FastifyInstance) {
       return p;
     };
     r.patch<{ Params: { id: string } }>('/api/comments/:id', async (req) => {
-      const { body } = z.object({ body: z.string().min(1) }).parse(req.body);
+      const { body } = z.object({ body: z.string().min(1).max(50_000) }).parse(req.body);
       const id = intParam(req.params.id);
       await svc.updateComment(await commentProject(req, id), req.user, id, body);
       return { ok: true };
@@ -550,7 +545,7 @@ export async function registerApi(app: FastifyInstance) {
       return sp.carryOver((await ctx(req)).project, intParam(req.params.id), numbers);
     });
     r.patch<{ Params: { id: string } }>('/api/sprints/:id', async (req) => {
-      const body = z.object({ reviewNotes: z.string().optional(), name: z.string().min(1).optional() }).parse(req.body);
+      const body = z.object({ reviewNotes: z.string().max(20_000).optional(), name: z.string().min(1).optional() }).parse(req.body);
       const { project } = await ctx(req);
       if (body.reviewNotes !== undefined) await sp.saveReviewNotes(project, intParam(req.params.id), body.reviewNotes);
       if (body.name) await sp.updateSprint(project, intParam(req.params.id), { name: body.name });

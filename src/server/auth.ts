@@ -3,19 +3,27 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { and, desc, eq, gt, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { apiTokens, sessions, users } from '../db/schema.ts';
+import { apiTokens, oauthGrants, sessions, users } from '../db/schema.ts';
 import { ensureSomeMembership } from './projects.ts';
 import { consumeInvite, consumeReset, inviteInfo, resetInfo } from './invites.ts';
 import { RuleError, isEmail } from './rules.ts';
-import { userFromOAuthToken } from './oauth.ts';
-import { dummyHash, hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
+import { oauthTokenInfo } from './oauth.ts';
+import { createAttemptLimiter, dummyHash, hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
 
 const SESSION_DAYS = 30;
 const COOKIE = 'tracker_session';
 const isProd = process.env.NODE_ENV === 'production';
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173';
-/** Loginy GitHub, które przy pierwszym logowaniu dostają konto admina (np. "Wheatlay"). */
-const ADMIN_LOGINS = (process.env.ADMIN_LOGINS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+const csv = (v: string | undefined) => (v ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+/** Loginy GitHub, które przy pierwszym logowaniu dostają konto admina (tylko gdy nie ustawiono ADMIN_GITHUB_IDS). Czytane przy użyciu. */
+const adminLogins = () => csv(process.env.ADMIN_LOGINS);
+/** Numeryczne ID kont GitHub, które przy pierwszym logowaniu dostają konto admina. Gdy ustawione, tylko ono decyduje. */
+const adminGithubIds = () => csv(process.env.ADMIN_GITHUB_IDS).filter((s) => /^\d+$/.test(s)).map(Number);
+const DAY = 864e5;
+const TOKEN_TTL_DAYS = 180;
+const TOKEN_SLIDE_DAYS = 90;
+/** Drugi limiter logowania tylko na e-mail: IP w kluczu ip|e-mail da się rotować. */
+const emailLimiter = createAttemptLimiter(20, 15 * 60_000);
 /** E-maile Google, które przy pierwszym logowaniu dostają konto admina (czytane przy użyciu, nie przy imporcie modułu). */
 const adminEmails = () => (process.env.ADMIN_EMAILS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const tmpCookie = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: isProd, maxAge: 600 };
@@ -23,7 +31,7 @@ const tmpCookie = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure:
 export type SessionUser = { id: number; name: string; login: string; isAdmin: boolean };
 
 declare module 'fastify' {
-  interface FastifyRequest { user: SessionUser | null; authVia: 'session' | 'token' | null }
+  interface FastifyRequest { user: SessionUser | null; authVia: 'session' | 'token' | null; /** Token Bearer należy do agenta (grant exponential-agent albo klucz trk_ z agentId). */ tokenAgent: boolean }
 }
 
 export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -58,31 +66,47 @@ async function userFromSession(raw: string | undefined, reply: FastifyReply): Pr
   return user;
 }
 
-export async function userFromToken(header: string | undefined): Promise<SessionUser | null> {
+type TokenAuth = { user: SessionUser; agent: boolean };
+
+async function tokenAuth(header: string | undefined): Promise<TokenAuth | null> {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? '');
   if (!m) return null;
-  if (m[1].startsWith('exa_')) return userFromOAuthToken(m[1]);
-  const [row] = await db.select({ id: users.id, name: users.name, login: users.login, isAdmin: users.isAdmin, tokenId: apiTokens.id })
-    .from(apiTokens).innerJoin(users, eq(users.id, apiTokens.userId))
+  if (m[1].startsWith('exa_')) return oauthTokenInfo(m[1]);
+  const [row] = await db.select({
+    id: users.id, name: users.name, login: users.login, isAdmin: users.isAdmin, tokenId: apiTokens.id, agentId: apiTokens.agentId, expiresAt: apiTokens.expiresAt,
+  }).from(apiTokens).innerJoin(users, eq(users.id, apiTokens.userId))
     .where(and(eq(apiTokens.tokenHash, sha256(m[1])), eq(users.active, true)));
   if (!row) return null;
-  await db.update(apiTokens).set({ lastUsedAt: new Date() }).where(eq(apiTokens.id, row.tokenId));
-  const { tokenId: _, ...user } = row;
-  return user;
+  const now = Date.now();
+  if (row.expiresAt && row.expiresAt.getTime() <= now) return null;
+  // Klucz sprzed terminów ważności (expiresAt null) dostaje go przy pierwszym użyciu; potem przesuwamy, gdy zostało mniej niż 90 dni
+  // (po przesunięciu zostaje 180, więc najwyżej raz na 90 dni).
+  const slide = !row.expiresAt || row.expiresAt.getTime() - now < TOKEN_SLIDE_DAYS * DAY;
+  await db.update(apiTokens).set({ lastUsedAt: new Date(now), ...(slide ? { expiresAt: new Date(now + TOKEN_TTL_DAYS * DAY) } : {}) }).where(eq(apiTokens.id, row.tokenId));
+  const { tokenId: _, agentId, expiresAt: __, ...user } = row;
+  return { user, agent: agentId != null };
 }
 
-export async function createApiToken(userId: number, name: string) {
+export async function userFromToken(header: string | undefined): Promise<SessionUser | null> {
+  return (await tokenAuth(header))?.user ?? null;
+}
+
+/** Klucz trk_ ważny 180 dni (przesuwany przy użyciu). agentId: komputer, dla którego agent wystawił klucz (mcp-key). */
+export async function createApiToken(userId: number, name: string, agentId?: string | null) {
   const token = `trk_${randomBytes(24).toString('base64url')}`;
-  await db.insert(apiTokens).values({ userId, name, tokenHash: sha256(token) });
+  await db.insert(apiTokens).values({ userId, name, tokenHash: sha256(token), agentId: agentId ?? null, expiresAt: new Date(Date.now() + TOKEN_TTL_DAYS * DAY) });
   return token;
 }
 
 /**
- * Token Bearer (trk_ i exa_) działa tylko dla klientów AI i agenta: /mcp, /oauth/*, trasy wołane przez agenta
- * (agent/src) i hook worklog (exponential-agent hook). Reszta (m.in. /api/tokens, /api/connections) wymaga ciasteczka sesji.
+ * Token Bearer (trk_ i exa_) działa tylko dla klientów AI i agenta: /mcp, część /oauth/* (bez stron zgody authorize i device),
+ * trasy wołane przez agenta (agent/src) i hook worklog (exponential-agent hook). Reszta (m.in. /api/tokens, /api/connections) wymaga ciasteczka sesji.
  */
+const ANY_METHOD = /^(GET|POST|DELETE|PUT|PATCH|HEAD|OPTIONS)$/;
 const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
-  [/^(GET|POST|DELETE|PUT|PATCH|HEAD|OPTIONS)$/, /^\/(mcp|oauth|\.well-known)(\/|$)/],
+  [ANY_METHOD, /^\/mcp(\/|$)/],
+  [ANY_METHOD, /^\/\.well-known(\/|$)/],
+  [ANY_METHOD, /^\/oauth\/(token|revoke|register|device_authorization)$/],
   [/^GET$/, /^\/api\/(me|projects)$/],
   [/^GET$/, /^\/api\/issues\/[^/]+$/], // hook worklog czyta zgłoszenie
   [/^GET$/, /^\/api\/issues\/[^/]+\/prompt\/[^/]+$/],
@@ -92,14 +116,22 @@ const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
   [/^POST$/, /^\/api\/agent\/runs$/],
   [/^POST$/, /^\/api\/agent\/mcp-key$/], // klucz MCP dla instalatora agenta (pairing.ts sprawdza klienta grantu)
   [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
-  // Stary instalator i deinstalator PowerShell (scripts/local-agent).
-  [/^(POST|DELETE)$/, /^\/api\/me\/local-agent$/],
   [/^(DELETE|PATCH)$/, /^\/api\/agents\/[^/]+$/], // PATCH: tylko teamMode (api.ts)
 ];
-export const tokenAllowed = (method: string, url: string) => {
+/** Trasy z listy wyżej, które token może wołać tylko jako agent (grant exponential-agent albo klucz trk_ z agentId). */
+const AGENT_ONLY: Array<[RegExp, RegExp]> = [
+  [/^GET$/, /^\/api\/agent\/work$/],
+  [/^POST$/, /^\/api\/agent\/runs$/],
+  [/^(POST|DELETE)$/, /^\/api\/issues\/[^/]+\/analyze\/claim$/],
+  [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
+  [/^(DELETE|PATCH)$/, /^\/api\/agents\/[^/]+$/],
+];
+const matches = (list: Array<[RegExp, RegExp]>, method: string, url: string) => {
   const path = url.split('?')[0];
-  return TOKEN_ROUTES.some(([m, p]) => m.test(method) && p.test(path));
+  return list.some(([m, p]) => m.test(method) && p.test(path));
 };
+export const tokenAllowed = (method: string, url: string) => matches(TOKEN_ROUTES, method, url);
+export const agentOnlyRoute = (method: string, url: string) => matches(AGENT_ONLY, method, url);
 
 export function requireUser(req: FastifyRequest, reply: FastifyReply, done: () => void) {
   if (!req.user) return void reply.code(401).send({ error: 'Not signed in' });
@@ -114,12 +146,18 @@ export function requireAdmin(req: FastifyRequest, reply: FastifyReply, done: () 
 export async function registerAuth(app: FastifyInstance) {
   app.decorateRequest('user', null);
   app.decorateRequest('authVia', null);
+  app.decorateRequest('tokenAgent', false);
   app.addHook('onRequest', async (req, reply) => {
     const fromSession = await userFromSession(req.cookies[COOKIE], reply);
-    req.user = fromSession ?? (await userFromToken(req.headers.authorization));
+    const viaToken = fromSession ? null : await tokenAuth(req.headers.authorization);
+    req.user = fromSession ?? viaToken?.user ?? null;
     req.authVia = req.user ? (fromSession ? 'session' : 'token') : null;
+    req.tokenAgent = !!viaToken?.agent;
     if (req.authVia === 'token' && !tokenAllowed(req.method, req.url)) {
       return reply.code(403).send({ error: 'This token can only be used by AI clients and the agent' });
+    }
+    if (req.authVia === 'token' && !req.tokenAgent && agentOnlyRoute(req.method, req.url)) {
+      return reply.code(403).send({ error: 'Only the Exponential agent can use this' });
     }
     // Powrót do /oauth/authorize albo /oauth/device po logowaniu (dowolną metodą): logowanie kończy się wejściem na "/".
     const ret = req.cookies.oauth_return;
@@ -178,7 +216,7 @@ export async function registerAuth(app: FastifyInstance) {
     if (!access_token) return reply.redirect('/login?error=github');
     const gh = (await (await fetch('https://api.github.com/user', {
       headers: { Authorization: `Bearer ${access_token}`, 'User-Agent': 'tracker' },
-    })).json()) as { id: number; login: string; name: string | null; avatar_url: string; email: string | null };
+    })).json()) as { id: number; login: string; name: string | null; avatar_url: string; email: string | null; created_at?: string };
 
     const userId = await upsertGithubUser(gh, { invite: req.cookies.invite });
     if (!userId) return reply.redirect('/login?error=not_allowed');
@@ -239,10 +277,12 @@ export async function registerAuth(app: FastifyInstance) {
     const body = z.object({ email: z.string().min(1).max(320), password: z.string().min(1).max(1000) }).parse(req.body);
     const email = body.email.trim().toLowerCase();
     const key = `${req.ip}|${email}`;
-    if (loginLimiter.blocked(key)) return reply.code(429).send({ error: 'Too many failed attempts, try again in 15 minutes', code: 'rate' });
+    const emailKey = `email|${email}`;
+    if (loginLimiter.blocked(key) || emailLimiter.blocked(emailKey)) return reply.code(429).send({ error: 'Too many failed attempts, try again in 15 minutes', code: 'rate' });
     const id = await loginWithPassword(email, body.password);
     if (!id) {
       loginLimiter.fail(key);
+      emailLimiter.fail(emailKey);
       return reply.code(401).send({ error: 'Wrong e-mail or password' });
     }
     loginLimiter.reset(key);
@@ -271,9 +311,26 @@ export async function registerAuth(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /** Bez nagłówka X-Requested-With: exponential to formularz z cudzej strony (CSRF), nie aplikacja. */
+  const csrfHeader = (req: FastifyRequest) => req.headers['x-requested-with'] === 'exponential';
+
   app.post('/auth/logout', async (req, reply) => {
+    if (!csrfHeader(req)) return reply.code(403).send({ error: 'Missing X-Requested-With header' });
     const raw = req.cookies[COOKIE];
     if (raw) await db.delete(sessions).where(eq(sessions.id, sha256(raw)));
+    reply.clearCookie(COOKIE, { path: '/' });
+    return { ok: true };
+  });
+
+  // Wylogowanie ze wszystkich urządzeń: sesje, grants OAuth (też agenta) i klucze trk_ konta.
+  app.post('/auth/logout-all', async (req, reply) => {
+    if (!csrfHeader(req)) return reply.code(403).send({ error: 'Missing X-Requested-With header' });
+    if (req.authVia !== 'session' || !req.user) return reply.code(401).send({ error: 'Not signed in' });
+    const userId = req.user.id;
+    await db.transaction(async (tx) => {
+      await revokeAllCredentials(tx, userId);
+      await tx.delete(sessions).where(eq(sessions.userId, userId));
+    });
     reply.clearCookie(COOKIE, { path: '/' });
     return { ok: true };
   });
@@ -293,21 +350,48 @@ export async function registerAuth(app: FastifyInstance) {
   }
 }
 
+/** Unieważnia grants OAuth (też agenta) i kasuje klucze trk_ konta. Sesji nie rusza. */
+async function revokeAllCredentials(tx: Pick<typeof db, 'update' | 'delete'>, userId: number) {
+  await tx.update(oauthGrants).set({ revokedAt: new Date() }).where(and(eq(oauthGrants.userId, userId), isNull(oauthGrants.revokedAt)));
+  await tx.delete(apiTokens).where(eq(apiTokens.userId, userId));
+}
+
 /**
- * Allowlista: wchodzi tylko ktoś, kogo login jest już w tabeli users (dodany przez admina
- * albo z importu), jest w ADMIN_LOGINS albo ma ważne zaproszenie. Zwraca id albo null.
- * E-mail z GitHuba nigdy nie łączy kont.
+ * Kto dostaje admina przy tworzeniu konta: gdy ustawiono ADMIN_GITHUB_IDS, tylko te numeryczne ID. Inaczej ADMIN_LOGINS,
+ * ale nie, jeśli konto o tym loginie już istnieje z innym githubId (ktoś zmienił nazwę, a jego starym loginem zalogował się obcy).
  */
-export async function upsertGithubUser(gh: { id: number; login: string; name: string | null; avatar_url: string; email: string | null }, opts: { invite?: string } = {}) {
+async function adminCandidate(gh: { id: number; login: string }) {
+  if ((process.env.ADMIN_GITHUB_IDS ?? '').trim()) return adminGithubIds().includes(gh.id);
+  if (!adminLogins().includes(gh.login.toLowerCase())) return false;
+  const [other] = await db.select({ id: users.id }).from(users)
+    .where(and(dsql`lower(${users.login}) = lower(${gh.login})`, dsql`${users.githubId} is not null`, dsql`${users.githubId} <> ${gh.id}`));
+  return !other;
+}
+
+/**
+ * Allowlista: wchodzi tylko ktoś, czyje konto GitHub (id) już jest w tabeli users, kto przejmuje wiersz dodany przez admina
+ * albo z importu (bez githubId), jest adminem z ADMIN_GITHUB_IDS / ADMIN_LOGINS albo ma ważne zaproszenie. Zwraca id albo null.
+ * Wiersz bez githubId przejmuje po loginie tylko konto GitHub założone przed tym wierszem (created_at z API GitHuba; bez niego
+ * wystarcza zgodność loginu i leci ostrzeżenie). E-mail z GitHuba nigdy nie łączy kont.
+ */
+export async function upsertGithubUser(gh: { id: number; login: string; name: string | null; avatar_url: string; email: string | null; created_at?: string }, opts: { invite?: string } = {}) {
   const [byGithub] = await db.select().from(users).where(eq(users.githubId, gh.id));
   const [byLogin] = byGithub ? [byGithub] : await db.select().from(users).where(and(dsql`lower(${users.login}) = lower(${gh.login})`, isNull(users.githubId)));
   const existing = byGithub ?? byLogin;
   if (existing) {
     if (!existing.active) return null;
+    if (!byGithub) {
+      const created = gh.created_at ? new Date(gh.created_at) : null;
+      if (created && !Number.isNaN(created.getTime())) {
+        if (created.getTime() >= existing.createdAt.getTime()) return null; // konto GitHub młodsze od wiersza: nie przejmuje cudzego loginu
+      } else {
+        console.warn(`GitHub login ${gh.login} claimed a pre-added account by login only (GitHub did not give created_at)`);
+      }
+    }
     await db.update(users).set({ githubId: gh.id, login: gh.login, providerAvatarUrl: gh.avatar_url, ...(existing.avatarCustom ? {} : { avatarUrl: gh.avatar_url }) }).where(eq(users.id, existing.id));
     return existing.id;
   }
-  if (!ADMIN_LOGINS.includes(gh.login.toLowerCase())) {
+  if (!(await adminCandidate(gh))) {
     // Nowe konto tylko z ważnym zaproszeniem (członkostwo dodaje consumeInvite).
     if (!opts.invite || !(await inviteInfo(opts.invite))) return null;
     const [row] = await db.insert(users).values({ githubId: gh.id, login: gh.login, name: gh.name || gh.login, avatarUrl: gh.avatar_url, providerAvatarUrl: gh.avatar_url }).returning();
@@ -376,13 +460,14 @@ export async function registerWithInvite(token: string, input: { name: string; e
   }
 }
 
-/** Reset hasła z linku: zużycie linku, nowy hash i kasowanie wszystkich sesji konta w jednej transakcji. Zwraca id konta. */
+/** Reset hasła z linku: zużycie linku, nowy hash, kasowanie sesji, odwołanie grantów OAuth i kluczy trk_ konta w jednej transakcji. Zwraca id konta. */
 export async function resetPassword(token: string, passwordHash: string) {
   return db.transaction(async (tx) => {
     const userId = (await resetInfo(token, tx)) && (await consumeReset(token, tx));
     if (!userId) throw new RuleError('This link is no longer valid', 'not_found');
     await tx.update(users).set({ passwordHash }).where(eq(users.id, userId));
     await tx.delete(sessions).where(eq(sessions.userId, userId));
+    await revokeAllCredentials(tx, userId);
     return userId;
   });
 }

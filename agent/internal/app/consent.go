@@ -25,6 +25,8 @@ const (
 	dPending
 )
 
+var codexRefused sync.Map // issue keys already logged as refused for Codex
+
 var (
 	declinedMem  = map[string]time.Time{}
 	declinedMemM sync.Mutex
@@ -146,7 +148,15 @@ func consentDecision(a *Auth, key string, rq requesterInfo) decision {
 			declined = true
 		}
 	}
-	d := decideOther(cfg, ownUserID(a), rq, time.Now(), hasOnce(key, rq.RequestedAt), declined)
+	own := ownUserID(a)
+	if cfg.Engine == "codex" && othersRun(own, rq) {
+		// Codex cannot be limited to the repo (it reads the whole disk), so it never runs for other people.
+		if _, seen := codexRefused.LoadOrStore(key, true); !seen {
+			logf("%s: refused, Codex can't be limited to the repo", key)
+		}
+		return dNo
+	}
+	d := decideOther(cfg, own, rq, time.Now(), hasOnce(key, rq.RequestedAt), declined)
 	if d == dPending && !promptSupported() {
 		return dYes // no prompt on this OS
 	}

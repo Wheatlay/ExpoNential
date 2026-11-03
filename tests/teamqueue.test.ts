@@ -49,7 +49,7 @@ beforeAll(async () => {
   const cookie = (await import('@fastify/cookie')).default;
   const auth = await import('../src/server/auth.ts');
   const { registerApi } = await import('../src/server/api.ts');
-  tokenBob = await auth.createApiToken(bob.id, 'agent');
+  tokenBob = await auth.createApiToken(bob.id, 'agent', DEV_B);
   app = Fastify();
   await app.register(cookie);
   await auth.registerAuth(app);
@@ -143,9 +143,76 @@ describe('team mode per computer', () => {
     expect(res.json()).toMatchObject({ teamMode: 'auto' });
   });
 
-  it('old team routes answer 410 Gone', async () => {
+  it('old team routes are gone', async () => {
     const res = await app.inject({ method: 'PUT', url: `/api/agents/${DEV_B}/team/TQ`, headers: { authorization: `Bearer ${tokenBob}` } });
-    expect([403, 410]).toContain(res.statusCode);
+    expect([403, 404]).toContain(res.statusCode);
+  });
+
+  it('GET /api/me reports hasAgent and no localAgentAt', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/me', headers: { authorization: `Bearer ${tokenBob}` } });
+    expect(res.statusCode).toBe(200);
+    const me = res.json();
+    expect(me.hasAgent).toBe(true);
+    expect(me.agentOutdated).toBe(false);
+    expect('localAgentAt' in me).toBe(false);
+    await dbmod.sql`update agents set version = '0.1.0' where id = ${DEV_B}`;
+    expect((await app.inject({ method: 'GET', url: '/api/me', headers: { authorization: `Bearer ${tokenBob}` } })).json().agentOutdated).toBe(true);
+    await dbmod.sql`update agents set version = ${ag.MIN_EXE_AGENT} where id = ${DEV_B}`;
+  });
+
+  it('DELETE claim with requeue puts the job back without marking it failed; without requeue it fails', async () => {
+    await clear();
+    const n = await requested(bob);
+    const del = (body: object) => app.inject({ method: 'DELETE', url: `/api/issues/TQ-${n}/analyze/claim`, headers: { authorization: `Bearer ${tokenBob}`, 'content-type': 'application/json' }, payload: body });
+    await ag.claimAnalysis(P, bob, n, DEV_B, ag.MIN_EXE_AGENT);
+    expect((await del({ deviceId: DEV_B, error: 'no repo', requeue: true })).statusCode).toBe(200);
+    let [row] = await dbmod.sql`select analysis_requested_at, analysis_claimed_at, analysis_claimed_device, analysis_failed_at from issues where number = ${n}`;
+    expect(row.analysis_requested_at).not.toBeNull();
+    expect(row.analysis_claimed_at).toBeNull();
+    expect(row.analysis_failed_at).toBeNull();
+    expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).toContain(`TQ-${n}`);
+    await ag.claimAnalysis(P, bob, n, DEV_B, ag.MIN_EXE_AGENT);
+    expect((await del({ deviceId: DEV_B, error: 'boom' })).statusCode).toBe(200);
+    [row] = await dbmod.sql`select analysis_failed_at from issues where number = ${n}`;
+    expect(row.analysis_failed_at).not.toBeNull();
+    await clear();
+    await dbmod.sql`update issues set analysis_failed_at = null`;
+  });
+
+  it('skip is truncated to 50 ids and a long skip or error query is accepted', async () => {
+    const raw = Array.from({ length: 80 }, (_, i) => i + 1000).join(',');
+    expect(ag.parseSkip(raw)).toHaveLength(50);
+    await clear();
+    await requested(bob);
+    const longSkip = Array.from({ length: 200 }, (_, i) => i + 100000).join(',').slice(0, 900);
+    const res = await app.inject({ method: 'GET', url: `/api/agent/work?deviceId=${DEV_B}&version=${ag.MIN_EXE_AGENT}&skip=${longSkip}&error=${'e'.repeat(700)}`, headers: { authorization: `Bearer ${tokenBob}` } });
+    expect(res.statusCode).toBe(200);
+    const [a] = await dbmod.sql`select last_error from agents where id = ${DEV_B}`;
+    expect((a.last_error as string).length).toBe(300);
+  });
+
+  it('poll stores repo status and error from the repos JSON', async () => {
+    await clear();
+    await requested(bob);
+    // Repo w błędzie nie przyjmuje pracy, więc bez klonowania odpytanie by czekało: włączamy je na czas testu.
+    P = await projects.updateProject(P.id, { agentsMayClone: true });
+    const repos = encodeURIComponent(JSON.stringify({ TQ: { path: 'C:/tq', source: 'hook', status: 'error', error: 'x'.repeat(500) } }));
+    const res = await app.inject({ method: 'GET', url: `/api/agent/work?deviceId=${DEV_B}&version=${ag.MIN_EXE_AGENT}&repos=${repos}`, headers: { authorization: `Bearer ${tokenBob}` } });
+    expect(res.statusCode).toBe(200);
+    const [r] = await dbmod.sql`select status, error from agent_repos where agent_id = ${DEV_B}`;
+    expect(r.status).toBe('error');
+    expect((r.error as string).length).toBe(300);
+    await dbmod.sql`update agent_repos set status = 'ok', error = null, source = 'manual' where agent_id = ${DEV_B}`;
+    P = await projects.updateProject(P.id, { agentsMayClone: false });
+  });
+
+  it('waitForWork wakes on a new analysis request instead of waiting for the fallback', async () => {
+    await clear();
+    const t0 = Date.now();
+    setTimeout(() => { void requested(bob); }, 400);
+    const out = await ag.waitForWork(bob, DEV_B, { name: 'BOB-PC', busy: false, repoKeys: ['TQ'], version: ag.MIN_EXE_AGENT }, new AbortController().signal);
+    expect(out.jobs.some((j) => j.kind === 'analyze')).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(5000);
   });
 
   it('the data migration SQL maps opted-in computers to auto and leaves the rest on ask', async () => {

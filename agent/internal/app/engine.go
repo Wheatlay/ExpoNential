@@ -69,26 +69,19 @@ func findEngine(engine string) string {
 }
 
 // Issue text is written by every project member, so it is untrusted (prompt injection). Read/Grep/Glob are NOT
-// allowed explicitly: without consent they only work inside the repo. Secrets in the repo are denied too.
+// allowed explicitly and --permission-mode default is forced (a user defaultMode/allow must not widen it), so in -p mode
+// reads outside the repo are not approved. Secrets (repo-relative and absolute, see secrets.go) are denied on top.
+// Deny rules win over allow rules in Claude Code, so a blanket Read(//**) deny would also block the repo: not used.
 const allowedTools = "Skill,mcp__tracker__get_procedure,mcp__tracker__get_issue,mcp__tracker__list_comments,mcp__tracker__list_issues,mcp__tracker__set_analysis"
-
-var secretGlobs = []string{"**/.env*", "**/*.pem", "**/*.key", "**/*.pfx", "**/*.p12",
-	"**/secrets*.json", "**/appsettings.*.json", "**/id_rsa*", "**/*.keystore", "**/credentials*"}
 
 // othersRun: the analysis was requested by someone other than this account (or the identity is unknown), so the
 // repo's own .claude settings must not load.
 func othersRun(own int, rq requesterInfo) bool { return own == 0 || rq.ID == 0 || rq.ID != own }
 
-func deniedTools() string {
-	parts := []string{"Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch"}
-	for _, s := range secretGlobs {
-		parts = append(parts, "Read("+s+")", "Grep("+s+")")
-	}
-	return strings.Join(parts, ",")
-}
-
 type runOpts struct {
 	untrusted     bool
+	others        bool   // requested by someone else: the tracker MCP is limited to this one issue
+	issueKey      string // KEY-N of the analysis
 	engine, bin   string
 	prompt, model string
 	cwd           string
@@ -102,10 +95,15 @@ func runEngine(o runOpts) (int, *runUsage, engineFailure) {
 	var args []string
 	if o.engine == "claude" {
 		// Only the tracker MCP, none of the user's other servers.
-		mcpFile := filepath.Join(dataDir(), "mcp.json")
+		mcpFile := filepath.Join(dataDir(), fmt.Sprintf("mcp-%d-%d.json", os.Getpid(), time.Now().UnixNano()))
 		_ = os.MkdirAll(dataDir(), 0o755)
-		mcp, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"tracker": map[string]any{"type": "http", "url": o.base + "/mcp", "headers": map[string]string{"Authorization": o.auth}}}})
+		hdr := map[string]string{"Authorization": o.auth}
+		if o.others && o.issueKey != "" {
+			hdr["X-Exponential-Issue"] = o.issueKey // the server limits the tools to this one issue
+		}
+		mcp, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"tracker": map[string]any{"type": "http", "url": o.base + "/mcp", "headers": hdr}}})
 		_ = os.WriteFile(mcpFile, mcp, 0o600)
+		defer os.Remove(mcpFile) // the bearer token must not stay on disk
 		pdir, err := ensurePlugin()
 		if err != nil {
 			logRaw("agent: plugin error " + err.Error() + "\n")
@@ -118,7 +116,7 @@ func runEngine(o runOpts) (int, *runUsage, engineFailure) {
 		if o.untrusted {
 			src = "user"
 		}
-		args = []string{"-p", "--model", o.model, "--plugin-dir", pdir, "--allowedTools", allowedTools, "--disallowedTools", deniedTools(),
+		args = []string{"-p", "--model", o.model, "--plugin-dir", pdir, "--permission-mode", "default", "--allowedTools", allowedTools, "--disallowedTools", denyRules(o.activeAccount, activeAccount()),
 			"--setting-sources", src, "--strict-mcp-config", "--mcp-config", mcpFile, "--output-format", "json"}
 		if o.activeAccount != "" {
 			env = append(env, "CLAUDE_CONFIG_DIR="+o.activeAccount)

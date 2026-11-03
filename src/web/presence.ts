@@ -12,13 +12,20 @@ export function receivePresence(e: { userId: number; name: string; number: numbe
   state = state.filter((p) => p.userId !== e.userId);
   if (!e.end) state = [...state, { userId: e.userId, name: e.name, number: e.number, statusId: e.statusId, rowKey: e.rowKey, fx: e.fx, fy: e.fy, at: Date.now() }];
   emit();
+  ensureSweep();
 }
 
 // Zgubione "end" (zamknięta karta, utrata sieci) nie może zostawić ducha na zawsze.
-setInterval(() => {
-  const fresh = state.filter((p) => Date.now() - p.at < 4000);
-  if (fresh.length !== state.length) { state = fresh; emit(); }
-}, 1000);
+// Zegar chodzi tylko, dopóki są wpisy; bez nich nie ma żadnego timera.
+let sweep: ReturnType<typeof setInterval> | null = null;
+function ensureSweep() {
+  if (sweep || !state.length) return;
+  sweep = setInterval(() => {
+    const fresh = state.filter((p) => Date.now() - p.at < 4000);
+    if (fresh.length !== state.length) { state = fresh; emit(); }
+    if (!state.length && sweep) { clearInterval(sweep); sweep = null; }
+  }, 1000);
+}
 
 export function usePresence() {
   return useSyncExternalStore((fn) => { subs.push(fn); return () => { subs = subs.filter((s) => s !== fn); }; }, () => state);

@@ -37,7 +37,7 @@ export const decisionSchema = z.object({
 /** Wejście z MCP: same treści, bez wyborów (te robi człowiek w trackerze). */
 export const analysisInputSchema = z.object({
   type: z.enum(ANALYSIS_TYPES),
-  sections: z.object(Object.fromEntries(SECTION_KEYS.map((k) => [k, z.string().trim().max(1500).optional()])) as Record<SectionKey, z.ZodOptional<z.ZodString>>),
+  sections: z.object(Object.fromEntries(SECTION_KEYS.map((k) => [k, z.string().trim().max(4000).optional()])) as Record<SectionKey, z.ZodOptional<z.ZodString>>),
   decisions: z.array(decisionSchema).max(5).default([]),
 }).superRefine((a, ctx) => {
   a.decisions.forEach((d, i) => {

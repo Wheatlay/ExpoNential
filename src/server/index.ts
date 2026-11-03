@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import fstatic from '@fastify/static';
+import { startCleanup } from './cleanup.ts';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -24,6 +25,19 @@ import { onSprintsEnsured } from './sprints.ts';
 import { maskUrl } from './rules.ts';
 import { marketplace, pluginArchive } from './plugin.ts';
 
+/**
+ * Ile przeskoków proxy ufamy w X-Forwarded-For (req.ip). Domyślnie 1: jeden Traefik przed aplikacją. TRUST_PROXY: liczba
+ * przeskoków albo lista IP/CIDR proxy oddzielona przecinkami ("false" wyłącza).
+ */
+function trustProxy(): boolean | string[] {
+  const raw = (process.env.TRUST_PROXY ?? '').trim();
+  // Liczba przeskoków działa w czasie wykonania (proxy-addr), tylko typy Fastify jej nie znają.
+  if (!raw) return 1 as unknown as boolean;
+  if (/^\d+$/.test(raw)) return Number(raw) as unknown as boolean;
+  if (raw === 'false') return false;
+  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const webDir = path.join(root, 'dist/web');
 
@@ -34,7 +48,7 @@ await seedDefaults();
 await ensureSprints();
 setInterval(() => void ensureSprints().catch((e) => app.log.error(e)), 60 * 60 * 1000);
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', serializers: { req: (req) => ({ method: req.method, url: maskUrl(req.url) }) } }, trustProxy: true, bodyLimit: 5 * 1024 * 1024 });
+const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info', serializers: { req: (req) => ({ method: req.method, url: maskUrl(req.url) }) } }, trustProxy: trustProxy(), bodyLimit: 5 * 1024 * 1024 });
 await app.register(cookie);
 await registerAuth(app);
 await registerDemo(app); // zaraz po auth: hooki blokad demo obejmują wszystkie trasy rejestrowane niżej
@@ -52,6 +66,8 @@ await registerMeetings(app);
 // Przypomnienia o spotkaniach: co 30 s wysyłamy te, których czas minął (bez dubli, patrz reminder_sends).
 const reminders = setInterval(() => void runReminders(new Date(), app.log).catch((e) => app.log.error(e)), 30_000);
 app.addHook('onClose', async () => clearInterval(reminders));
+const stopCleanup = startCleanup();
+app.addHook('onClose', async () => stopCleanup());
 
 app.get('/health', async () => ({ ok: true }));
 
@@ -66,7 +82,7 @@ mkdirSync(UPLOADS_DIR, { recursive: true });
 // Załączniki tylko dla zalogowanych (w Linearze też były za autoryzacją).
 await app.register(async (r) => {
   r.addHook('onRequest', async (req, reply) => { if (!req.user) return reply.code(401).send({ error: 'Not signed in' }); });
-  await r.register(fstatic, { root: UPLOADS_DIR, prefix: '/uploads/', decorateReply: false });
+  await r.register(fstatic, { root: UPLOADS_DIR, prefix: '/uploads/', decorateReply: false, setHeaders: (res) => (res as unknown as import('node:http').ServerResponse).setHeader('X-Content-Type-Options', 'nosniff') });
 });
 
 if (existsSync(webDir)) {

@@ -12,17 +12,12 @@ import { Avatar, Icon, StatusIcon, startedFraction } from './icons.tsx';
 import { copyText, toast } from './toast.ts';
 import { timeAgo } from './time.ts';
 import { Tooltip, openMenu } from './menu.tsx';
-import { agentHere } from './startWork.ts';
-import { openSetupWizard } from './SetupWizard.tsx';
+import { openSetupWizard } from './setupWizardState.ts';
+import { setTheme, type Theme } from './theme.ts';
+import { useProjectDetail } from './projectDetail.ts';
 import { lang, locale, setLang, t, type Lang } from './i18n.ts';
 import { uploadImageFile } from './paste.ts';
 
-export type Theme = 'dark' | 'light' | 'oled';
-
-export function setTheme(t: Theme) {
-  document.documentElement.dataset.theme = t;
-  try { localStorage.setItem('theme', t); } catch { /* prywatne okno */ }
-}
 
 /**
  * Ustawienia w trzech zakresach, żeby było jasne, co zmieniasz dla siebie, a co dla wszystkich:
@@ -312,6 +307,8 @@ function ProfileSettings() {
     if (!name || name === me.name) { setRev((r) => r + 1); return; }
     save({ name }).catch(() => setRev((r) => r + 1));
   };
+  const signOutAll = () => void askConfirm({ title: t('Sign out everywhere?'), body: t('You will be signed out on every device and have to sign in again.'), action: t('Sign out'), danger: false })
+    .then((ok) => { if (ok) return api('/auth/logout-all', { method: 'POST' }).then(() => location.assign('/login')); });
   const remove = () => void askConfirm({ title: t('Delete your account?'), action: t('Delete account'), type: me.login })
     .then((ok) => { if (ok) return api('/api/me', { method: 'DELETE', body: { confirm: me.login } }).then(() => location.assign('/login')); });
   return (
@@ -339,6 +336,12 @@ function ProfileSettings() {
         </div>
       </div>
       <div id="profile-danger" className="s-card" style={{ marginTop: 24 }}>
+        <div className="s-row">
+          <Tooltip text={t('Ends your sessions on every device.')}><span className="grow">{t('Sign out everywhere')}</span></Tooltip>
+          <Tooltip text={reason}>
+            <button className="btn sm" disabled={demo} onClick={signOutAll}>{t('Sign out everywhere')}</button>
+          </Tooltip>
+        </div>
         <div className="s-row">
           <Tooltip text={t('Your issues and comments stay, signed as "Deleted user". You lose access to every project.')}><span className="grow">{t('Delete account')}</span></Tooltip>
           <Tooltip text={reason}>
@@ -397,11 +400,7 @@ function ClaudeConnect() {
   const projects = useProjects(!!me && !me.demo).data;
   const projectOf = (k: string) => projects?.find((p) => p.key === k);
   const refreshTeam = () => { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); };
-  const grants = useQuery({ queryKey: ['connections'], queryFn: () => api<{ id: number; client: string; createdAt: string; lastUsedAt: string | null; firstMcpAt: string | null }[]>('/api/connections'), enabled: !!me && !me.demo });
-  // Przełącznik "ten komputer ma agenta": tylko ta przeglądarka (localStorage), dla laptopów z dotykiem, gdzie wykrycie telefonu myli.
-  const [, setTick] = useState(0);
-  const here = agentHere(me);
-  const toggleHere = () => { try { localStorage.setItem('tracker.agentHere', here ? '0' : '1'); } catch { /* prywatne okno */ } setTick((n) => n + 1); };
+  const grants = useQuery({ queryKey: ['connections'], queryFn: () => api<{ id: number; client: string; agent?: boolean; computerName?: string | null; createdAt: string; lastUsedAt: string | null; firstMcpAt: string | null }[]>('/api/connections'), enabled: !!me && !me.demo });
   // Instalacja dzieje się w terminalu: po powrocie do karty odświeżamy status bez przeładowania.
   useEffect(() => {
     const f = () => { void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['tokens'] }); void qc.invalidateQueries({ queryKey: ['agents'] }); };
@@ -424,15 +423,18 @@ function ClaudeConnect() {
       {(grants.data?.length ?? 0) > 0 && (
         <div className="s-card" id="ai-clients" style={{ marginTop: 12 }}>
           <div className="s-row s-row-head"><b>{t('Connected AI clients')}</b></div>
-          {grants.data!.map((g) => (
+          {grants.data!.map((g) => {
+            const label = g.agent ? t('Exponential agent · {computer}', { computer: g.computerName || t('Unnamed computer') }) : g.client;
+            return (
             <div key={g.id} className="s-row">
-              <span className="grow">{g.client}</span>
+              <span className="grow">{label}</span>
               <span className="hint">{g.lastUsedAt ? t('since {date}, last used {when}', { date: dmy(g.createdAt), when: timeAgo(g.lastUsedAt) }) : t('since {date}, never used', { date: dmy(g.createdAt) })}</span>
               <button className="btn sm danger" onClick={() => void askConfirm({
-                title: t('Revoke "{name}"?', { name: g.client }), body: t('This client loses access to Exponential until you sign in with it again.'), action: t('Revoke'), danger: true,
+                title: t('Revoke "{name}"?', { name: label }), body: t('This client loses access to Exponential until you sign in with it again.'), action: t('Revoke'), danger: true,
               }).then((ok) => { if (ok) void api(`/api/connections/${g.id}`, { method: 'DELETE' }).then(() => { void qc.invalidateQueries({ queryKey: ['connections'] }); void qc.invalidateQueries({ queryKey: ['me'] }); }); })}>{t('Revoke')}</button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {(agentList.data?.length ?? 0) > 0 && !demo && (
@@ -490,11 +492,6 @@ function ClaudeConnect() {
             </div>
             </Fragment>
           ))}
-          {/* Tylko dla starego skryptu: link tracker:// z tej przeglądarki. Nowy agent bierze zlecenia z kolejki sam. */}
-          {(agentList.data ?? []).some((a) => a.legacy) && <div className="s-row">
-            <span className="grow"><Tooltip text={t('For laptops with a touch screen. Off: Analyze here only queues the request.')}><span>{t('This computer has the agent')}</span></Tooltip></span>
-            <button className={`switch ${here ? 'on' : ''}`} role="switch" aria-checked={here} aria-label={t('This computer has the agent')} onClick={toggleHere} />
-          </div>}
         </div>
       )}
       {(tokens.data?.length ?? 0) > 0 && (
@@ -513,7 +510,7 @@ function ClaudeConnect() {
   );
 }
 
-type ProjectDetail = {
+export type ProjectDetail = {
   id: number; key: string; name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
@@ -521,11 +518,6 @@ type ProjectDetail = {
   defaultModels: { analyze: string; deep: string };
   role: 'admin' | 'member'; canEdit: boolean;
   members: { id: number; login: string; name: string; avatarUrl: string | null; active: boolean; role: 'admin' | 'member' }[];
-};
-
-export const useProjectDetail = () => {
-  const key = useProjectKey();
-  return useQuery({ queryKey: ['project', key], queryFn: () => api<ProjectDetail>(`/api/projects/${key}`) });
 };
 
 /** Wspólne dla sekcji projektu: dane, "tylko do odczytu" dla nie-adminów i zapis. */
@@ -627,6 +619,17 @@ function ProjectGeneral() {
 type DeployEnvRow = { id?: number; name: string; sourceRef: string; isProduction: boolean };
 
 /** Środowiska deployu: każda zmiana wysyła całą listę (PUT), kolejność wierszy = kolejność w pasku bocznym. */
+function WebhookSecret({ projectKey }: { projectKey: string }) {
+  const q = useQuery({ queryKey: ['deploy-webhook-secret', projectKey], queryFn: () => api<{ secret: string }>(`/api/projects/${projectKey}/deploy-webhook-secret`), staleTime: Infinity });
+  return (
+    <div className="s-row">
+      <span className="s-label">{t('Webhook secret')}</span>
+      <input className="input grow" type="password" readOnly value={q.data?.secret ?? ''} aria-label={t('Webhook secret')} />
+      <button className="btn sm" disabled={!q.data} onClick={() => q.data && copyText(q.data.secret, t('Secret copied'))}>{t('Copy')}</button>
+    </div>
+  );
+}
+
 function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deploySource']; projectKey: string; ro: string | null }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['deploy-envs', projectKey], queryFn: () => api<DeployEnvRow[]>('/api/deploy-envs') });
@@ -645,6 +648,7 @@ function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deployS
   const ph = source === 'coolify' ? t('Coolify app UUID') : t('GitHub environment');
   return (
     <>
+      {source === 'webhook' && !ro && <WebhookSecret projectKey={projectKey} />}
       <div id="deploy-envs" className={`s-row ${envs.length ? 's-group-head' : ''}`}>
         <Tooltip text={t('Each environment shows its own box in the sidebar and its own rocket on commits.')}><span className="s-label">{t('Environments')}</span></Tooltip>
         {source === 'webhook'
@@ -907,7 +911,7 @@ function ProjectLabelsStatuses() {
         {meta.labels.map((l) => { const byAi = AI_LABELS.includes(l.name.toLowerCase()); const lock = ro || (byAi ? t('AI analysis finds this label by its name, so it cannot be renamed or deleted. You can change its color.') : null); return (
           <div key={l.id} className="s-row">
             <input type="color" defaultValue={toHex(l.color)} disabled={!!ro} onBlur={(e) => e.target.value !== toHex(l.color) && void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: l.name, color: e.target.value } }).then(refresh)} style={{ width: 30, height: 30, border: 0, background: 'none' }} />
-            <input className="input grow" defaultValue={l.name} disabled={!!lock} title={lock ?? undefined} onBlur={(e) => e.target.value.trim() && e.target.value !== l.name && void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: e.target.value.trim(), color: l.color } }).then(refresh)} />
+            <input className="input grow" defaultValue={l.name} disabled={!!lock} title={lock ?? undefined} onBlur={(e) => { const el = e.target; if (el.value.trim() && el.value !== l.name) void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: el.value.trim(), color: l.color } }).then(refresh).catch((err: Error) => { toast(err.message, 'err'); el.value = l.name; }); }} />
             {byAi && <span className="badge ai" title={t('AI analysis sets this label from the issue type.')}>{t('set by AI')}</span>}
             <Tooltip text={lock}>
               <button className="btn sm danger" disabled={!!lock} onClick={() => void askConfirm({ title: t('Delete label "{name}"?', { name: l.name }), body: t('It will be removed from all issues.') }).then((ok) => { if (ok) void api(`/api/admin/labels/${l.id}`, { method: 'DELETE' }).then(refresh); })}>{t('Delete')}</button>
@@ -921,7 +925,7 @@ function ProjectLabelsStatuses() {
           <div key={s.id} className="s-row">
             <Tooltip text={t(s.type)}><span style={{ display: 'inline-flex' }}><StatusIcon status={s} fraction={startedFraction(meta.statuses, s)} /></span></Tooltip>
             <input type="color" defaultValue={toHex(s.color)} disabled={!!ro} onBlur={(e) => e.target.value !== toHex(s.color) && void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, color: e.target.value } }).then(refresh)} style={{ width: 26, height: 26, border: 0, background: 'none' }} />
-            <input className="input grow" defaultValue={s.name} disabled={!!ro} onBlur={(e) => e.target.value.trim() && e.target.value !== s.name && void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, name: e.target.value.trim() } }).then(refresh)} />
+            <input className="input grow" defaultValue={s.name} disabled={!!ro} onBlur={(e) => { const el = e.target; if (el.value.trim() && el.value !== s.name) void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, name: el.value.trim() } }).then(refresh).catch((err: Error) => { toast(err.message, 'err'); el.value = s.name; }); }} />
             <Tooltip text={ro}>
               <select className="input" value={s.role ?? ''} disabled={!!ro} aria-label={t('Status role')}
                 onChange={(e) => void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, role: e.target.value || null } }).then(refresh)}>
@@ -933,8 +937,8 @@ function ProjectLabelsStatuses() {
             <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
               <input type="checkbox" checked={!s.hiddenOnBoard} disabled={!!ro} onChange={(e) => void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, hiddenOnBoard: !e.target.checked } }).then(refresh)} /> {t('On board')}
             </label>
-            <button className="icon-btn" disabled={!!ro || idx === 0} title={ro ?? t('Move up')} onClick={() => void swap(meta.statuses, idx, idx - 1).then(refresh)}>↑</button>
-            <button className="icon-btn" disabled={!!ro || idx === meta.statuses.length - 1} title={ro ?? t('Move down')} onClick={() => void swap(meta.statuses, idx, idx + 1).then(refresh)}>↓</button>
+            <button className="icon-btn" disabled={!!ro || idx === 0} title={ro ?? t('Move up')} aria-label={ro ?? t('Move up')} onClick={() => void swap(meta.statuses, idx, idx - 1).then(refresh)}>↑</button>
+            <button className="icon-btn" disabled={!!ro || idx === meta.statuses.length - 1} title={ro ?? t('Move down')} aria-label={ro ?? t('Move down')} onClick={() => void swap(meta.statuses, idx, idx + 1).then(refresh)}>↓</button>
           </div>
         ))}
       </div>

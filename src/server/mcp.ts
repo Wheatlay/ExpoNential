@@ -120,7 +120,11 @@ async function presentIssue(p: Project, number: number) {
   };
 }
 
-function buildServer(user: SessionUser) {
+/** Zakres jednego zgłoszenia (nagłówek X-Exponential-Issue: agent analizy dostaje tylko to, czego potrzebuje do jednej analizy). */
+export type McpScope = { key: string; number: number };
+export const SCOPED_TOOLS = ['get_issue', 'list_comments', 'get_procedure', 'set_analysis'];
+
+export function buildServer(user: SessionUser, scope: McpScope | null = null) {
   const me = { ...user, ai: true };   // zmiany przez MCP robi agent: historia pokazuje je jako AI
   const server = new McpServer({ name: 'tracker', version: '1.0.0' }, {
     instructions:
@@ -135,6 +139,14 @@ function buildServer(user: SessionUser) {
   const tool = <S extends z.ZodRawShape>(name: string, description: string, shape: S, fn: (a: z.infer<z.ZodObject<S>>) => Promise<unknown>) =>
     server.registerTool(name, { description, inputSchema: shape }, (async (args: z.infer<z.ZodObject<S>>) => {
       try {
+        if (scope) {
+          if (!SCOPED_TOOLS.includes(name)) throw new RuleError(`Tool ${name} is not available in the scope of ${identifier(scope.key, scope.number)}`, 'forbidden');
+          const id = (args as { id?: string }).id;
+          if (id !== undefined) {
+            const r = parseIdentifier(id);
+            if (!r || r.key !== scope.key || r.number !== scope.number) throw new RuleError(`This session is limited to ${identifier(scope.key, scope.number)}`, 'forbidden');
+          }
+        }
         return ok(await fn(args));
       } catch (e) {
         if (e instanceof RuleError) return fail(e.message);
@@ -334,7 +346,15 @@ export async function registerMcp(app: FastifyInstance) {
     }
     await markMcpUse(req);
     if (req.method !== 'POST') return reply.code(405).send({ error: 'Method not allowed' });
-    const server = buildServer(req.user);
+    // Zakres jednego zgłoszenia: nagłówek z kluczem zgłoszenia (np. ACME-12) zawęża narzędzia do analizy tego zgłoszenia.
+    const scopeHeader = req.headers['x-exponential-issue'];
+    let scope: McpScope | null = null;
+    if (typeof scopeHeader === 'string' && scopeHeader.trim()) {
+      const r = parseIdentifier(scopeHeader.trim());
+      if (!r?.key) return reply.code(400).send({ error: 'Invalid X-Exponential-Issue header, expected e.g. ACME-12' });
+      scope = { key: r.key, number: r.number };
+    }
+    const server = buildServer(req.user, scope);
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     reply.hijack();
     reply.raw.on('close', () => { void transport.close(); void server.close(); });

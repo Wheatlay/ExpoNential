@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useModal } from './modal.ts';
 import { Icon } from './icons.tsx';
 import { t } from './i18n.ts';
 
@@ -30,12 +31,13 @@ export function ConfirmHost() {
   const ok = useRef<HTMLButtonElement>(null);
   const field = useRef<HTMLInputElement>(null);
   const [typed, setTyped] = useState('');
+  const modalRef = useModal();
   useEffect(() => { setTyped(''); (field.current ?? ok.current)?.focus(); }, [a]);
   if (!a) return null;
   const blocked = a.type !== undefined && typed.trim() !== a.type;
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) answer(false); }}>
-      <div className="modal guard confirm" role="alertdialog" aria-label={a.title}
+      <div className="modal guard confirm" role="alertdialog" aria-modal="true" aria-label={a.title} ref={modalRef} tabIndex={-1}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') answer(false); }}>
         <div className="guard-head">
           <span className={`guard-icon ${a.danger ? 'danger' : ''}`}>{a.danger ? <Icon.trash size={18} /> : <Icon.question size={18} />}</span>

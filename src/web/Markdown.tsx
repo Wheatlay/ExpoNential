@@ -180,7 +180,7 @@ export function Markdown({ text, empty, className = '' }: { text: string; empty?
           if (um) return <UserMention userId={Number(um[1])} />;
           const tm = title === TAG_MENTION && href && /^\/tags\/(\d+)$/.exec(href);
           if (tm) return <TagMention tagId={Number(tm[1])} />;
-          return href?.startsWith('/') ? <a {...p} title={title} {...linkProps(href)}>{children}</a> : <a {...p} title={title} href={href} target="_blank" rel="noreferrer">{children}</a>;
+          return href?.startsWith('/') && !href.startsWith('//') ? <a {...p} title={title} {...linkProps(href)}>{children}</a> : <a {...p} title={title} href={href} target="_blank" rel="noreferrer">{children}</a>;
         },
       }}>
         {linkIssues(text, re, meta)}

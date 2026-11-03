@@ -10,7 +10,6 @@ import (
 
 const help = `exponential-agent %s
   (no arguments)                      install / connect (double-click)
-  login [--url URL] [--token TOKEN]   sign in (device flow when no token)
   start [--detach]                    run the poll loop (--detach: hidden, in the background)
   status                              show url, account, engine, repos, autostart
   engine claude|codex                 choose the AI engine
@@ -39,80 +38,7 @@ func contains(args []string, n string) bool {
 }
 
 func cmdLogin(args []string) error {
-	u := optArg(args, "--url")
-	if u == "" {
-		u = os.Getenv("EXPONENTIAL_URL")
-	}
-	u = strings.TrimRight(u, "/")
-	token := optArg(args, "--token")
-	if !httpRe.MatchString(u) {
-		return errors.New("usage: login --url https://your-tracker [--token trk_...]")
-	}
-	if err := checkURL(u); err != nil {
-		return err
-	}
-	if token != "" { // trk_ tokens are long-lived, no refresh
-		updateConfig(func(c *Config) { c.URL, c.Token, c.OAuth, c.UserID = u, token, nil, 0 })
-		fmt.Printf("Logged in to %s with a token.\n", u)
-		return nil
-	}
-	// OAuth device flow (RFC 8628) with dynamic client registration.
-	reg, err := oauthPost(u, "/oauth/register", map[string]any{"client_name": "Exponential agent", "redirect_uris": []string{"http://127.0.0.1/cb"}}, true)
-	if err != nil {
-		return err
-	}
-	clientID := str(reg["client_id"])
-	if clientID == "" {
-		return fmt.Errorf("registration failed: %s", orDefault(str(reg["error"]), "no client_id"))
-	}
-	dev, err := oauthPost(u, "/oauth/device_authorization", map[string]any{"client_id": clientID}, false)
-	if err != nil {
-		return err
-	}
-	if str(dev["device_code"]) == "" {
-		return fmt.Errorf("device authorization failed: %s", orDefault(str(dev["error"]), "no device_code"))
-	}
-	fmt.Printf("Your code: %s\n", str(dev["user_code"]))
-	fmt.Printf("Type this code in the browser: %s\n", str(dev["verification_uri"]))
-	openURL(str(dev["verification_uri"]))
-	interval := num(dev["interval"])
-	if interval == 0 {
-		interval = 5
-	}
-	expIn := num(dev["expires_in"])
-	if expIn == 0 {
-		expIn = 600
-	}
-	deadline := time.Now().Add(time.Duration(expIn) * time.Second)
-	for time.Now().Before(deadline) {
-		time.Sleep(time.Duration(interval) * time.Second)
-		r, err := oauthPost(u, "/oauth/token", map[string]any{"grant_type": "urn:ietf:params:oauth:grant-type:device_code", "device_code": str(dev["device_code"]), "client_id": clientID}, false)
-		if err != nil {
-			return err
-		}
-		if at := str(r["access_token"]); at != "" {
-			exp := num(r["expires_in"])
-			if exp == 0 {
-				exp = 3600
-			}
-			updateConfig(func(c *Config) {
-				c.URL, c.Token = u, ""
-				c.UserID = 0
-				c.OAuth = &OAuth{Access: at, Refresh: str(r["refresh_token"]), ExpiresAt: nowMs() + exp*1000, ClientID: clientID}
-			})
-			fmt.Printf("Logged in to %s.\n", u)
-			return nil
-		}
-		switch str(r["error"]) {
-		case "authorization_pending":
-			continue
-		case "slow_down":
-			interval += 5
-			continue
-		}
-		return fmt.Errorf("login failed: %s", orDefault(str(r["error"]), "unknown error"))
-	}
-	return errors.New("login timed out")
+	return errors.New("login from the command line is not supported: pair this computer from Exponential > Settings > My AI (download the agent there)")
 }
 
 func orDefault(s, d string) string {
@@ -126,7 +52,7 @@ func status() {
 	cfg := loadConfig()
 	fmt.Printf("version:   %s\n", Version)
 	fmt.Printf("data dir:  %s\n", dataDir())
-	fmt.Printf("url:       %s\n", orDefault(cfg.URL, "(not set, run: login)"))
+	fmt.Printf("url:       %s\n", orDefault(cfg.URL, "(not set, pair from Settings > My AI)"))
 	account := "(not logged in)"
 	a, err := getAuth()
 	if err != nil {

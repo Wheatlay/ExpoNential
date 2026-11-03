@@ -1,3 +1,5 @@
+import { isHttpUrl } from './links.ts';
+import { useNow } from './time.ts';
 import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
 import { api, awaitsMyVote, isInvited, useMe, useMeetings, useMeta, type Meeting } from './api.ts';
@@ -20,12 +22,6 @@ function weekStart(d: Date) {
 const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 
 /** Odświeżanie "starts in X min" bez przeładowania danych. */
-export function useNow(ms = 30_000) {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => { const t = setInterval(() => setNow(new Date()), ms); return () => clearInterval(t); }, [ms]);
-  return now;
-}
-
 const OTHER_COLOR = 'var(--text-quaternary)';
 
 type Item = { key: string; meeting: Meeting; startsAt: Date; endsAt: Date; option: boolean; slotId?: number };
@@ -200,8 +196,8 @@ export function Calendar() {
             <div className="next-meeting" style={{ '--kind': meetingColor(next) } as React.CSSProperties}>
               <button className="next-title" onClick={() => openMeeting(next.id)}>{next.title}</button>
               <div className="hint">{whenLabel(next, now)}</div>
-              <Tooltip text={next.locationUrl ? null : t('No meeting link set for this meeting')}>
-                {next.locationUrl
+              <Tooltip text={isHttpUrl(next.locationUrl) ? null : t('No meeting link set for this meeting')}>
+                {isHttpUrl(next.locationUrl)
                   ? <a className="btn sm primary" href={next.locationUrl} target="_blank" rel="noreferrer" style={{ alignSelf: 'flex-start' }}>{joinLabel(next.locationUrl)}</a>
                   : <button className="btn sm primary" disabled style={{ alignSelf: 'flex-start' }}>{t('Join meeting')}</button>}
               </Tooltip>

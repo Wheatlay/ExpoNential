@@ -140,15 +140,14 @@ Generate a new migration after editing the schema with `npm run db:generate`.
 npm test
 ```
 
-68 Vitest tests run against a real Postgres (the one from `docker compose`); the service tests create their own `tracker_test` database from scratch. `npm run typecheck` runs `tsc --noEmit`.
+About 280 Vitest tests run against a real Postgres (the one from `docker compose`); the service tests create their own `tracker_test` database from scratch. `npm run typecheck` runs `tsc --noEmit`.
 
 ## Limitations
 
 - Single instance: timers, presence and realtime fan-out live in the process.
-- Login is GitHub-only.
+- Login: GitHub, Google or e-mail + password.
 - The agent is Windows-first: the code is portable, but autostart exists only on Windows.
 - The agent exe is unsigned, so Windows SmartScreen shows a warning.
-- The legacy PowerShell installer is kept for existing installs.
 - The UI is available in English and Polish.
 - In the public demo, GitHub login, API tokens/MCP, the local agent, integrations and administration are disabled.
 

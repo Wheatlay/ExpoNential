@@ -60,6 +60,8 @@ export const DEFAULT_PROMPTS: Record<PromptKind, string> = LOCALE === 'pl' ? DEF
 
 // Polecenia nie są edytowalne w projekcie (stare prompt* w bazie są ignorowane). Jak szukać i co zapisać
 // przy Deep, mówi skill (tryb deep); rozpoznaje go po słowie "deep", tym samym w obu językach.
+export const CODEX_ANALYZE_PROMPT = LOCALE === 'pl' ? 'Wywołaj narzędzie MCP get_procedure z name analyze i postępuj zgodnie z nim dla {id}.' : 'Call the MCP tool get_procedure with name analyze and follow it for {id}.';
+export const CODEX_DEEP_PROMPT = LOCALE === 'pl' ? 'Wywołaj narzędzie MCP get_procedure z name analyze i postępuj zgodnie z nim dla {id}, tryb deep.' : 'Call the MCP tool get_procedure with name analyze and follow it for {id}, deep mode.';
 export const DEEP_PROMPT = LOCALE === 'pl' ? 'Użyj skilla tracker:analyze-tracker-ticket dla {id}, tryb deep.' : 'Use the skill tracker:analyze-tracker-ticket for {id}, deep mode.';
 
 // Modele lokalnej analizy (aliasy claude --model, zawsze najnowsza wersja). Pusty wybór projektu = domyślny.
@@ -78,7 +80,7 @@ const cut = (s: string, n: number, id = '') =>
  * Gotowe polecenie dla zgłoszenia. `compact` skraca długie pola: link vscode:// ma limit
  * długości, a pełne dane agent i tak pobiera przez get_issue.
  */
-export async function renderPrompt(p: Project, number: number, kind: PromptKind, compact = false, deep = false) {
+export async function renderPrompt(p: Project, number: number, kind: PromptKind, compact = false, deep = false, codex = false) {
   const d = await svc.getIssueDetail(p, number);
   const meta = await svc.getMeta(p);
   const who = (id: number | null) => meta.users.find((u) => u.id === id)?.name ?? '?';
@@ -94,7 +96,8 @@ export async function renderPrompt(p: Project, number: number, kind: PromptKind,
       ? `${st('## Recent comments')}\n${d.comments.slice(-lim.comments).map((c) => `- ${who(c.authorId)}: ${cut(c.body, lim.comment, id)}`).join('\n')}${more}`
       : '',
   };
-  const template = deep && kind === 'analyze' ? DEEP_PROMPT : DEFAULT_PROMPTS[kind];
+  // Codex nie ma skilli Claude: procedurę bierze z MCP (get_procedure).
+  const template = codex && kind === 'analyze' ? (deep ? CODEX_DEEP_PROMPT : CODEX_ANALYZE_PROMPT) : deep && kind === 'analyze' ? DEEP_PROMPT : DEFAULT_PROMPTS[kind];
   return template
     .replace(/\{(id|title|description|analysis|comments)\}/g, (_, k: string) => vars[k])
     .replace(/\n{3,}/g, '\n\n')

@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set by main (ldflags -X main.version).
-var Version = "0.4.3"
+var Version = "0.4.4"
 
 type RepoEntry struct {
 	Path   string `json:"path"`
@@ -72,6 +72,12 @@ func parseConfig(b []byte) Config {
 	if c.Repos == nil {
 		c.Repos = map[string]RepoEntry{}
 	}
+	c.Token = unprotectSecret(c.Token)
+	if c.OAuth != nil {
+		o := *c.OAuth
+		o.Refresh = unprotectSecret(o.Refresh)
+		c.OAuth = &o
+	}
 	return c
 }
 
@@ -84,7 +90,15 @@ func loadConfig() Config {
 }
 
 func (c *Config) marshal() ([]byte, error) {
-	own, err := json.Marshal(c)
+	// Tokens are encrypted at rest (DPAPI on Windows); the in-memory config keeps plain text.
+	enc := *c
+	enc.Token = protectSecret(c.Token)
+	if c.OAuth != nil {
+		o := *c.OAuth
+		o.Refresh = protectSecret(o.Refresh)
+		enc.OAuth = &o
+	}
+	own, err := json.Marshal(&enc)
 	if err != nil {
 		return nil, err
 	}

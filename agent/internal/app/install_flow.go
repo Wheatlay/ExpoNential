@@ -115,6 +115,9 @@ func prepareInstall() (installInfo, *installCtx) {
 	if status == 404 {
 		return installErr("expired", "", host), ctx
 	}
+	if status == 429 {
+		return installErr("ratelimit", "", host), ctx
+	}
 	var who struct {
 		User struct {
 			Name string `json:"name"`
@@ -166,6 +169,8 @@ func errText(code, detail, host string) string {
 	switch code {
 	case "expired":
 		return "This download link has expired. Download the agent again from Exponential > Settings > AI."
+	case "ratelimit":
+		return "Too many attempts, try again in a minute"
 	case "notrailer":
 		return "Download the agent from Exponential > Settings > AI to connect this computer."
 	case "badurl":

@@ -125,6 +125,16 @@ export type NewMeeting = {
   attendeeIds?: number[] | null;
 };
 
+/** Pusty albo adres http(s); inne schematy (javascript:, data:) trafiłyby w href u zaproszonych. */
+export function cleanLocationUrl(v: string | undefined | null) {
+  const t = (v ?? '').trim();
+  if (!t) return '';
+  let u: URL;
+  try { u = new URL(t); } catch { throw new RuleError('Meeting link must be an http(s) URL', 'invalid'); }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new RuleError('Meeting link must be an http(s) URL', 'invalid');
+  return t;
+}
+
 export async function createMeeting(p: Project, actor: Actor, input: NewMeeting, log?: Log) {
   const title = input.title.trim();
   if (!title) throw new RuleError('Title cannot be empty', 'invalid');
@@ -136,7 +146,7 @@ export async function createMeeting(p: Project, actor: Actor, input: NewMeeting,
     if (!slots.length) throw new RuleError('Propose at least one time', 'invalid');
     slots.forEach((s) => checkRange(s.startsAt, s.endsAt));
     [m] = await db.insert(meetings).values({
-      projectId: p.id, title, kind: 'poll', status: 'polling', locationUrl: input.locationUrl?.trim() ?? '', createdBy: actor.id, attendeeIds,
+      projectId: p.id, title, kind: 'poll', status: 'polling', locationUrl: cleanLocationUrl(input.locationUrl), createdBy: actor.id, attendeeIds,
     }).returning();
     await db.insert(meetingSlots).values(slots.map((s) => ({ meetingId: m.id, startsAt: s.startsAt, endsAt: s.endsAt, proposedBy: actor.id })));
   } else {
@@ -144,7 +154,7 @@ export async function createMeeting(p: Project, actor: Actor, input: NewMeeting,
     checkRange(input.startsAt, input.endsAt);
     [m] = await db.insert(meetings).values({
       projectId: p.id, title, kind: 'fixed', status: 'scheduled', startsAt: input.startsAt, endsAt: input.endsAt,
-      locationUrl: input.locationUrl?.trim() ?? '', createdBy: actor.id, attendeeIds,
+      locationUrl: cleanLocationUrl(input.locationUrl), createdBy: actor.id, attendeeIds,
     }).returning();
   }
   await setReminders(m.id, reminders);
@@ -234,7 +244,7 @@ export async function updateMeeting(p: Project, actor: Actor, isAdmin: boolean, 
     if (!patch.title.trim()) throw new RuleError('Title cannot be empty', 'invalid');
     set.title = patch.title.trim();
   }
-  if (patch.locationUrl !== undefined) set.locationUrl = patch.locationUrl.trim();
+  if (patch.locationUrl !== undefined) set.locationUrl = cleanLocationUrl(patch.locationUrl);
   if (patch.attendeeIds !== undefined) {
     if (m.kind === 'sprint_review') throw new RuleError('Sprint review is for the whole team', 'invalid');
     set.attendeeIds = await checkAttendees(p, patch.attendeeIds, m.createdBy);

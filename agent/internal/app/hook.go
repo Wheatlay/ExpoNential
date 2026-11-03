@@ -108,10 +108,21 @@ func stripTags(s string) string {
 	return out.String()
 }
 
+// cut keeps at most n UTF-16 units (the server's zod limits count UTF-16, not runes: an emoji is 2).
 func cut(s string, n int) string {
-	r := []rune(s)
-	if len(r) > n {
-		return string(r[:n])
+	if n <= 0 {
+		return ""
+	}
+	units := 0
+	for i, r := range s {
+		u := 1
+		if r >= 0x10000 {
+			u = 2
+		}
+		if units+u > n {
+			return s[:i]
+		}
+		units += u
 	}
 	return s
 }

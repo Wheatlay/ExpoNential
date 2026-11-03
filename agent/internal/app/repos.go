@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -15,6 +16,12 @@ import (
 func validateRepo(p, githubRepo string) string {
 	if githubRepo == "" {
 		return "the project has no GitHub repo set (Settings > project > GitHub repo)"
+	}
+	if !validGithubRepo(githubRepo) {
+		return "the project's GitHub repo name is not valid"
+	}
+	if why := unsafePath(p); why != "" {
+		return fmt.Sprintf("folder %s rejected: %s", p, why)
 	}
 	if _, err := os.Stat(p); err != nil {
 		return fmt.Sprintf("folder %s does not exist", p)
@@ -30,11 +37,38 @@ func validateRepo(p, githubRepo string) string {
 	return fmt.Sprintf("%s is not a clone of %s (git remote -v does not list it)", p, githubRepo)
 }
 
-// Same patterns as the Claude denylist (engine.go), as basename regexes.
-var secretFiles = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)^\.env`), regexp.MustCompile(`(?i)\.pem$`), regexp.MustCompile(`(?i)\.key$`),
-	regexp.MustCompile(`(?i)^id_rsa`), regexp.MustCompile(`(?i)\.pfx$`), regexp.MustCompile(`(?i)\.p12$`),
-	regexp.MustCompile(`(?i)^secrets\.`), regexp.MustCompile(`(?i)^credentials`),
+var ghRepoRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+
+// validGithubRepo: owner/name with safe characters and no "..".
+func validGithubRepo(r string) bool {
+	return ghRepoRe.MatchString(r) && !strings.Contains(r, "..")
+}
+
+// unsafePath rejects paths the agent must never touch before any stat/git: UNC and device paths (a stat on
+// \\host\share sends the user's NTLM credentials) and drives that do not exist. "" = fine.
+func unsafePath(p string) string {
+	n := strings.ReplaceAll(p, "/", "\\")
+	if strings.HasPrefix(n, "\\\\") {
+		return "network and device paths are not allowed"
+	}
+	if runtime.GOOS == "windows" {
+		vol := filepath.VolumeName(p)
+		if vol != "" {
+			if len(vol) != 2 || vol[1] != ':' {
+				return "network and device paths are not allowed"
+			}
+			if _, err := os.Stat(vol + "\\"); err != nil {
+				return "drive " + vol + " does not exist"
+			}
+		}
+	}
+	return ""
+}
+
+// underClones: the path is inside the folder where the agent clones project repos (untrusted content).
+func underClones(p string) bool {
+	rel, err := filepath.Rel(filepath.Join(dataDir(), "repos"), p)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // scrubSecrets deletes secret-looking files inside a worktree (skips .git). Returns how many were removed.
@@ -53,13 +87,8 @@ func scrubSecrets(root string) int {
 		if d.IsDir() {
 			return nil
 		}
-		for _, re := range secretFiles {
-			if re.MatchString(d.Name()) {
-				if os.Remove(p) == nil {
-					n++
-				}
-				break
-			}
+		if isSecretName(d.Name()) && os.Remove(p) == nil {
+			n++
 		}
 		return nil
 	})
@@ -113,7 +142,13 @@ func cloneProject(key, githubRepo string) (string, error) {
 	if githubRepo == "" {
 		return "", errors.New("the project has no GitHub repo set")
 	}
-	target := filepath.Join(dataDir(), "repos", strings.Replace(githubRepo, "/", "-", 1))
+	if !validGithubRepo(githubRepo) {
+		return "", errors.New("the project's GitHub repo name is not valid")
+	}
+	target := filepath.Join(dataDir(), "repos", strings.ReplaceAll(githubRepo, "/", "-"))
+	if !underClones(target) {
+		return "", errors.New("clone target is outside the agent data folder")
+	}
 	if _, err := os.Stat(target); err != nil {
 		_ = os.MkdirAll(filepath.Join(dataDir(), "repos"), 0o755)
 		if _, err := gitRun([]string{"clone", "https://github.com/" + githubRepo + ".git", target}, "", 900*time.Second); err != nil {

@@ -1,16 +1,13 @@
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, Suspense, lazy, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
 import './styles.css';
 import { About } from './About.tsx';
 import { Landing } from './Landing.tsx';
 import { DemoBanner } from './DemoBanner.tsx';
-import { DemoTour } from './DemoTour.tsx';
 import { ApiError, api, awaitsMyVote, markDemoSession, queryClient, useConfig, useMeetings, useIssue, useIssues, useLiveUpdates, useMe, useMeta, useProjects, useSprints } from './api.ts';
 import { Board } from './Board.tsx';
 import { IssuePage } from './IssuePage.tsx';
-import { SprintReview } from './SprintReview.tsx';
-import { Settings } from './Settings.tsx';
 import { CommandMenu } from './CommandMenu.tsx';
 import { MenuHost } from './menu.tsx';
 import { PersonCardHost, PersonLink } from './PersonCard.tsx';
@@ -20,7 +17,7 @@ import { AskHost } from './AskModal.tsx';
 import { LightboxHost } from './ImageBlock.tsx';
 import { DoneGuardHost } from './DoneGuard.tsx';
 import { ConfirmHost } from './Confirm.tsx';
-import { SetupWizardHost } from './SetupWizard.tsx';
+import { useWizardActive } from './setupWizardState.ts';
 import { DeployStatus, RecentIssues } from './SidebarExtras.tsx';
 import { Avatar, Icon } from './icons.tsx';
 import { linkProps, usePath } from './router.ts';
@@ -29,11 +26,23 @@ import { InlineCode } from './InlineCode.tsx';
 import { ident, setProjectKey, useProjectKey } from './project.ts';
 import { ProjectBadge, ProjectSwitcher, useCurrentProject } from './ProjectSwitcher.tsx';
 import { NewProjectHost } from './NewProject.tsx';
-import { Calendar } from './Calendar.tsx';
 import { MeetingHost } from './Meetings.tsx';
 import { MeetingBanner, NotifyPrompt } from './Notifications.tsx';
 import { t } from './i18n.ts';
 import { Invite, Login, Reset } from './AuthScreens.tsx';
+import { ErrorState, LoadingState } from './states.tsx';
+
+// Ciężkie widoki ładują się dopiero przy wejściu (osobne paczki).
+const Settings = lazy(() => import('./Settings.tsx').then((m) => ({ default: m.Settings })));
+const SprintReview = lazy(() => import('./SprintReview.tsx').then((m) => ({ default: m.SprintReview })));
+const Calendar = lazy(() => import('./Calendar.tsx').then((m) => ({ default: m.Calendar })));
+const DemoTour = lazy(() => import('./DemoTour.tsx').then((m) => ({ default: m.DemoTour })));
+const SetupWizardHost = lazy(() => import('./SetupWizard.tsx').then((m) => ({ default: m.SetupWizardHost })));
+
+/** Kreator AI ładuje się dopiero, gdy okno albo podpowiedź jest otwarte. */
+function SetupWizardGate() {
+  return useWizardActive() ? <Suspense fallback={null}><SetupWizardHost /></Suspense> : null;
+}
 
 /** Tytuł karty przeglądarki: nazwa projektu przed nazwą aplikacji (kilka projektów w kartach = widać który). */
 let baseTitle = 'Exponential';
@@ -76,6 +85,10 @@ function App() {
   if (reset) return <Reset token={reset[1]} />;
   const invite = /^\/invite\/([\w-]+)\/?$/.exec(path);
   if (invite) return <Invite token={invite[1]} loggedIn={!!me.data} />;
+  // Login tylko po 401; inny błąd (sieć, 5xx) nie jest wylogowaniem, więc pokazujemy błąd z ponowieniem.
+  if (me.isError && !(me.error instanceof ApiError && me.error.status === 401)) {
+    return <div className="login"><div className="login-card"><ErrorState error={me.error} onRetry={() => void me.refetch()} /></div></div>;
+  }
   if (!me.data && demoMode && path !== '/login') return <Landing />;
   // Lokalny serwer z DEV_LOGIN=1: od razu do środka (/login zostaje do zmiany konta).
   if (!me.data && config.data?.devLogin && path !== '/login') { location.replace('/auth/dev'); return null; }
@@ -86,7 +99,7 @@ function App() {
   const page = issueMatch ? 'issue' : path.startsWith('/review') ? 'review' : path.startsWith('/settings') ? 'settings' : path.startsWith('/calendar') ? 'calendar' : 'board';
 
   const demo = !!me.data.demo;
-  const shell = (children: React.ReactNode) => (demo ? <div className="demo-shell"><DemoBanner />{children}<DemoTour /></div> : children);
+  const shell = (children: React.ReactNode) => (demo ? <div className="demo-shell"><DemoBanner />{children}<Suspense fallback={null}><DemoTour /></Suspense></div> : children);
   return shell(
     // Zmiana projektu przemontowuje widoki (cache tego projektu i tak został wyczyszczony).
     <div className="app" key={projectKey}>
@@ -94,6 +107,7 @@ function App() {
       <main className="main">
         <Header page={page} number={issueMatch && urlKey === projectKey ? Number(issueMatch[2]) : undefined} />
         {page !== 'settings' && <MeetingBanner />}
+        <Suspense fallback={<LoadingState />}>
         {page === 'board' && <Board />}
         {page === 'calendar' && <Calendar />}
         {/* Zadanie projektu, do którego nie należymy: nie pokazujemy w zamian zadania o tym numerze z bieżącego. */}
@@ -101,6 +115,7 @@ function App() {
         {page === 'issue' && urlKey === projectKey && <IssuePage key={issueMatch![2]} number={Number(issueMatch![2])} />}
         {page === 'review' && <SprintReview />}
         {page === 'settings' && <Settings />}
+        </Suspense>
       </main>
       <MenuHost />
       <PersonCardHost />
@@ -110,7 +125,7 @@ function App() {
       <NotifyPrompt />
       <LightboxHost />
       <DoneGuardHost />
-      <SetupWizardHost />
+      <SetupWizardGate />
       <ConfirmHost />
       <AskHost />
       <CommandMenu />
@@ -139,7 +154,7 @@ function Sidebar({ page }: { page: string }) {
         <div className="sidebar-top">
           <button className="icon-btn rail-only" onClick={() => toggleSidebar()} title={open ? t('Collapse menu') : t('Expand menu')} aria-label={t('Menu')}><Icon.menu size={16} /></button>
           <ProjectSwitcher />
-          <button className="icon-btn round" title={t('New issue (C)')} onClick={() => { setOpen(false); openNewIssue(); }}><Icon.edit size={14} /></button>
+          <button className="icon-btn round" title={t('New issue (C)')} aria-label={t('New issue (C)')} onClick={() => { setOpen(false); openNewIssue(); }}><Icon.edit size={14} /></button>
         </div>
         {item('/', 'board', <Icon.board size={15} />, t('Issues'), <span className="count">{issues.filter((i) => !i.completedAt).length || ''}</span>)}
         {item('/calendar', 'calendar', <Icon.calendar size={15} />, t('Calendar'), votes ? <span className="count orange" title={t('Polls waiting for your vote')}>{votes}</span> : null)}
@@ -155,7 +170,7 @@ function Sidebar({ page }: { page: string }) {
             <Avatar user={useMeta().data?.users.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={22} />
             <span className="me-name" style={{ fontWeight: 500 }}>{me.name}</span>
           </PersonLink>
-          <button className="icon-btn" title={t('Log out')} onClick={() => void api('/auth/logout', { method: 'POST' }).then(() => location.assign('/login'))}><Icon.logout size={15} /></button>
+          <button className="icon-btn" title={t('Log out')} aria-label={t('Log out')} onClick={() => void api('/auth/logout', { method: 'POST' }).then(() => location.assign('/login'))}><Icon.logout size={15} /></button>
         </div>
       </nav>
     </>
@@ -211,8 +226,8 @@ function NoProjects() {
 function Toasts() {
   const [t, setT] = useState<{ id: number; text: string; kind: 'ok' | 'err' | 'warn' } | null>(null);
   useEffect(() => onToast(setT), []);
-  if (!t) return null;
-  return <div className={`toast ${t.kind === 'ok' ? '' : t.kind}`}>{t.kind === 'ok' ? <Icon.check size={14} /> : null}{t.text}</div>;
+  // Kontener live istnieje zawsze, bo czytnik ekranu ogłasza tylko zmiany w już obecnym regionie.
+  return <div aria-live={t?.kind === 'err' ? 'assertive' : 'polite'} role={t?.kind === 'err' ? 'alert' : 'status'}>{t && <div className={`toast ${t.kind === 'ok' ? '' : t.kind}`}>{t.kind === 'ok' ? <Icon.check size={14} /> : null}{t.text}</div>}</div>;
 }
 
 // Wiele miejsc woła `void api(...)` bez .catch (zapis widoku tablicy, usuwanie, etykiety/statusy, głosy, Analyze z menu);

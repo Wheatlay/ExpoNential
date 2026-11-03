@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './icons.tsx';
 import { t } from './i18n.ts';
@@ -222,16 +222,18 @@ function SubFocus({ focus, children }: { focus: boolean; children: ReactNode }) 
 /** Prosty tooltip po najechaniu, np. dla wyszarzonych przycisków. */
 export function Tooltip({ text, children }: { text: string | null | undefined; children: ReactNode }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const id = useId();
   if (!text) return <>{children}</>;
+  const show = (e: { currentTarget: HTMLElement }) => { const r = e.currentTarget.getBoundingClientRect(); setPos({ x: r.left, y: r.bottom + 6 }); };
   return (
     <span
       style={{ display: 'inline-flex' }}
-      onMouseEnter={(e) => { const r = e.currentTarget.getBoundingClientRect(); setPos({ x: r.left, y: r.bottom + 6 }); }}
-      onMouseLeave={() => setPos(null)}
+      onMouseEnter={show} onMouseLeave={() => setPos(null)}
+      onFocus={show} onBlur={() => setPos(null)}
     >
-      {children}
+      {isValidElement<{ 'aria-describedby'?: string }>(children) && pos ? cloneElement(children, { 'aria-describedby': id }) : children}
       {/* Portal: animacja okna (transform) przesuwałaby position: fixed względem okna i ucinała dymek. */}
-      {pos && createPortal(<span className="tooltip" style={{ left: Math.min(pos.x, window.innerWidth - 290), top: pos.y }}>{text}</span>, document.body)}
+      {pos && createPortal(<span id={id} role="tooltip" className="tooltip" style={{ left: Math.min(pos.x, window.innerWidth - 290), top: pos.y }}>{text}</span>, document.body)}
     </span>
   );
 }

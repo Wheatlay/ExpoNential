@@ -45,7 +45,9 @@ export function pushPublicKey() {
 export async function savePushSubscription(userId: number, sub: { endpoint: string; keys: { p256dh: string; auth: string } }) {
   if (!isPushEndpoint(sub.endpoint)) throw new RuleError('Unsupported push endpoint', 'invalid');
   await db.insert(pushSubscriptions).values({ userId, endpoint: sub.endpoint, p256dh: sub.keys.p256dh, auth: sub.keys.auth })
-    .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { userId, p256dh: sub.keys.p256dh, auth: sub.keys.auth } });
+    .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
+      // Endpoint innego konta zostaje przy właścicielu (bez przejmowania cudzej subskrypcji).
+      setWhere: eq(pushSubscriptions.userId, userId) });
 }
 
 export async function deletePushSubscription(userId: number, endpoint: string) {
@@ -86,6 +88,11 @@ const BASE_URL = (process.env.BASE_URL ?? '').replace(/\/$/, '');
 
 export type DiscordMessage = { title: string; description: string; url?: string; color?: number };
 
+/** Tekst od użytkowników nie może pingować: @everyone/@here i <@...> dostają niewidoczny znak w środku. */
+export function defangMentions(s: string) {
+  return s.replace(/@(everyone|here)/gi, "@\u200b$1").replace(/<@/g, "<\u200b@");
+}
+
 /** Wiadomość na kanał projektu z @here. Brak webhooka = nic. Błąd Discorda nie psuje akcji. */
 export async function sendDiscord(p: Project, m: DiscordMessage, log?: { warn: (o: object, m: string) => void }) {
   if (!p.discordWebhookUrl) return false;
@@ -95,12 +102,12 @@ export async function sendDiscord(p: Project, m: DiscordMessage, log?: { warn: (
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({
         // Powiadomienie systemowe pokazuje tylko content (bez embeda), więc tytuł na początku, @here (tylko dla pingu Discorda) na końcu.
-        content: `**${m.title}** @here`,
+        content: `**${defangMentions(m.title)}** @here`,
         // Nazwa i logo aplikacji zamiast domyślnych z webhooka. Logo Discord pobiera sam, więc tylko z publicznego https.
         username: 'Exponential',
         ...(BASE_URL.startsWith('https://') ? { avatar_url: `${BASE_URL}/icon-256.png` } : {}),
         allowed_mentions: { parse: ['everyone'] },
-        embeds: [{ title: m.title, description: m.description, url: m.url, color: m.color ?? 0xa855f7 }],
+        embeds: [{ title: defangMentions(m.title), description: defangMentions(m.description), url: m.url, color: m.color ?? 0xa855f7 }],
       }),
     });
     if (!res.ok) throw new Error(`Discord ${res.status}`);

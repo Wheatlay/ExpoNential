@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { ErrorState, LoadingState } from './states.tsx';
 import { askConfirm } from './Confirm.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { openAsk } from './AskModal.tsx';
@@ -122,8 +123,10 @@ const isClosedType = (s: Status) => s.type === 'completed' || s.type === 'cancel
 const NONE = 'none';
 
 export function Board() {
-  const meta = useMeta().data;
-  const issues = useIssues().data;
+  const metaQ = useMeta();
+  const issuesQ = useIssues();
+  const meta = metaQ.data;
+  const issues = issuesQ.data;
   const me = useMe().data;
   const sprints = useSprints().data?.sprints ?? [];
   const update = useUpdateIssue();
@@ -345,7 +348,10 @@ export function Board() {
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  if (!meta || !issues) return <div className="board" />;
+  if (!meta || !issues) {
+    const failed = metaQ.isError ? metaQ : issuesQ.isError ? issuesQ : null;
+    return <div className="board">{failed ? <ErrorState error={failed.error} onRetry={() => { void metaQ.refetch(); void issuesQ.refetch(); }} /> : <LoadingState />}</div>;
+  }
 
   const onDragStart = (e: DragStartEvent) => setDragging(issues.find((i) => i.number === (e.active.data.current as { number?: number } | undefined)?.number) ?? null);
 
@@ -483,8 +489,8 @@ export function Board() {
             {view.differs ? t('My view') : t('Default view')} <Icon.chevron size={10} />
           </button>
         )}
-        <button className="icon-btn round" title={t('Filter')} onClick={(e) => openMenu({ x: e.currentTarget.getBoundingClientRect().right, y: e.currentTarget.getBoundingClientRect().bottom + 4, alignRight: true }, filterMenu())}><Icon.filter size={15} /></button>
-        <button className="icon-btn round view-btn" data-display-btn title={t('Display options')} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setDisplayOpen(displayOpen ? null : { x: r.right, y: r.bottom + 6 }); }}>
+        <button className="icon-btn round" title={t('Filter')} aria-label={t('Filter')} onClick={(e) => openMenu({ x: e.currentTarget.getBoundingClientRect().right, y: e.currentTarget.getBoundingClientRect().bottom + 4, alignRight: true }, filterMenu())}><Icon.filter size={15} /></button>
+        <button className="icon-btn round view-btn" data-display-btn title={t('Display options')} aria-label={t('Display options')} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setDisplayOpen(displayOpen ? null : { x: r.right, y: r.bottom + 6 }); }}>
           <Icon.display size={15} />
         </button>
         {displayOpen && <DisplayPanel at={displayOpen} display={display} setDisplay={setDisplay} onClose={() => setDisplayOpen(null)} />}
@@ -557,8 +563,8 @@ export function Board() {
                     )}
                     {manual && <span className="col-manual" title={t('Width set by hand: column menu > Reset width, or double-click the edge')} />}
                     <span className="tools">
-                      <button className="icon-btn" title={t('Column options')} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu({ x: r.right, y: r.bottom + 4, alignRight: true }, columnMenu(s)); }}><Icon.dots size={14} /></button>
-                      <button className="icon-btn" title={t('New issue in {name}', { name: s.name })} onClick={() => openNewIssue({ statusId: s.id })}><Icon.plus size={14} /></button>
+                      <button className="icon-btn" title={t('Column options')} aria-label={t('Column options')} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu({ x: r.right, y: r.bottom + 4, alignRight: true }, columnMenu(s)); }}><Icon.dots size={14} /></button>
+                      <button className="icon-btn" title={t('New issue in {name}', { name: s.name })} aria-label={t('New issue in {name}', { name: s.name })} onClick={() => openNewIssue({ statusId: s.id })}><Icon.plus size={14} /></button>
                     </span>
                     <span className="col-resize" title={t('Drag to resize, double-click to reset')} onPointerDown={startResize(s, n, w)}
                       onDoubleClick={() => resetWidth(s, n)} />

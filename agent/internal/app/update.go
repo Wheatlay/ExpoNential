@@ -1,6 +1,8 @@
 package app
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -32,7 +34,31 @@ type releaseInfo struct {
 }
 
 type updateInfo struct {
-	Version, ExeURL, SumsURL string
+	Version, ExeURL, SumsURL, SigURL string
+}
+
+// updatePublicKey is the ed25519 key (base64, raw 32 bytes) that signs SHA256SUMS of every agent release
+// (secret AGENT_SIGNING_KEY in .github/workflows/agent-release.yml).
+const updatePublicKey = "Mwby5PWgTQuganaOna8LemfIFVl5CdoRhFdAOf8ykZc="
+
+// verifySumsSig checks that sigB64 (base64 ed25519 signature) is valid over the exact bytes of sums.
+func verifySumsSig(pub ed25519.PublicKey, sums, sigB64 []byte) error {
+	if len(pub) != ed25519.PublicKeySize {
+		return errors.New("bad public key")
+	}
+	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sigB64)))
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return errors.New("SHA256SUMS.sig is not a valid signature")
+	}
+	if !ed25519.Verify(pub, sums, sig) {
+		return errors.New("SHA256SUMS signature does not match")
+	}
+	return nil
+}
+
+func embeddedKey() ed25519.PublicKey {
+	b, _ := base64.StdEncoding.DecodeString(updatePublicKey)
+	return ed25519.PublicKey(b)
 }
 
 // newerAgentVersion: "agent-v0.3.1" is newer than cur "0.3.0" -> "0.3.1".
@@ -98,10 +124,15 @@ func checkUpdate() (*updateInfo, error) {
 			u.ExeURL = a.URL
 		case "SHA256SUMS":
 			u.SumsURL = a.URL
+		case "SHA256SUMS.sig":
+			u.SigURL = a.URL
 		}
 	}
 	if u.ExeURL == "" || u.SumsURL == "" {
 		return nil, errors.New("release without exe or SHA256SUMS")
+	}
+	if u.SigURL == "" {
+		return nil, errors.New("release without SHA256SUMS.sig: update refused (unsigned)")
 	}
 	return u, nil
 }
@@ -165,6 +196,21 @@ func downloadUpdate(u *updateInfo, dir string, progress func(pct int)) (string, 
 	sres.Body.Close()
 	if err != nil {
 		return "", err
+	}
+	if u.SigURL == "" {
+		return "", errors.New("release without SHA256SUMS.sig: update refused (unsigned)")
+	}
+	gres, err := ghGet(u.SigURL, 30*time.Second)
+	if err != nil {
+		return "", fmt.Errorf("SHA256SUMS.sig: %w", err)
+	}
+	sig, err := io.ReadAll(io.LimitReader(gres.Body, 4<<10))
+	gres.Body.Close()
+	if err != nil {
+		return "", err
+	}
+	if err := verifySumsSig(embeddedKey(), sums, sig); err != nil {
+		return "", fmt.Errorf("update refused: %w", err)
 	}
 	want, ok := parseSHA256Sums(string(sums), "exponential-agent.exe")
 	if !ok {

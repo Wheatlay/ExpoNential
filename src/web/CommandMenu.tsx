@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useModal } from './modal.ts';
 import { useIssues, useMeta } from './api.ts';
 import { Icon, StatusIcon, startedFraction } from './icons.tsx';
 import { navigate } from './router.ts';
 import { openNewIssue } from './NewIssue.tsx';
-import { setTheme } from './Settings.tsx';
+import { setTheme } from './theme.ts';
 import { isMenuOpen } from './menu.tsx';
 import { ident } from './project.ts';
 import { t } from './i18n.ts';
@@ -59,6 +60,7 @@ export function CommandMenu() {
     return [...base.filter((c) => c.label.toLowerCase().includes(lq)), ...found];
   }, [q, issues, meta]);
 
+  const modalRef = useModal();
   if (!open) return null;
   const close = () => setOpen(false);
   const run = (c: Cmd) => { close(); c.run(); };
@@ -66,7 +68,7 @@ export function CommandMenu() {
 
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="cmdk" onKeyDown={(e) => {
+      <div className="cmdk" role="dialog" aria-modal="true" aria-label={t('Search issues…')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === 'Escape') close();
         else if (e.key === 'ArrowDown') { e.preventDefault(); setHl((h) => Math.min(cmds.length - 1, h + 1)); }

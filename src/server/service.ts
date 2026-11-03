@@ -249,7 +249,10 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
   // Do powiadomień o wzmiankach po zapisie: stary opis i komentarz z pytaniem.
   const after: { prevDescription: string | null; asked: { id: number; body: string; to: number | null; tagId: number | null } | null } = { prevDescription: null, asked: null };
   const result = await db.transaction(async (tx) => {
-    const cur = await requireIssue(p, number, tx);
+    const found = await requireIssue(p, number, tx);
+    // Blokada wiersza do końca transakcji: równoległe zmiany statusu/pól nie nadpisują się nawzajem.
+    const [cur] = await tx.select().from(issues).where(eq(issues.id, found.id)).for('update');
+    if (patch.description !== undefined && patch.description.length > 100_000) throw new RuleError('Description is too long', 'invalid');
     const set: Partial<typeof issues.$inferInsert> = {};
     const allStatuses = await tx.select().from(statuses).where(eq(statuses.projectId, p.id));
     const statusById = new Map(allStatuses.map((s) => [s.id, s]));
@@ -495,6 +498,7 @@ export async function upsertWorklog(p: Project, actor: Actor, number: number, w:
 
 export async function addComment(p: Project, actor: Actor, number: number, body: string) {
   if (!body.trim()) throw new RuleError('Comment cannot be empty', 'invalid');
+  if (body.length > 20_000) throw new RuleError('Comment is too long', 'invalid');
   const cur = await requireIssue(p, number);
   const row = await db.transaction(async (tx) => {
     const [r] = await tx.insert(comments).values({ issueId: cur.id, authorId: actor?.id ?? null, body }).returning();

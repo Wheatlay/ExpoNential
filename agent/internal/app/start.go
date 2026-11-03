@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"os/signal"
@@ -66,6 +67,27 @@ func freshLocks() bool {
 	return false
 }
 
+// acquireLock creates path exclusively (O_EXCL), so two processes cannot both win. An existing file that
+// isStale says is dead is removed once and the creation retried.
+func acquireLock(path string, content []byte, isStale func(os.FileInfo) bool) bool {
+	for i := 0; i < 2; i++ {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			_, _ = f.Write(content)
+			_ = f.Close()
+			return true
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return false
+		}
+		if st, serr := os.Stat(path); serr == nil && !isStale(st) {
+			return false
+		}
+		_ = os.Remove(path)
+	}
+	return false
+}
+
 func lockPath() string { return filepath.Join(dataDir(), "agent.lock") }
 
 // agentPID returns the pid in agent.lock when that process is alive.
@@ -83,10 +105,9 @@ func agentPID() int {
 
 func singleInstance() bool {
 	_ = os.MkdirAll(dataDir(), 0o755)
-	if agentPID() != 0 {
+	if !acquireLock(lockPath(), []byte(strconv.Itoa(os.Getpid())), func(os.FileInfo) bool { return agentPID() == 0 }) {
 		return false
 	}
-	_ = os.WriteFile(lockPath(), []byte(strconv.Itoa(os.Getpid())), 0o644)
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 	go func() { <-ch; _ = os.Remove(lockPath()); os.Exit(0) }()
@@ -107,8 +128,15 @@ func mergeServerRepos(list []serverRepo) {
 		if !projKeyRe.MatchString(r.Project) || r.Path == "" {
 			continue
 		}
+		if why := unsafePath(r.Path); why != "" {
+			logf("%s: server path rejected (%s)", r.Project, why)
+			continue
+		}
 		have, ok := cur[r.Project]
 		if r.Source == "manual" || r.Source == "set" {
+			if ok && have.Source == "clone" {
+				continue // a local clone is never downgraded to a trusted manual folder by the server
+			}
 			if !ok || have.Path != r.Path || have.Source != "manual" {
 				changes = append(changes, r)
 			}
@@ -128,6 +156,9 @@ func mergeServerRepos(list []serverRepo) {
 			src := "hook"
 			if r.Source == "manual" || r.Source == "set" {
 				src = "manual"
+				if underClones(r.Path) {
+					src = "clone" // inside the agent's clone folder: untrusted content
+				}
 			} else if r.Source == "clone" || r.Source == "auto" {
 				src = r.Source
 			}
@@ -141,41 +172,60 @@ func mergeServerRepos(list []serverRepo) {
 	logf("mapping from server: %s", strings.Join(names, ", "))
 }
 
-func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInfo) {
+func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInfo, issueID int) {
 	if !keyRe.MatchString(key) {
 		panic(fmt.Sprintf("rejected key from server: %s", key))
 	}
 	lock := filepath.Join(dataDir(), key+".lock")
-	if st, err := os.Stat(lock); err == nil && time.Since(st.ModTime()) < lockMin {
+	if !acquireLock(lock, []byte(strconv.Itoa(os.Getpid())), func(st os.FileInfo) bool { return time.Since(st.ModTime()) >= lockMin }) {
 		logf("%s already running, skipping", key)
 		return
 	}
-	_ = os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o644)
 	claimed, failMsg, requeue := false, "", false
+	requeueMsg := ""                                    // local repo-mapping problem: back to the queue, not a failure
+	failCat := "agent error (details in the agent log)" // what the server hears about someone else's failed run
+	others := othersRun(ownUserID(a), rq)
 	forName, recorded := "", false // requester name when the run is for someone else; the run is in runs.json
 	cleanup := func() {}
 	defer func() {
 		cleanup()
-		if claimed && failMsg != "" && !recorded {
+		if claimed && failMsg != "" && !recorded && !requeue {
 			appendRun(runRecord{Key: key, For: forName, Result: runFail, Reason: cut(failMsg, 160)})
 		}
 		_ = os.Remove(lock)
 		// Release only after an error. After code 0 NOT: if the engine ran but saved nothing, the job should go to
 		// Stalled, not back to the queue forever (every run is paid usage).
 		if claimed && requeue {
-			// usage limit on every account: not a failure, the job goes back to the queue (no "error")
-			if err := request(a, "DELETE", "/api/issues/"+key+"/analyze/claim", map[string]any{"deviceId": deviceID}, 0, nil); err != nil {
+			// usage limit on every account or a local repo-mapping problem: not a failure, back to the queue
+			body := map[string]any{"deviceId": deviceID, "requeue": true}
+			if requeueMsg != "" {
+				body["error"] = "repo mapping failed on this computer"
+				if !others {
+					body["error"] = cut(requeueMsg, 200)
+				}
+			}
+			if err := request(a, "DELETE", "/api/issues/"+key+"/analyze/claim", body, 0, nil); err != nil {
 				logf("release: %s", err)
 			}
 		} else if claimed && failMsg != "" {
-			e := hhmm() + " " + failMsg
-			setLastErr(cut(e, 300))
-			if err := request(a, "DELETE", "/api/issues/"+key+"/analyze/claim", map[string]any{"deviceId": deviceID, "error": cut(failMsg, 300)}, 0, nil); err != nil {
+			// Someone else's run: the server (and so the requester) hears only a category, the detail stays in the local log.
+			srvMsg := failMsg
+			if others {
+				srvMsg = failCat
+			}
+			setLastErr(cut(hhmm()+" "+srvMsg, 300))
+			if err := request(a, "DELETE", "/api/issues/"+key+"/analyze/claim", map[string]any{"deviceId": deviceID, "error": cut(srvMsg, 300)}, 0, nil); err != nil {
 				logf("release: %s", err)
 			}
 		}
 	}()
 	fail := func(err error) { failMsg = err.Error(); logf("error: %s", failMsg) }
+	mapFail := func(err error) {
+		requeue, requeueMsg = true, err.Error()
+		logf("%s: repo mapping problem, back to the queue: %s", key, requeueMsg)
+		setLastErr(cut(hhmm()+" "+key+": "+requeueMsg, 300))
+		skipID(issueID)
+	}
 
 	if !consentFor(a, key, rq) {
 		return
@@ -206,8 +256,35 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 		return
 	}
 	claimed = true
+	// Consent follows the requester the claim reports, not the poll's copy.
+	own := ownUserID(a)
+	rq2 := rq
 	if claim.Requester != nil {
-		if own := ownUserID(a); own != 0 && claim.Requester.ID != own && claim.Requester.Name != "" {
+		rq2 = requesterInfo{ID: claim.Requester.ID, Name: claim.Requester.Name, RequestedAt: rq.RequestedAt}
+	}
+	nowOthers := othersRun(own, rq2)
+	if rq2.ID != rq.ID || nowOthers != others {
+		if nowOthers {
+			switch consentDecision(a, key, rq2) {
+			case dYes:
+				takeOnce(key, rq2.RequestedAt)
+			case dPending:
+				logf("%s: the claim names another requester, asking again", key)
+				ensurePrompt(key, rq2)
+				requeue = true
+				return
+			default:
+				logf("%s: the claim names another requester, no consent", key)
+				skipID(issueID)
+				requeue = true
+				return
+			}
+		}
+		rq = rq2
+	}
+	others = nowOthers
+	if claim.Requester != nil {
+		if own != 0 && claim.Requester.ID != own && claim.Requester.Name != "" {
 			forName = claim.Requester.Name
 			setAnalyzing(key, claim.Requester.Name)
 			notifyOther(key, claim.Requester.Name)
@@ -252,18 +329,18 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 		if allowed {
 			logf("%s: no mapping, cloning (allowed by the server)", projectKey)
 			if _, err := cloneProject(projectKey, project.repo()); err != nil {
-				fail(err)
+				mapFail(err)
 				return
 			}
 			entry, ok = loadConfig().Repos[projectKey]
 		}
 	}
 	if !ok {
-		fail(fmt.Errorf("no repo mapped for %s (exponential-agent repos set %s <path>)", projectKey, projectKey))
+		mapFail(fmt.Errorf("no repo mapped for %s (exponential-agent repos set %s <path>)", projectKey, projectKey))
 		return
 	}
 	if p := validateRepo(entry.Path, project.repo()); p != "" {
-		fail(errors.New(p))
+		mapFail(errors.New(p))
 		return
 	}
 	bin := findEngine(engine)
@@ -274,6 +351,14 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 	q := ""
 	if claim.Deep {
 		q = "?deep=1"
+	}
+	if engine == "codex" {
+		if q == "" {
+			q = "?"
+		} else {
+			q += "&"
+		}
+		q += "engine=codex"
 	}
 	var res struct {
 		Prompt string `json:"prompt"`
@@ -315,7 +400,7 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 			logf("%s: account %s", key, accountName(acct))
 		}
 		started := time.Now()
-		code, usage, f := runEngine(runOpts{engine: engine, bin: bin, prompt: res.Prompt, model: model, untrusted: entry.Source == "clone" || othersRun(ownUserID(a), rq), cwd: dir, base: a.Base, auth: a.Auth, activeAccount: acct})
+		code, usage, f := runEngine(runOpts{engine: engine, bin: bin, prompt: res.Prompt, model: model, untrusted: entry.Source == "clone" || underClones(entry.Path) || others, others: others, issueKey: key, cwd: dir, base: a.Base, auth: a.Auth, activeAccount: acct})
 		logf("end %s (code %d)", key, code)
 		reportRun(a, deviceID, key, "analyze", engine, model, started, code, usage)
 		rec := runRecord{Key: key, For: forName, Engine: engine, Model: model, Duration: time.Since(started).Milliseconds(), Tokens: usageTokens(usage), Result: runOK}
@@ -342,6 +427,7 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 			continue
 		}
 		failMsg = failMessage(engine, code, f)
+		failCat = fmt.Sprintf("engine exited %d", code)
 		return
 	}
 }
@@ -417,6 +503,13 @@ func startJob(a *Auth, id int, deviceID string) error {
 	return nil
 }
 
+func jobIssueID(j *pollJob) int {
+	if j.ID == nil {
+		return 0
+	}
+	return int(*j.ID)
+}
+
 type pollJob struct {
 	Kind        string   `json:"kind"`
 	Key         string   `json:"key"`
@@ -436,6 +529,8 @@ func cmdStart() {
 	}
 	logf("start (PID %d, v%s)", os.Getpid(), Version)
 	migrateTeamModeOnDisk()
+	updateConfig(func(c *Config) {}) // rewrites config.json so a plain-text token from an older version gets encrypted
+	go sweepWebviewTemp()
 	runWithTray(func() {
 		go updateLoop()
 		go cleanupOldExe()
@@ -504,8 +599,8 @@ func pollOnce(delay *int, errLogged *bool) error {
 	if ver == "" {
 		ver = Version
 	}
-	// Mapping with paths and sources ({KEY: {path, source}}), so the server can show and route by it.
-	reposJSON, _ := json.Marshal(cfg.Repos)
+	// Mapping with paths, sources and the validation result ({KEY: {path, source, status, error}}), so the server can show and route by it.
+	reposJSON, _ := json.Marshal(repoReports(a, cfg.Repos))
 	qs := url.Values{"deviceId": {cfg.DeviceID}, "name": {host}, "busy": {b}, "version": {ver}, "engine": {eng}, "repos": {string(reposJSON)}, "setup": {setupJSON(strings.TrimRight(cfg.URL, "/"))}}
 	if le := getLastErr(); le != "" {
 		qs.Set("error", cut(le, 300))
@@ -591,7 +686,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 		running.Store(true)
 		rq := newRequester(job.RequestedBy, job.RequestedAt)
 		// Not awaited: the loop keeps polling (busy=1) so the server keeps the claim fresh during a long run.
-		go func(key string, deep bool) {
+		go func(key string, deep bool, issueID int) {
 			setAnalyzing(key, "")
 			defer setAnalyzing("", "")
 			defer running.Store(false)
@@ -600,8 +695,8 @@ func pollOnce(delay *int, errLogged *bool) error {
 					logf("error: %v", r)
 				}
 			}()
-			analyze(a, key, deep, cfg.DeviceID, rq)
-		}(job.Key, truthy(job.Deep))
+			analyze(a, key, deep, cfg.DeviceID, rq, issueID)
+		}(job.Key, truthy(job.Deep), jobIssueID(job))
 	} else if job != nil && job.Kind == "start" && job.ID != nil {
 		if err := startJob(a, int(*job.ID), cfg.DeviceID); err != nil {
 			m := hhmm() + " could not open VS Code: " + err.Error()
@@ -641,7 +736,20 @@ func syncTeamMode(a *Auth, cfg Config, server string) {
 		return
 	}
 	if m, ok := adoptServerTeamMode(cfg, server, time.Now()); ok {
+		if m == teamAuto && teamModeOf(cfg) != teamAuto {
+			// The server must not switch consent off by itself: 'auto' is only accepted when set on this computer
+			// (tray menu or the settings window). Local mode stays and the server is told so.
+			logf("server asked for team mode auto: ignored, set it on this computer to allow it (staying on %s)", teamModeOf(cfg))
+			setLastErr(cut(hhmm()+" team mode 'auto' can only be turned on at this computer (tray menu); staying on "+teamModeOf(cfg), 300))
+			if now := time.Now().UnixMilli(); now-lastAutoRevert.Load() > int64(10*time.Minute/time.Millisecond) {
+				lastAutoRevert.Store(now)
+				go patchTeamMode(teamModeOf(cfg))
+			}
+			return
+		}
 		updateConfig(func(c *Config) { c.TeamMode = m })
 		notifyStatus()
 	}
 }
+
+var lastAutoRevert atomic.Int64

@@ -10,7 +10,7 @@ export type Status = { id: number; name: string; type: StatusType; color: string
 export type Label = { id: number; name: string; color: string };
 export type User = { id: number; login: string; name: string; avatarUrl: string | null; isAdmin: boolean; active: boolean; role?: 'admin' | 'member'; tagIds?: number[] };
 export type ProjectSummary = { id: number; key: string; name: string; color: string; logoUrl: string; role: 'admin' | 'member'; memberCount: number; githubRepo: string };
-export type Me = { id: number; name: string; login: string; avatarUrl: string | null; avatarCustom: boolean; provider: 'github' | 'google' | null; isAdmin: boolean; hasPassword: boolean; localAgentAt: string | null; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean;
+export type Me = { id: number; name: string; login: string; avatarUrl: string | null; avatarCustom: boolean; provider: 'github' | 'google' | null; isAdmin: boolean; hasPassword: boolean; hasAgent: boolean; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean;
   setupDoneAt: string | null; aiStatus: { attention: string[]; client: boolean; clientName: string | null; clientAt: string | null; workTrace: boolean; agent: boolean } };
 export type AppConfig = { demo: boolean; repoUrl: string | null; providers: { github: boolean; google: boolean }; devLogin?: boolean };
 export type TagColor = 'green' | 'teal' | 'sky' | 'violet' | 'pink' | 'amber' | 'blue' | 'slate';
@@ -109,7 +109,7 @@ export class ApiError extends Error {
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   const res = await fetch(path, {
     method: init.method ?? 'GET',
-    headers: { 'X-Project': getProjectKey(), ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { 'X-Project': getProjectKey(), 'X-Requested-With': 'exponential', ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
     credentials: 'same-origin',
   });
@@ -223,9 +223,10 @@ export function useUpdateIssue() {
       if (ctx?.prevDetail) qc.setQueryData(['issue', number], ctx.prevDetail);
       toast((e as Error).message, 'err');
     },
-    onSettled: (_d, _e, { number }) => {
+    onSettled: (_d, _e, { number, patch }) => {
       void qc.invalidateQueries({ queryKey: ['issues'] });
-      void qc.invalidateQueries({ queryKey: ['issue', number] });
+      // Zmiana rodzica dotyka też szczegółów starego i nowego rodzica (listy podzadań): odświeżamy wszystkie.
+      void qc.invalidateQueries({ queryKey: patch.parentNumber !== undefined ? ['issue'] : ['issue', number] });
     },
   });
 }

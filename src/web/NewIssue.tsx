@@ -1,4 +1,5 @@
 import { useRef, useState, useSyncExternalStore } from 'react';
+import { useModal } from './modal.ts';
 import { useCreateIssue, useMe, useMeta, useSprints, type IssuePatch } from './api.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu } from './menu.tsx';
@@ -35,6 +36,7 @@ export function NewIssueHost() {
 
 function NewIssueModal({ init }: { init: Init }) {
   const meta = useMeta().data;
+  const modalRef = useModal();
   const me = useMe().data;
   const sprints = useSprints().data?.sprints ?? [];
   const create = useCreateIssue();
@@ -76,7 +78,7 @@ function NewIssueModal({ init }: { init: Init }) {
 
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="modal" onKeyDown={(e) => {
+      <div className="modal" role="dialog" aria-modal="true" aria-label={t('New issue')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => {
         if (e.key === 'Escape') { e.stopPropagation(); close(); }
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void submit(); }
       }}>

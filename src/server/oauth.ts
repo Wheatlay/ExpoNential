@@ -4,9 +4,9 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { and, desc, eq, gt, isNull, lt, notExists, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNull, lt, notExists, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { agentPairings, agentTombstones, oauthClients, oauthCodes, oauthDeviceCodes, oauthGrants, users } from '../db/schema.ts';
+import { agentPairings, agents, oauthClients, oauthCodes, oauthDeviceCodes, oauthGrants, users } from '../db/schema.ts';
 import { requireUser, sha256, type SessionUser } from './auth.ts';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173';
@@ -85,18 +85,22 @@ export async function issueGrant(clientId: string, userId: number, scope: string
   return { access_token: access, token_type: 'Bearer', expires_in: ACCESS_MS / 1000, refresh_token: refresh, scope };
 }
 
-/** Użytkownik z tokenu dostępu `exa_`: grant nieodwołany i niewygasły, konto aktywne. lastUsedAt najwyżej raz na minutę. */
-export async function userFromOAuthToken(token: string): Promise<SessionUser | null> {
+/** Użytkownik z tokenu dostępu `exa_` i informacja, czy to grant agenta (client_id exponential-agent). Grant nieodwołany i niewygasły, konto aktywne. lastUsedAt najwyżej raz na minutę. */
+export async function oauthTokenInfo(token: string): Promise<{ user: SessionUser; agent: boolean } | null> {
   const [row] = await db.select({
-    id: users.id, name: users.name, login: users.login, isAdmin: users.isAdmin, grantId: oauthGrants.id, lastUsedAt: oauthGrants.lastUsedAt,
+    id: users.id, name: users.name, login: users.login, isAdmin: users.isAdmin, grantId: oauthGrants.id, lastUsedAt: oauthGrants.lastUsedAt, clientId: oauthGrants.clientId,
   }).from(oauthGrants).innerJoin(users, eq(users.id, oauthGrants.userId))
     .where(and(eq(oauthGrants.accessHash, sha256(token)), isNull(oauthGrants.revokedAt), gt(oauthGrants.accessExpiresAt, new Date()), eq(users.active, true)));
   if (!row) return null;
   if (!row.lastUsedAt || Date.now() - row.lastUsedAt.getTime() > 60e3) {
     await db.update(oauthGrants).set({ lastUsedAt: new Date() }).where(eq(oauthGrants.id, row.grantId));
   }
-  const { grantId: _, lastUsedAt: __, ...user } = row;
-  return user;
+  const { grantId: _, lastUsedAt: __, clientId, ...user } = row;
+  return { user, agent: clientId === AGENT_CLIENT_ID };
+}
+
+export async function userFromOAuthToken(token: string): Promise<SessionUser | null> {
+  return (await oauthTokenInfo(token))?.user ?? null;
 }
 
 /** Pierwsze wywołanie /mcp tokenem OAuth zapisuje firstMcpAt (kropka "połączono" w kreatorze). */
@@ -136,8 +140,9 @@ function toLogin(req: FastifyRequest, reply: FastifyReply) {
   return reply.redirect('/login');
 }
 
-const newCsrf = (reply: FastifyReply) => {
-  const t = randomBytes(16).toString('hex');
+/** Token CSRF w ciasteczku jednorazowym. `bind` (np. kod urządzenia) wchodzi do wartości, więc formularz działa tylko dla tego kodu. */
+const newCsrf = (reply: FastifyReply, bind?: string) => {
+  const t = randomBytes(16).toString('hex') + (bind ? `.${bind}` : '');
   reply.setCookie('oauth_csrf', t, tmpCookie);
   return t;
 };
@@ -224,7 +229,9 @@ export async function registerOAuth(app: FastifyInstance) {
       // Błędne żądanie kończy się stroną błędu, nie przekierowaniem: inaczej każdy zarejestrowany klient robi z nas otwarte przekierowanie.
       if (q.response_type !== 'code') return errorPage(reply, 'This app sent an unsupported request (response_type).');
       if (q.code_challenge_method !== 'S256' || !/^[A-Za-z0-9_-]{43}$/.test(q.code_challenge ?? '')) return errorPage(reply, 'This app sent an invalid request (PKCE).');
+      if (client.id === AGENT_CLIENT_ID) return errorPage(reply, 'Unknown client or redirect address.'); // agent dostaje grant tylko przez parowanie
       if (!req.user) return toLogin(req, reply);
+      if (req.authVia !== 'session') return errorPage(reply, 'Sign in with your browser to approve this.');
       reply.clearCookie('oauth_return', { path: '/' });
       const csrf = newCsrf(reply);
       return page(reply, 'Authorize', `<h1>${esc(client.name)} wants access to Exponential</h1>
@@ -238,7 +245,8 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
       const b = bodyOf(req);
       const client = await clientById(b.client_id);
       if (!client || !b.redirect_uri || !redirectMatches(client.redirectUris, b.redirect_uri)) return errorPage(reply, 'Unknown client or redirect address.');
-      if (!req.user) return errorPage(reply, 'You are not signed in.');
+      if (client.id === AGENT_CLIENT_ID) return errorPage(reply, 'Unknown client or redirect address.');
+      if (!req.user || req.authVia !== 'session') return errorPage(reply, 'You are not signed in.');
       if (!b.csrf || b.csrf !== req.cookies.oauth_csrf) return errorPage(reply, 'This page expired. Start again from your tool.');
       reply.clearCookie('oauth_csrf', { path: '/' });
       const state = b.state || undefined;
@@ -261,12 +269,24 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
       if (b.grant_type === 'authorization_code') {
         if (!b.code || !b.code_verifier) return oerr(reply, 'invalid_request');
         // Jednorazowy: kod zużywamy atomowo, zanim cokolwiek sprawdzimy.
+        if (client.id === AGENT_CLIENT_ID) return oerr(reply, 'unauthorized_client'); // agent dostaje grant tylko przez parowanie
         const [c] = await db.update(oauthCodes).set({ usedAt: now })
           .where(and(eq(oauthCodes.codeHash, sha256(b.code)), isNull(oauthCodes.usedAt))).returning();
-        if (!c || c.clientId !== client.id || c.expiresAt < now || c.redirectUri !== b.redirect_uri || !pkceOk(b.code_verifier, c.codeChallenge)) {
+        if (!c) {
+          // Ponowne użycie zużytego kodu: ktoś go przechwycił albo klient się pomylił. Odwołujemy grant z niego wydany. Kod nie ma
+          // wskaźnika na grant, więc odwołujemy grants tego użytkownika i klienta wydane od chwili utworzenia kodu (expiresAt - CODE_MS).
+          const [used] = await db.select().from(oauthCodes).where(and(eq(oauthCodes.codeHash, sha256(b.code)), eq(oauthCodes.clientId, client.id)));
+          if (used?.usedAt) {
+            await db.update(oauthGrants).set({ revokedAt: now }).where(and(
+              eq(oauthGrants.userId, used.userId), eq(oauthGrants.clientId, used.clientId), isNull(oauthGrants.revokedAt),
+              gte(oauthGrants.createdAt, new Date(used.expiresAt.getTime() - CODE_MS)),
+            ));
+          }
           return oerr(reply, 'invalid_grant');
         }
-        if (client.id === AGENT_CLIENT_ID) await db.delete(agentTombstones).where(eq(agentTombstones.userId, c.userId));
+        if ( c.clientId !== client.id || c.expiresAt < now || c.redirectUri !== b.redirect_uri || !pkceOk(b.code_verifier, c.codeChallenge)) {
+          return oerr(reply, 'invalid_grant');
+        }
         return reply.header('Cache-Control', 'no-store').send(await issueGrant(client.id, c.userId, c.scope));
       }
 
@@ -274,7 +294,18 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
         if (!b.refresh_token) return oerr(reply, 'invalid_request');
         const [g] = await db.update(oauthGrants).set({ revokedAt: now })
           .where(and(eq(oauthGrants.refreshHash, sha256(b.refresh_token)), eq(oauthGrants.clientId, client.id), isNull(oauthGrants.revokedAt), gt(oauthGrants.refreshExpiresAt, now))).returning();
-        if (!g) return oerr(reply, 'invalid_grant');
+        if (!g) {
+          // Ponowne użycie obróconego (albo odwołanego) tokenu odświeżania: odwołujemy grants, które z niego powstały. Brak wskaźnika
+          // na rodzica, więc: ten sam użytkownik, klient i komputer, wydane po tym grancie.
+          const [old] = await db.select().from(oauthGrants).where(and(eq(oauthGrants.refreshHash, sha256(b.refresh_token)), eq(oauthGrants.clientId, client.id), gt(oauthGrants.refreshExpiresAt, now)));
+          if (old?.revokedAt) {
+            await db.update(oauthGrants).set({ revokedAt: now }).where(and(
+              eq(oauthGrants.userId, old.userId), eq(oauthGrants.clientId, old.clientId), isNull(oauthGrants.revokedAt),
+              old.agentId ? eq(oauthGrants.agentId, old.agentId) : isNull(oauthGrants.agentId), gt(oauthGrants.id, old.id),
+            ));
+          }
+          return oerr(reply, 'invalid_grant');
+        }
         const [u] = await db.select({ active: users.active }).from(users).where(eq(users.id, g.userId));
         if (!u?.active) return oerr(reply, 'invalid_grant');
         return reply.header('Cache-Control', 'no-store').send(await issueGrant(client.id, g.userId, '', g.agentId));
@@ -282,6 +313,7 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
 
       if (b.grant_type === 'urn:ietf:params:oauth:grant-type:device_code') {
         if (!b.device_code) return oerr(reply, 'invalid_request');
+        if (client.id === AGENT_CLIENT_ID) return oerr(reply, 'unauthorized_client');
         const hash = sha256(b.device_code);
         const [d] = await db.select().from(oauthDeviceCodes).where(and(eq(oauthDeviceCodes.deviceHash, hash), eq(oauthDeviceCodes.clientId, client.id)));
         if (!d) return oerr(reply, 'access_denied'); // odrzucone na stronie urządzenia (wiersz skasowany)
@@ -296,7 +328,6 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
         }
         const [taken] = await db.delete(oauthDeviceCodes).where(eq(oauthDeviceCodes.deviceHash, hash)).returning();
         if (!taken) return oerr(reply, 'invalid_grant');
-        if (client.id === AGENT_CLIENT_ID) await db.delete(agentTombstones).where(eq(agentTombstones.userId, d.userId));
         return reply.header('Cache-Control', 'no-store').send(await issueGrant(client.id, d.userId, ''));
       }
 
@@ -307,6 +338,7 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
       const b = bodyOf(req);
       const client = await clientById(b.client_id);
       if (!client) return oerr(reply, 'invalid_client', undefined, 401);
+      if (client.id === AGENT_CLIENT_ID) return oerr(reply, 'unauthorized_client'); // agent dostaje grant tylko przez parowanie
       const device = randomBytes(32).toString('base64url');
       let userCode = '';
       for (let i = 0; i < 5; i++) {
@@ -322,39 +354,50 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
       }
       return reply.header('Cache-Control', 'no-store').send({
         device_code: device, user_code: userCode, verification_uri: `${BASE_URL}/oauth/device`,
-        verification_uri_complete: `${BASE_URL}/oauth/device?code=${userCode}`, expires_in: DEVICE_MS / 1000, interval: DEVICE_INTERVAL_MS / 1000,
+        expires_in: DEVICE_MS / 1000, interval: DEVICE_INTERVAL_MS / 1000,
       });
     });
 
+    // Strona urządzenia: kod nigdy nie przychodzi z adresu (ani z ?code=, ani z ?typed=). Człowiek przepisuje go z własnego narzędzia
+    // do formularza (POST z CSRF), potem widzi zgodę (drugi POST, CSRF związany z tym kodem). Tylko z sesją w przeglądarce.
+    const deviceEntry = (reply: FastifyReply, note = '') => {
+      const csrf = newCsrf(reply);
+      return page(reply, 'Connect a device', `<h1>Connect a device</h1><p>${note || 'Type the code shown in your own tool. If someone sent you a link or a code, do not continue.'}</p>
+<form method="post" action="/oauth/device">${hidden({ csrf, step: 'lookup' })}<input type="text" name="code" value="" placeholder="ABCD-EFGH" autocomplete="off" autofocus><div class="row"><button class="p">Continue</button></div></form>`);
+    };
+
     o.get('/oauth/device', async (req, reply) => {
       if (!req.user) return toLogin(req, reply);
+      if (req.authVia !== 'session') return errorPage(reply, 'Sign in with your browser to approve this.');
       reply.clearCookie('oauth_return', { path: '/' });
-      const q = req.query as Body;
-      // Kod liczy się tylko przepisany ręcznie (typed=1 z formularza). Link z gotowym ?code= wysłany przez kogoś obcego
-      // nie może prowadzić prosto do "Allow": człowiek musi przepisać kod, który widzi we własnym narzędziu.
-      const code = q.code && q.typed === '1' ? normCode(q.code.slice(0, 20)) : '';
-      const entry = (note = '') => page(reply, 'Connect a device', `<h1>Connect a device</h1><p>${note || 'Type the code shown in your own tool. If someone sent you a link or a code, do not continue.'}</p>
-<form method="get" action="/oauth/device"><input type="hidden" name="typed" value="1"><input type="text" name="code" value="" placeholder="ABCD-EFGH" autocomplete="off" autofocus><div class="row"><button class="p">Continue</button></div></form>`);
-      if (!code) return entry();
-      const [d] = await db.select({ clientName: oauthClients.name, clientAt: oauthClients.createdAt, approvedAt: oauthDeviceCodes.approvedAt })
-        .from(oauthDeviceCodes).innerJoin(oauthClients, eq(oauthClients.id, oauthDeviceCodes.clientId))
-        .where(and(eq(oauthDeviceCodes.userCode, code), gt(oauthDeviceCodes.expiresAt, new Date())));
-      if (!d || d.approvedAt) return entry('This code is not valid or has expired. Check it and try again.');
-      const csrf = newCsrf(reply);
-      return page(reply, 'Connect a device', `<h1>${esc(d.clientName)} wants access to Exponential</h1>
-<p>It will act as <b>${esc(req.user.name)}</b>. Only continue if you started this on your own device.</p>
-${clientFacts(d.clientName, d.clientAt)}
-<form method="post" action="/oauth/device">${hidden({ csrf, code })}
-<div class="row"><button name="decision" value="deny">Deny</button><button class="p" name="decision" value="allow">Allow</button></div></form>`);
+      return deviceEntry(reply);
     });
 
     o.post('/oauth/device', async (req, reply) => {
       const b = bodyOf(req);
-      if (!req.user) return errorPage(reply, 'You are not signed in.');
+      if (!req.user || req.authVia !== 'session') return errorPage(reply, 'You are not signed in.');
       if (!b.csrf || b.csrf !== req.cookies.oauth_csrf) return errorPage(reply, 'This page expired. Start again from your tool.');
       reply.clearCookie('oauth_csrf', { path: '/' });
       const code = normCode((b.code ?? '').slice(0, 20));
-      const live = and(eq(oauthDeviceCodes.userCode, code), isNull(oauthDeviceCodes.approvedAt), gt(oauthDeviceCodes.expiresAt, new Date()));
+
+      // Krok 1: przepisany kod -> ekran zgody (nowy CSRF związany z kodem).
+      if (b.decision !== 'allow' && b.decision !== 'deny') {
+        if (!code) return deviceEntry(reply, 'This code is not valid or has expired. Check it and try again.');
+        const [d] = await db.select({ clientName: oauthClients.name, clientAt: oauthClients.createdAt, approvedAt: oauthDeviceCodes.approvedAt, clientId: oauthDeviceCodes.clientId })
+          .from(oauthDeviceCodes).innerJoin(oauthClients, eq(oauthClients.id, oauthDeviceCodes.clientId))
+          .where(and(eq(oauthDeviceCodes.userCode, code), gt(oauthDeviceCodes.expiresAt, new Date())));
+        if (!d || d.approvedAt || d.clientId === AGENT_CLIENT_ID) return deviceEntry(reply, 'This code is not valid or has expired. Check it and try again.');
+        const csrf2 = newCsrf(reply, code);
+        return page(reply, 'Connect a device', `<h1>${esc(d.clientName)} wants access to Exponential</h1>
+<p>It will act as <b>${esc(req.user.name)}</b>. Only continue if you started this on your own device.</p>
+${clientFacts(d.clientName, d.clientAt)}
+<form method="post" action="/oauth/device">${hidden({ csrf: csrf2, code })}
+<div class="row"><button name="decision" value="deny">Deny</button><button class="p" name="decision" value="allow">Allow</button></div></form>`);
+      }
+
+      // Krok 2: decyzja. CSRF musi być wydany dla dokładnie tego kodu; odmowa kasuje tylko ten kod.
+      if (!code || !b.csrf.endsWith(`.${code}`)) return errorPage(reply, 'This page expired. Start again from your tool.');
+      const live = and(eq(oauthDeviceCodes.userCode, code), isNull(oauthDeviceCodes.approvedAt), gt(oauthDeviceCodes.expiresAt, new Date()), sql`${oauthDeviceCodes.clientId} <> ${AGENT_CLIENT_ID}`);
       if (b.decision === 'allow') {
         const [d] = await db.update(oauthDeviceCodes).set({ userId: req.user.id, approvedAt: new Date() }).where(live).returning();
         if (!d) return errorPage(reply, 'This code is not valid or has expired.');
@@ -374,13 +417,18 @@ ${clientFacts(d.clientName, d.clientAt)}
       return reply.send({});
     });
 
-    // Połączenia zalogowanego użytkownika (Ustawienia).
+    // Połączenia zalogowanego użytkownika (Ustawienia). Grants agenta (client exponential-agent) są na liście z agent: true;
+    // computerName z komputera (agents) przypisanego do grantu, null gdy grant nie ma komputera.
     o.get('/api/connections', { preHandler: requireUser }, async (req) =>
       (await db.select({
         id: oauthGrants.id, client: oauthClients.name, createdAt: oauthGrants.createdAt, lastUsedAt: oauthGrants.lastUsedAt, firstMcpAt: oauthGrants.firstMcpAt,
+        clientId: oauthGrants.clientId, label: agents.label, computer: agents.name,
       }).from(oauthGrants).innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
-        .where(and(eq(oauthGrants.userId, req.user!.id), isNull(oauthGrants.revokedAt), NOT_AGENT_CLIENT, gt(oauthGrants.refreshExpiresAt, new Date())))
-        .orderBy(desc(oauthGrants.createdAt))));
+        .leftJoin(agents, and(eq(agents.id, oauthGrants.agentId), eq(agents.userId, oauthGrants.userId)))
+        .where(and(eq(oauthGrants.userId, req.user!.id), isNull(oauthGrants.revokedAt), gt(oauthGrants.refreshExpiresAt, new Date())))
+        .orderBy(desc(oauthGrants.createdAt))).map(({ clientId, label, computer, ...c }) => ({
+        ...c, agent: clientId === AGENT_CLIENT_ID, computerName: (label || computer || null) as string | null,
+      })));
 
     o.delete<{ Params: { id: string } }>('/api/connections/:id', { preHandler: requireUser }, async (req, reply) => {
       const id = Number(req.params.id);

@@ -47,8 +47,12 @@ export async function registerDemo(app: FastifyInstance) {
   app.addHook('onClose', async () => clearInterval(sweep));
 
   app.addHook('onRequest', async (req, reply) => {
-    const path = req.url.split('?')[0];
-    if (BLOCKED_ALL.some((re) => re.test(path)) || BLOCKED_WRITE.some(([m, re]) => m === req.method && re.test(path))) return reply.code(403).send(forbidden);
+    const raw = req.url.split('?')[0];
+    let path = raw;
+    try { path = decodeURIComponent(raw); } catch { return reply.code(403).send(forbidden); }
+    // Wzorzec dopasowanej trasy (router dekoduje %74 -> t, więc surowy URL nie wystarcza) + zdekodowana ścieżka dla tras niedopasowanych.
+    const candidates = [req.routeOptions?.url, path, raw].filter((x): x is string => !!x);
+    if (candidates.some((c) => BLOCKED_ALL.some((re) => re.test(c)) || BLOCKED_WRITE.some(([m, re]) => m === req.method && re.test(c)))) return reply.code(403).send(forbidden);
     if (path === '/api/uploads' && Number(req.headers['content-length'] ?? 0) > MAX_UPLOAD) return reply.code(403).send(forbidden);
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
       const now = Date.now();

@@ -1,57 +1,17 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useModal } from './modal.ts';
+import { closeAiHint, closeSetupWizard, defaultGoal, openSetupWizard, set, snap, useHint, useSnap, type Goal } from './setupWizardState.ts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, queryClient, useMe, useProjects, type Me } from './api.ts';
+import { api, useMe, useProjects } from './api.ts';
 import { Icon } from './icons.tsx';
 import { copyText, toast } from './toast.ts';
 import { Tooltip } from './menu.tsx';
 import { timeAgo } from './time.ts';
 import { t } from './i18n.ts';
 
-/**
- * Podłączenie AI: jedno okno, jeden reaktywny ekran (karta SetupWizard.md). Pytanie o cel ustawia zakres, drabina kroków
- * jest odhaczana na żywo z /api/me (aiStatus). Nie otwiera się samo. Wejścia: Ustawienia, kropka przy Settings
- * i podpowiedź (openAiHint) przy funkcji AI bez podłączenia.
- */
-type Goal = 1 | 2 | 3;
-type Snap = { open: boolean; goal: Goal | null; step: Goal | null };
-
-let snap: Snap = { open: false, goal: null, step: null };
-let subs: (() => void)[] = [];
-const set = (s: Snap) => { snap = s; subs.forEach((f) => f()); };
-const useSnap = () => useSyncExternalStore((fn) => { subs.push(fn); return () => { subs = subs.filter((s) => s !== fn); }; }, () => snap);
-
-/** Najwyższy zrobiony poziom; gdy nic nie ma: 2. */
-function defaultGoal(s?: Me['aiStatus']): Goal {
-  if (s?.client && s.workTrace && s.agent) return 3;
-  if (s?.client && s.workTrace) return 2;
-  if (s?.client) return 1;
-  return 2;
-}
-
-/** step: krok rozwinięty od razu (np. 3 dla komputera ze starym instalatorem). */
-export function openSetupWizard(goal?: Goal, step?: Goal) {
-  closeAiHint();
-  set({ open: true, goal: goal ?? null, step: step ?? null });
-  // Świeży stan przed wyborem domyślnego celu (me jest cache'owane bez końca).
-  void queryClient.fetchQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me'), staleTime: 0 }).then((me) => {
-    if (snap.open && snap.goal == null) set({ ...snap, goal: defaultGoal(me.aiStatus) });
-  }, () => undefined);
-}
-function closeSetupWizard() { set({ open: false, goal: null, step: null }); }
-
 /* ---------- podpowiedź przy funkcji AI bez podłączenia ---------- */
-type Hint = { rect: DOMRect; kind: 'analyze' | 'start'; goal: Goal; anyway?: () => void } | null;
-let hint: Hint = null;
-let hintSubs: (() => void)[] = [];
-const setHint = (h: Hint) => { hint = h; hintSubs.forEach((f) => f()); };
-function closeAiHint() { if (hint) setHint(null); }
-/** Popover pod przyciskiem Analyze / Deep / Start work, gdy AI nie jest podłączone. */
-export function openAiHint(anchor: HTMLElement, kind: 'analyze' | 'start', goal: Goal = 3, anyway?: () => void) {
-  setHint({ rect: anchor.getBoundingClientRect(), kind, goal, anyway });
-}
-
 function AiHint() {
-  const h = useSyncExternalStore((fn) => { hintSubs.push(fn); return () => { hintSubs = hintSubs.filter((s) => s !== fn); }; }, () => hint);
+  const h = useHint();
   useEffect(() => {
     if (!h) return;
     const key = (e: KeyboardEvent) => { if (e.key === 'Escape') closeAiHint(); };
@@ -128,9 +88,16 @@ export function SetupWizardHost() {
   const qc = useQueryClient();
   const narrow = useNarrow();
   const live = open && !!meNow && !meNow.demo;
-  // Ten sam klucz co useMe: odświeżanie co 3 s tylko, gdy okno jest otwarte; reszta aplikacji dostaje świeży stan za darmo.
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me'), retry: false, staleTime: Infinity, refetchInterval: open ? 3000 : false }).data ?? meNow;
-  const agents = useQuery({ queryKey: ['agents'], queryFn: () => api<AgentRow[]>('/api/agents'), enabled: live, refetchInterval: live ? 3000 : false });
+  const modalRef = useModal();
+  // Odpytujemy tylko /api/agents (co 5 s, nie w ukrytej karcie); /api/me odświeża się po powrocie do okna przeglądarki.
+  const me = meNow;
+  const agents = useQuery({ queryKey: ['agents'], queryFn: () => api<AgentRow[]>('/api/agents'), enabled: live, refetchInterval: live ? () => (document.hidden ? false : 5000) : false });
+  useEffect(() => {
+    if (!live) return;
+    const f = () => { void qc.invalidateQueries({ queryKey: ['me'] }); };
+    window.addEventListener('focus', f);
+    return () => window.removeEventListener('focus', f);
+  }, [live, qc]);
   const projects = useProjects(live);
 
   const [client, setClient] = useState<ClientName>('Claude Code');
@@ -270,7 +237,7 @@ export function SetupWizardHost() {
   return (
     <>
       <div className="backdrop">
-        <div className={`modal wiz${narrow ? ' phone' : ''}`} role="dialog" aria-label={t('Connect AI to Exponential')} onKeyDown={(e) => e.stopPropagation()}>
+        <div className={`modal wiz${narrow ? ' phone' : ''}`} role="dialog" aria-modal="true" aria-label={t('Connect AI to Exponential')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => e.stopPropagation()}>
           <div className="wiz-head">
             <div className="wiz-head-text">
               <h2 className="wiz-title">{t('Connect AI to Exponential')}</h2>

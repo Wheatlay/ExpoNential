@@ -11,6 +11,12 @@ import { reportDeploy, listDeployEnvs, findDeployEnv, type DeployEnvRow, type De
 
 type GhCommit = { id: string; message: string; url: string; timestamp: string; author: { name: string; username?: string } };
 
+/** Sekret webhooka deployu danego projektu: HMAC-SHA256(DEPLOY_WEBHOOK_SECRET, klucz projektu), hex. Brak globalnego sekretu = null. */
+export function deployWebhookSecret(projectKey: string) {
+  const root = process.env.DEPLOY_WEBHOOK_SECRET;
+  return root ? createHmac('sha256', root).update(projectKey).digest('hex') : null;
+}
+
 function safeEqual(a: string, b: string) { const x = Buffer.from(a); const y = Buffer.from(b); return x.length === y.length && timingSafeEqual(x, y); }
 
 export function verifyGithubSignature(secret: string, raw: Buffer, header: string | undefined) {
@@ -180,10 +186,17 @@ export async function registerHooks(app: FastifyInstance) {
 
     // Ogólny webhook deployu (projekt z deploySource = 'webhook'): dowolny CI woła go po wdrożeniu.
     r.post('/hooks/deploy', async (req, reply) => {
-      const secret = process.env.DEPLOY_WEBHOOK_SECRET;
       const given = (req.headers['x-webhook-secret'] as string | undefined) ?? '';
-      if (!secret || !safeEqual(given, secret)) return reply.code(401).send({ error: 'Bad secret' });
-      const parsed = deployHookBody.safeParse(JSON.parse((req.body as Buffer).toString('utf8') || '{}'));
+      let json: unknown;
+      try { json = JSON.parse((req.body as Buffer).toString('utf8') || '{}'); } catch { return reply.code(400).send({ error: 'Invalid body' }); }
+      const parsed = deployHookBody.safeParse(json);
+      // Sekret jest per projekt (HMAC z klucza projektu), więc najpierw trzeba wiedzieć, o który projekt chodzi.
+      const key = parsed.success ? (await getProjectByKey(parsed.data.project))?.key : undefined;
+      const expected = key ? deployWebhookSecret(key) : null;
+      let ok = !!expected && safeEqual(given, expected);
+      const legacy = process.env.DEPLOY_WEBHOOK_LEGACY === '1' && !!process.env.DEPLOY_WEBHOOK_SECRET && safeEqual(given, process.env.DEPLOY_WEBHOOK_SECRET);
+      if (!ok && legacy) { ok = true; req.log.warn('deploy webhook: global secret used (DEPLOY_WEBHOOK_LEGACY=1), switch to a per-project secret'); }
+      if (!ok) return reply.code(401).send({ error: 'Bad secret' });
       if (!parsed.success) return reply.code(400).send({ error: 'Invalid body' });
       const res = await reportDeployHook(parsed.data, req.log).catch((e) => { if (e instanceof RuleError) return { code: 400, body: { error: e.message } }; throw e; });
       return reply.code(res.code).send(res.body);

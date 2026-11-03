@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireUser } from './auth.ts';
 import { publish } from './service.ts';
 import { recordDeploy } from './hooks.ts';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, ne, sql as dsql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.ts';
 import { deployEnvs } from '../db/schema.ts';
@@ -48,6 +48,9 @@ export async function findDeployEnv(projectId: number, name?: string) {
   return undefined;
 }
 
+/** Uuid aplikacji Coolify (cuid2 w nowszych wersjach: litery i cyfry, 8-40 znaków; starsze: UUID z myślnikami). */
+const COOLIFY_UUID = /^[a-z0-9][a-z0-9-]{7,39}$/i;
+
 export type DeployEnvInput = { id?: number; name: string; sourceRef: string; isProduction: boolean };
 
 /** Zastępuje listę środowisk projektu (kolejność = position): zmienia istniejące, dodaje nowe, kasuje brakujące. */
@@ -60,6 +63,17 @@ export async function saveDeployEnvs(p: Project, input: DeployEnvInput[]) {
     else if (prod > 1) throw new RuleError('Exactly one environment must be production', 'invalid');
   }
   if (new Set(envs.map((e) => e.name.toLowerCase())).size !== envs.length) throw new RuleError('Environment names must be unique', 'invalid');
+  if (p.deploySource === 'coolify') {
+    // sourceRef to uuid aplikacji Coolify: bez formatu i unikalności dałoby się podpiąć cudzą aplikację z tego samego serwera.
+    if (envs.some((e) => e.sourceRef && !COOLIFY_UUID.test(e.sourceRef))) throw new RuleError('Coolify application UUID expected', 'invalid');
+    const refs = envs.map((e) => e.sourceRef.toLowerCase()).filter(Boolean);
+    if (new Set(refs).size !== refs.length) throw new RuleError('Coolify application is used twice', 'invalid');
+    for (const ref of refs) {
+      const [dup] = await db.select({ id: deployEnvs.id }).from(deployEnvs)
+        .where(and(ne(deployEnvs.projectId, p.id), dsql`lower(${deployEnvs.sourceRef}) = ${ref}`)).limit(1);
+      if (dup) throw new RuleError('This Coolify application is already used by another project', 'invalid');
+    }
+  }
   await db.transaction(async (tx) => {
     const old = await tx.select().from(deployEnvs).where(eq(deployEnvs.projectId, p.id));
     const oldIds = new Set(old.map((e) => e.id));

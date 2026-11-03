@@ -46,7 +46,23 @@ func TestTSConfigCompat(t *testing.T) {
 	if _, ok := m["oauth"]; ok {
 		t.Fatal("oauth should be removed")
 	}
-	if string(m["token"]) != `"trk_x"` || string(m["version"]) != `"`+Version+`"` || string(m["deviceId"]) != `"11111111-2222-4333-8444-555555555555"` {
+	if unprotectJSONString(m["token"]) != "trk_x" || string(m["version"]) != `"`+Version+`"` || string(m["deviceId"]) != `"11111111-2222-4333-8444-555555555555"` {
 		t.Fatalf("bad write: %s", b)
+	}
+}
+
+func unprotectJSONString(raw json.RawMessage) string {
+	var v string
+	_ = json.Unmarshal(raw, &v)
+	return unprotectSecret(v)
+}
+
+func TestSecretRoundTrip(t *testing.T) {
+	p := protectSecret("refresh-abc")
+	if unprotectSecret(p) != "refresh-abc" {
+		t.Fatalf("round trip failed: %q", p)
+	}
+	if unprotectSecret("plain-old-value") != "plain-old-value" {
+		t.Fatal("plain value must pass through (migration)")
 	}
 }

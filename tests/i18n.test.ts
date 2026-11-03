@@ -25,10 +25,41 @@ function plKeys() {
   return new Set([...src.matchAll(new RegExp(String.raw`^\s*${str}:`, 'gm'))].map((m) => unquote(m[1])));
 }
 
+/** Cały kod w src/ poza pl.ts (serwer też, bo jego komunikaty błędów przechodzą przez t(data.error) w api()). */
+function sourceText() {
+  const out: string[] = [];
+  const walk = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.(tsx?|html)$/.test(e.name) && p !== join(dir, 'pl.ts')) out.push(readFileSync(p, 'utf8'));
+    }
+  };
+  walk(join(dir, '..'));
+  return out.join('\n');
+}
+
+/**
+ * Klucze używane dynamicznie (t(zmienna), nie literał), których nie widać w kodzie jako tekst.
+ * Dopisuj tu tylko po sprawdzeniu, że klucz naprawdę jest budowany w locie.
+ */
+const DYNAMIC_ALLOWLIST = new Set<string>([
+  // src/server/password.ts składa komunikat z PASSWORD_MIN / PASSWORD_MAX.
+  'Password must be at least 10 characters',
+  'Password must be at most 200 characters',
+]);
+
 describe('i18n', () => {
   it('pl.ts tłumaczy wszystkie teksty interfejsu', () => {
     const have = plKeys();
     const missing = [...usedKeys()].filter((k) => !have.has(k));
     expect(missing).toEqual([]);
+  });
+
+  it('pl.ts nie ma haseł, których nikt nie używa (poza liczebnikami i dynamicznymi)', () => {
+    const src = sourceText().replace(/\\n/g, '\n');
+    const unused = [...plKeys()].filter((k) => !k.includes('|') && !DYNAMIC_ALLOWLIST.has(k)
+      && !src.includes(k) && !src.includes(k.replace(/'/g, "\\'")) && !src.includes(k.replace(/"/g, '\\"')));
+    expect(unused).toEqual([]);
   });
 });

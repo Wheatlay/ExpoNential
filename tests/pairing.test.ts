@@ -4,7 +4,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres from 'postgres';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
 const ADMIN_URL = 'postgres://tracker:tracker@localhost:5434/tracker';
 process.env.DATABASE_URL = 'postgres://tracker:tracker@localhost:5434/tracker_test_pairing';
@@ -99,7 +99,7 @@ describe('POST /api/agent/mcp-key', () => {
   const post = (headers: Record<string, string>, payload: unknown) => app.inject({ method: 'POST', url: '/api/agent/mcp-key', headers, payload: payload as object });
   const agentToken = async () => {
     const { cfg } = await download();
-    return (await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: cfg.pairing } })).json().access_token as string;
+    return (await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: cfg.pairing, deviceId: randomUUID() } })).json().access_token as string;
   };
   it('gives the agent grant a trk_ token that works on /mcp and replaces the same name', async () => {
     const exa = await agentToken();
@@ -114,6 +114,20 @@ describe('POST /api/agent/mcp-key', () => {
     const rows = await dbmod.db.select().from(schema.apiTokens).where(eq(schema.apiTokens.name, 'Claude Code · PC-1'));
     expect(rows).toHaveLength(1);
     expect((await post({ authorization: `Bearer ${exa}` }, { client: 'x'.repeat(41), device: 'PC' })).statusCode).toBe(400);
+  });
+  it('400 for an agent grant without a computer; only the key of the same computer and name is replaced', async () => {
+    const { cfg } = await download();
+    const noDev = (await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: cfg.pairing } })).json().access_token as string;
+    expect((await post({ authorization: `Bearer ${noDev}` }, { client: 'Codex', device: 'PC-X' })).statusCode).toBe(400);
+    const a = await agentToken();
+    const b = await agentToken();
+    const ka = (await post({ authorization: `Bearer ${a}` }, { client: 'Cursor', device: 'SAME' })).json().token as string;
+    const kb = (await post({ authorization: `Bearer ${b}` }, { client: 'Cursor', device: 'SAME' })).json().token as string;
+    expect((await mcpInit(ka)).statusCode).toBe(200);
+    expect((await mcpInit(kb)).statusCode).toBe(200);
+    const [row] = await dbmod.db.select().from(schema.apiTokens).where(eq(schema.apiTokens.tokenHash, auth.sha256(ka)));
+    expect(row.agentId).not.toBeNull();
+    expect(row.expiresAt!.getTime()).toBeGreaterThan(Date.now() + 179 * 864e5);
   });
   it('rejects a dynamically registered client named "Exponential agent"', async () => {
     const { cfg } = await download();
@@ -185,6 +199,28 @@ describe('pairing', () => {
     const res = await app.inject({ method: 'GET', url: '/agent/download', headers: { cookie: sessionCookie } });
     expect(res.statusCode).toBe(502);
     pairing.setAgentExeSource({ fetcher: async () => new Response(EXE, { status: 200 }) });
+  });
+});
+
+describe('pairing name and rate limit', () => {
+  it('uses the body name for the agents row (insert, then update) and does not touch the computer of another user', async () => {
+    const [u] = await dbmod.db.select().from(schema.users).where(eq(schema.users.login, 'pr'));
+    const dev = randomUUID();
+    await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: (await download()).cfg.pairing, deviceId: dev, name: 'Desk-1' } });
+    expect((await dbmod.db.select().from(schema.agents).where(eq(schema.agents.id, dev)))[0]).toMatchObject({ name: 'Desk-1', userId: u.id });
+    await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: (await download()).cfg.pairing, deviceId: dev, name: 'Desk-2' } });
+    expect((await dbmod.db.select().from(schema.agents).where(eq(schema.agents.id, dev)))[0].name).toBe('Desk-2');
+    const [other] = await dbmod.db.insert(schema.users).values({ login: 'pr2', name: 'Other' }).returning();
+    const foreign = randomUUID();
+    await dbmod.db.insert(schema.agents).values({ id: foreign, userId: other.id, name: 'Theirs' });
+    await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: (await download()).cfg.pairing, deviceId: foreign, name: 'Hijack' } });
+    expect((await dbmod.db.select().from(schema.agents).where(eq(schema.agents.id, foreign)))[0].name).toBe('Theirs');
+  });
+  it('429 carries error rate_limited', async () => {
+    let last: { statusCode: number; json: () => { error: string } } | undefined;
+    for (let i = 0; i < 70; i++) last = await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: 'pair_x' }, remoteAddress: '10.9.9.9' });
+    expect(last!.statusCode).toBe(429);
+    expect(last!.json()).toEqual({ error: 'rate_limited' });
   });
 });
 

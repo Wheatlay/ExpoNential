@@ -28,7 +28,7 @@ async function authorOf(repo: string, sha: string | null) {
 
 /** Gałąź, z której Coolify buduje aplikację (git_branch); każde środowisko ma swoją aplikację, więc i swoją gałąź. */
 async function appBranch(uuid: string) {
-  const res = await fetch(`${API}/api/v1/applications/${uuid}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  const res = await fetch(`${API}/api/v1/applications/${encodeURIComponent(uuid)}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
   if (!res.ok) throw new Error(`Coolify ${res.status}`);
   const { git_branch: branch } = (await res.json()) as { git_branch?: string };
   if (!branch) throw new Error('Coolify app has no git branch');
@@ -37,7 +37,7 @@ async function appBranch(uuid: string) {
 
 async function pollProject(p: typeof projects.$inferSelect, env: DeployEnvRow, log: FastifyInstance['log']) {
   try {
-    const res = await fetch(`${API}/api/v1/deployments/applications/${env.sourceRef}?skip=0&take=1`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    const res = await fetch(`${API}/api/v1/deployments/applications/${encodeURIComponent(env.sourceRef)}?skip=0&take=1`, { headers: { Authorization: `Bearer ${TOKEN}` } });
     if (!res.ok) throw new Error(`Coolify ${res.status}`);
     const { deployments } = (await res.json()) as { deployments: { status: string; created_at: string; updated_at: string; commit: string | null; commit_message: string | null }[] };
     const d = deployments[0];

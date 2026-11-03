@@ -1,13 +1,14 @@
 import { z } from 'zod';
 import { and, asc, eq, gt, inArray, isNull, notInArray, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { type AgentSetup, activity, agentJobs, agentRepos, agentRuns, agentTombstones, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, userDismissals, users } from '../db/schema.ts';
+import { type AgentSetup, activity, agentJobs, agentRepos, agentRuns, agentTombstones, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, users } from '../db/schema.ts';
 import { NOT_AGENT_CLIENT } from './oauth.ts';
 import { RuleError, identifier, parseIdentifier } from './rules.ts';
+import { sql } from '../db/index.ts';
 import { analysisModel } from './prompts.ts';
 import { log, publish, requireIssue, updateIssue, type Actor, type Project } from './service.ts';
 
-// Agent na PC zgłasza się co kilkanaście sekund; claim analizy wygasa po 30 min (tyle co lock w tracker-handler.ps1).
+// Agent na PC (Go) trzyma długie odpytanie; claim analizy wygasa po 30 min.
 export const CLAIM_TTL_MIN = 30;
 export const ONLINE_MS = 90_000;
 export const START_JOB_TTL_MIN = 60;
@@ -16,7 +17,7 @@ export const LOCAL_RESERVE_S = 60;
 type User = { id: number };
 
 /** Najstarszy agent z agent/ (exponential-agent.exe, wersja semver), który jeszcze dostaje pracę. */
-export const MIN_EXE_AGENT = '0.1.3';
+export const MIN_EXE_AGENT = '0.4.4';
 const semver = (v: string) => /^(\d+)\.(\d+)\.(\d+)$/.exec(v)?.slice(1).map(Number);
 /** Aktualny agent: agent .exe nie starszy niż MIN_EXE_AGENT. */
 export function agentUpToDate(version: string | null | undefined) {
@@ -27,7 +28,7 @@ export function agentUpToDate(version: string | null | undefined) {
   return true;
 }
 
-/** Urządzenie musi istnieć (install.ps1 zgłasza je pierwszym heartbeatem) i należeć do wołającego. */
+/** Urządzenie musi istnieć (agent zgłasza je pierwszym odpytaniem) i należeć do wołającego. */
 export async function requireOwnAgent(user: User, deviceId: string) {
   const [row] = await db.select().from(agents).where(eq(agents.id, deviceId));
   if (!row) throw new RuleError('Unknown computer: connect the agent again (Settings > My AI)', 'invalid');
@@ -65,12 +66,12 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
   if (await recentlyRemoved(deviceId)) throw new RuleError('This computer was removed', 'conflict');
   await db.insert(agents).values({ id: deviceId, userId: user.id }).onConflictDoNothing();
   const agent = await requireOwnAgent(user, deviceId);
-  // Handler podaje swoją wersję: świeżo zaktualizowany PC nie czeka na pierwszy sygnał agenta.
+  // Agent podaje swoją wersję: świeżo zaktualizowany PC nie czeka na pierwszy sygnał.
   if (version !== undefined && version !== agent.version) {
     await db.update(agents).set({ version: version.slice(0, 40) }).where(eq(agents.id, deviceId));
     agent.version = version;
   }
-  // Stare skrypty nie dostają pracy: poprawki (np. blokada .env) działają dopiero po aktualizacji, więc nie puszczamy ich bez niej.
+  // Stary agent nie dostaje pracy: poprawki (np. blokada .env) działają dopiero po aktualizacji.
   if (!agentUpToDate(agent.version)) throw new RuleError('The agent on this computer is outdated: update it (Settings > My AI)', 'outdated');
   // Analizę bierze tylko komputer z działającym repo projektu (chyba że projekt pozwala agentom klonować).
   if (!p.agentsMayClone) {
@@ -97,7 +98,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
   await db.update(agents).set({ currentRequesterId: requesterId }).where(eq(agents.id, deviceId));
   const [rq] = requesterId != null ? await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, requesterId)) : [];
   if (!already) {
-    // Zajęcie robi skrypt na PC, nie człowiek: w aktywności ze znacznikiem AI, jak inne akcje agenta.
+    // Zajęcie robi agent na PC, nie człowiek: w aktywności ze znacznikiem AI, jak inne akcje agenta.
     await db.transaction((tx) => log(tx, cur.id, { ...user, ai: true } as Actor, { kind: 'analysis_claimed', device: agent.label || agent.name || 'PC' }));
     await publish({ type: 'issue', projectKey: p.key, number });
   }
@@ -108,8 +109,9 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
  * Oddanie zlecenia przez urządzenie, które je przejęło. Z błędem: zlecenie zostaje oznaczone jako nieudane i nie wraca
  * samo do kolejki (inaczej trwały błąd powtarzałby się co kilka sekund). Brak zmian to nie błąd.
  */
-export async function releaseClaim(p: Project, user: User, number: number, deviceId: string, error?: string) {
-  const failed = error !== undefined ? { analysisFailedAt: new Date(), analysisError: error.slice(0, 300) } : {};
+export async function releaseClaim(p: Project, user: User, number: number, deviceId: string, error?: string, requeue = false) {
+  // requeue: agent oddaje zlecenie bez winy zlecenia (np. brak repo, limit): wraca do kolejki bez flagi błędu.
+  const failed = error !== undefined && !requeue ? { analysisFailedAt: new Date(), analysisError: error.slice(0, 300) } : {};
   const rows = await db.update(issues).set({ analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, ...failed })
     .where(and(eq(issues.projectId, p.id), eq(issues.number, number), eq(issues.analysisClaimedDevice, deviceId), eq(issues.analysisClaimedBy, user.id)))
     .returning({ id: issues.id });
@@ -184,7 +186,7 @@ export async function heartbeat(user: User, deviceId: string, info: HeartbeatInf
   if (!existing && await recentlyRemoved(deviceId)) throw new RuleError('This computer was removed', 'conflict');
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
-  // Bez podanej wersji zostaje zapisana (wersję podaje tracker-agent.ps1 z config.json).
+  // Bez podanej wersji zostaje zapisana poprzednia.
   const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date(), ...(info.version !== undefined ? { version: info.version.slice(0, 40) } : {}), ...(info.setup ? { setup: info.setup } : {}) };
   // Pusty błąd nie kasuje poprzedniego: zostaje widoczny do kolejnego błędu albo 24 h.
   const err = (info.error ?? '').trim().slice(0, 300);
@@ -203,7 +205,7 @@ const SOURCES = ['hook', 'manual', 'clone', 'install'] as const;
 
 /**
  * Mapowanie repo na urządzeniu z tego, co zgłasza agent: {KEY: ścieżka} (stary format), {KEY: {path, source, status, error}}
- * albo same klucze (skrypty PS: bez ścieżki, ścieżka zostaje jak była). Tylko projekty, w których użytkownik jest członkiem.
+ * albo same klucze (bez ścieżki, ścieżka zostaje jak była). Tylko projekty, w których użytkownik jest członkiem.
  * Wiersze, których agent już nie zgłasza, znikają, poza ręcznymi (te ustawia człowiek w Ustawieniach, agent ich nie zna).
  */
 async function syncRepos(user: User, deviceId: string, repos: Record<string, RepoReport | string>, legacyKeys: string[]) {
@@ -258,20 +260,13 @@ export async function setAgentRepo(user: User, deviceId: string, projectKey: str
   return { ok: true };
 }
 
-export async function removeAgentRepo(user: User, deviceId: string, projectKey: string) {
-  await requireOwnAgent(user, deviceId);
-  const [pr] = await db.select({ id: projects.id }).from(projects).where(eq(projects.key, projectKey.toUpperCase()));
-  if (pr) await db.delete(agentRepos).where(and(eq(agentRepos.agentId, deviceId), eq(agentRepos.projectId, pr.id)));
-  return { ok: true };
-}
-
 /** requestedBy: kto zlecił analizę, żeby agent mógł zapytać właściciela komputera o zgodę, zanim przejmie cudze zlecenie. */
 export type AgentJob = { kind: 'analyze'; id: number; key: string; deep: boolean; requestedAt?: string | null; requestedBy?: { id: number; name: string } | null } | { kind: 'start'; id: number; key: string };
 
 /** Co ten agent może teraz wziąć: moje zlecenia (i kolejka zespołu w projektach z włączonym przełącznikiem) oraz zlecenia Start. */
 export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string; ownOnly?: boolean; maxOthersTokensPerDay?: number | null },
   opts: { limited?: boolean; skip?: number[] } = {}): Promise<AgentJob[]> {
-  // Stara wersja skryptów: nic nie dostaje (Ustawienia i pasek analizy pokazują "Update needed").
+  // Stara wersja agenta: nic nie dostaje (Ustawienia i pasek analizy pokazują "Update needed").
   if (agent.busy || !agentUpToDate(agent.version)) return [];
   const jobs: AgentJob[] = [];
   // Wyczerpany limit dla innych: oferujemy tylko zlecenia właściciela.
@@ -302,22 +297,38 @@ export async function pendingWork(user: User, agent: { id?: string; busy: boolea
   return jobs;
 }
 
-const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
+/** Czekanie na sygnał pracy (zlecenie analizy, Start, zmiana członkostwa) albo na timeout/abort. */
+const waiters = new Set<() => void>();
+let listening = false;
+/** Budzi wszystkie oczekujące długie odpytania (też z testów). */
+export function notifyWork() { for (const w of [...waiters]) w(); }
+function ensureListener() {
+  if (listening) return;
+  listening = true;
+  // Własny nasłuch tego samego kanału co strumień SSE: po zdarzeniu zlecenia odpytanie sprawdza pracę od razu.
+  sql.listen('tracker_events', (payload) => {
+    try { const e = JSON.parse(payload) as { type?: string }; if (e.type === 'issue' || e.type === 'projects') notifyWork(); } catch { /* obce zdarzenie */ }
+  }).catch(() => { listening = false; });
+}
+const FALLBACK_MS = 10_000;
+const waitSignal = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
+  const done = () => { clearTimeout(t); waiters.delete(done); signal.removeEventListener('abort', done); resolve(); };
   const t = setTimeout(done, ms);
-  function done() { clearTimeout(t); signal.removeEventListener('abort', done); resolve(); }
+  waiters.add(done);
   signal.addEventListener('abort', done);
 });
 
-/** Long poll agenta: jeden heartbeat na żądanie, potem do 25 s sprawdzamy co 2 s, czy jest praca. */
+/** Long poll agenta: jeden heartbeat na żądanie, potem do 25 s czekamy na zdarzenie (awaryjnie co 10 s sprawdzamy bazę). */
 export async function waitForWork(user: User, deviceId: string, info: HeartbeatInfo, signal: AbortSignal) {
   const agent = await heartbeat(user, deviceId, info);
   const until = Date.now() + 25_000;
-  // Limit dla innych liczymy raz na odpytanie, nie co 2 s.
+  ensureListener();
+  // Limit dla innych liczymy raz na odpytanie.
   const limited = await limitReached(deviceId, user.id, agent.maxOthersTokensPerDay);
   for (;;) {
     const jobs = await pendingWork(user, { ...agent, ownOnly: info.ownOnly }, { limited, skip: info.skip });
     if (jobs.length || signal.aborted || Date.now() >= until) return { jobs, ...(await repoState(user, deviceId)) };
-    await sleep(2000, signal);
+    await waitSignal(Math.min(FALLBACK_MS, until - Date.now()), signal);
   }
 }
 
@@ -449,12 +460,6 @@ export async function setTeamMode(user: User, id: string, mode: (typeof TEAM_MOD
   return { ok: true };
 }
 
-/** Odrzucenie podpowiedzi (np. "team-invite:<projectId>"). */
-export async function dismiss(user: User, key: string) {
-  await db.insert(userDismissals).values({ userId: user.id, key }).onConflictDoNothing();
-  return { ok: true };
-}
-
 /** Własna nazwa komputera (pusta = nazwa z Windowsa). Tylko właściciel. */
 export async function renameAgent(user: User, id: string, label: string) {
   const rows = await db.update(agents).set({ label: label.trim().slice(0, 60) }).where(and(eq(agents.id, id), eq(agents.userId, user.id))).returning({ id: agents.id });
@@ -501,7 +506,7 @@ export async function projectAgents(p: Project) {
 export async function createStartJob(p: Project, user: NonNullable<Actor>, number: number) {
   const mine = await agentsLite(user);
   if (!mine.some((a) => a.online)) throw new RuleError('Your PC is offline', 'invalid');
-  // Agent ze starymi skryptami nie dostaje pracy, więc zlecenie by tylko wisiało.
+  // Stary agent nie dostaje pracy, więc zlecenie by tylko wisiało.
   if (!mine.some((a) => a.online && !a.outdated)) throw new RuleError('The agent on this computer is outdated: update it (Settings > My AI)', 'outdated');
   const cur = await requireIssue(p, number);
   const [job] = await db.insert(agentJobs).values({ userId: user.id, issueId: cur.id, kind: 'start' }).returning({ id: agentJobs.id });

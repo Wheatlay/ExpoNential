@@ -3,7 +3,6 @@ package app
 import (
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -22,9 +21,16 @@ func skipJob(j *pollJob) {
 	if j.ID == nil {
 		return
 	}
+	skipID(int(*j.ID))
+}
+
+func skipID(id int) {
+	if id <= 0 {
+		return
+	}
 	skippedMu.Lock()
-	if _, ok := skippedIDs[int(*j.ID)]; !ok {
-		skippedIDs[int(*j.ID)] = time.Now()
+	if _, ok := skippedIDs[id]; !ok {
+		skippedIDs[id] = time.Now()
 	}
 	skippedMu.Unlock()
 }
@@ -40,7 +46,10 @@ func pruneSkipped() {
 	}
 }
 
-// skipParam: "12,15" (sorted, at most 50) or "".
+// skipMaxLen: the server accepts at most 400 characters; stay below.
+const skipMaxLen = 380
+
+// skipParam: "12,15" (sorted, at most skipMaxLen characters) or "".
 func skipParam() string {
 	pruneSkipped()
 	skippedMu.Lock()
@@ -50,12 +59,16 @@ func skipParam() string {
 		ids = append(ids, id)
 	}
 	sort.Ints(ids)
-	if len(ids) > 50 {
-		ids = ids[:50]
+	out := ""
+	for _, id := range ids {
+		next := strconv.Itoa(id)
+		if out != "" {
+			next = out + "," + next
+		}
+		if len(next) > skipMaxLen {
+			break
+		}
+		out = next
 	}
-	parts := make([]string, len(ids))
-	for i, id := range ids {
-		parts[i] = strconv.Itoa(id)
-	}
-	return strings.Join(parts, ",")
+	return out
 }

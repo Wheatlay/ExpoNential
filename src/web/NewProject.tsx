@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
+import { useModal } from './modal.ts';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, type ProjectSummary } from './api.ts';
 import { ProjectBadge, switchProject } from './ProjectSwitcher.tsx';
@@ -34,6 +35,7 @@ function NewProjectModal() {
   const [keyTouched, setKeyTouched] = useState(false);
   const [color, setColor] = useState(COLORS[1]);
   const [busy, setBusy] = useState(false);
+  const modalRef = useModal();
   const k = keyTouched ? key : suggestKey(name);
   const valid = name.trim() && /^[A-Z]{2,6}$/.test(k);
   const create = async () => {
@@ -53,7 +55,7 @@ function NewProjectModal() {
   };
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="modal" style={{ width: 520 }} onKeyDown={(e) => {
+      <div className="modal" style={{ width: 520 }} role="dialog" aria-modal="true" aria-label={t('New project')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === 'Escape') close();
         if (e.key === 'Enter') void create();

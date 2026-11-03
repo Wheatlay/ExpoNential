@@ -7,7 +7,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.ts';
-import { agentPairings, agentTombstones, oauthClients, oauthGrants, apiTokens, users } from '../db/schema.ts';
+import { agentPairings, agentTombstones, agents, oauthClients, oauthGrants, apiTokens, users } from '../db/schema.ts';
 import { createApiToken, sha256 } from './auth.ts';
 import { AGENT_CLIENT_ID, AGENT_CLIENT_NAME, issueGrant } from './oauth.ts';
 import { createAttemptLimiter } from './password.ts';
@@ -66,7 +66,7 @@ export function pairingTrailer(config: { url: string; pairing: string; engine?: 
 const limiter = createAttemptLimiter(60, 15 * 60_000);
 const limited = (req: FastifyRequest, reply: FastifyReply) => {
   const key = `pair|${req.ip}`;
-  if (limiter.blocked(key)) { void reply.code(429).send({ error: 'Too many requests, try again later' }); return true; }
+  if (limiter.blocked(key)) { void reply.code(429).send({ error: 'rate_limited' }); return true; }
   limiter.fail(key);
   return false;
 };
@@ -113,13 +113,19 @@ export async function registerPairing(app: FastifyInstance) {
     await db.insert(oauthClients).values({ id: AGENT_CLIENT_ID, name: AGENT_CLIENT_NAME, redirectUris: ['http://127.0.0.1/cb'] }).onConflictDoNothing();
     // Świeże parowanie kasuje nagrobek ręcznie usuniętego komputera (ponowna instalacja działa od razu).
     await db.delete(agentTombstones).where(deviceId ? and(eq(agentTombstones.id, deviceId), eq(agentTombstones.userId, row.userId)) : eq(agentTombstones.userId, row.userId));
+    // Nazwa komputera z agenta: wiersz agents powstaje (albo dostaje nazwę) już przy parowaniu, tylko dla własnego komputera użytkownika.
+    const pcName = typeof b.name === 'string' ? b.name.trim().slice(0, 100) : '';
+    if (deviceId && pcName) {
+      await db.insert(agents).values({ id: deviceId, userId: row.userId, name: pcName })
+        .onConflictDoUpdate({ target: agents.id, set: { name: pcName }, setWhere: eq(agents.userId, row.userId) });
+    }
     const grant = await issueGrant(AGENT_CLIENT_ID, row.userId, '', deviceId);
     return reply.header('Cache-Control', 'no-store').send({ client_id: AGENT_CLIENT_ID, ...grant, user: { name: u.name } });
   });
 
   /**
    * Klucz MCP dla instalatora: agent (grant OAuth klienta exponential-agent) prosi o osobisty token trk_ dla klienta AI
-   * na tym komputerze. Nazwa "<klient> · <komputer>"; ponowna instalacja zastępuje poprzedni token o tej nazwie.
+   * na tym komputerze. Nazwa "<klient> · <komputer>"; ponowna instalacja zastępuje poprzedni token o tej nazwie na tym samym komputerze (grant musi mieć komputer).
    */
   app.post('/api/agent/mcp-key', async (req, reply) => {
     const m = /^Bearer\s+(exa_\S+)$/i.exec(req.headers.authorization ?? '');
@@ -127,14 +133,14 @@ export async function registerPairing(app: FastifyInstance) {
     const [g] = await db.select({ clientId: oauthGrants.clientId, agentId: oauthGrants.agentId }).from(oauthGrants)
       .where(eq(oauthGrants.accessHash, sha256(m[1])));
     if (!g || g.clientId !== AGENT_CLIENT_ID) return reply.code(403).send({ error: 'Only the Exponential agent can create this key' });
+    if (!g.agentId) return reply.code(400).send({ error: 'This agent grant has no computer; pair the agent again' });
     const b = (req.body && typeof req.body === 'object' ? req.body : {}) as { client?: unknown; device?: unknown };
     if (typeof b.client !== 'string' || !b.client.trim() || b.client.length > 40 || typeof b.device !== 'string' || !b.device.trim() || b.device.length > 80) {
       return reply.code(400).send({ error: 'client (max 40) and device (max 80) are required' });
     }
     const name = `${b.client.trim()} · ${b.device.trim()}`;
-    await db.delete(apiTokens).where(and(eq(apiTokens.userId, req.user.id), eq(apiTokens.name, name)));
-    const token = await createApiToken(req.user.id, name);
-    if (g.agentId) await db.update(apiTokens).set({ agentId: g.agentId }).where(and(eq(apiTokens.userId, req.user.id), eq(apiTokens.name, name)));
+    await db.delete(apiTokens).where(and(eq(apiTokens.userId, req.user.id), eq(apiTokens.agentId, g.agentId), eq(apiTokens.name, name)));
+    const token = await createApiToken(req.user.id, name, g.agentId);
     return reply.header('Cache-Control', 'no-store').send({ token });
   });
 }

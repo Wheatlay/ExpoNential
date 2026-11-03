@@ -2,6 +2,34 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.5], Agent [0.4.4] - 03.11.2026
+
+Fixes from the full code audit. Agents older than 0.4.4 get no work until they update.
+
+Security:
+- AI clients' tokens can no longer approve sign-ins themselves; the device sign-in page never takes the code from a link; the agent can only be connected by pairing.
+- Only the agent's own sign-in can take analyses, report runs or change computers.
+- Agent sign-ins are listed in "Connected AI clients" and can be revoked. "Sign out everywhere" in the profile; a password reset also revokes AI sign-ins and API keys. API keys expire after 180 days without use.
+- Rate limits see the real client address (`TRUST_PROXY`, default one proxy); login is also limited per e-mail.
+- Admins can be set by GitHub id (`ADMIN_GITHUB_IDS`).
+- Demo blocks can't be bypassed with encoded addresses; uploads are checked by content and size, 200 MB per person.
+- Each project has its own deploy webhook secret (shown in project settings).
+- Analyses for other people: the agent forces the default permission mode, blocks secret files on the whole computer (agent data, Claude credentials, ~/.ssh, ~/.aws and more) and can only touch the one issue in the tracker. Codex computers don't take other people's analyses. The server can't switch a computer to automatic team mode on its own.
+- Agent updates must be signed. Agent sign-in tokens are encrypted on disk (Windows). Repo paths from the server are checked (no network paths, no escaping the data folder).
+- Meeting links must be http(s); Discord notifications can't ping @everyone through a title.
+
+Bugs and consistency:
+- "Start on my PC" works with the agent again (phone); the old tracker:// launcher is gone. The agent reports broken repo folders, and such a computer hands the analysis back to the queue instead of failing it.
+- Errors show a message with Retry instead of a blank board, a "not found" issue or the login screen.
+- Long log pastes and emoji in commit messages no longer break the work trace; issues opened by the work trace are not marked as read.
+- `exponential-agent login` is gone; computers are connected by pairing from Settings > My AI.
+
+Performance and housekeeping:
+- Database indexes for the agent queue, inbox and activity; missing foreign keys; logins unique regardless of case; old agent jobs cleaned up hourly.
+- The agent's poll wakes on events instead of querying every 2 s.
+- The app loads about half as much code up front.
+- Dialogs keep keyboard focus inside, tooltips work from the keyboard, toasts are read by screen readers.
+
 ## Server [1.3.4], Agent [0.4.3] - 03.11.2026
 
 Security and bugs:

@@ -7,6 +7,7 @@ import { users } from '../db/schema.ts';
 import { requireUser } from './auth.ts';
 import { ctx } from './api.ts';
 import { canManage } from './projects.ts';
+import { RuleError } from './rules.ts';
 import * as mt from './meetings.ts';
 import * as nt from './notify.ts';
 
@@ -15,6 +16,12 @@ const date = z.coerce.date();
 const reminders = z.array(z.number().int()).max(4);
 // null albo [] = cały projekt
 const attendees = z.array(z.number().int()).max(200).nullable().optional();
+
+function idParam(v: string) {
+  const n = Number(v);
+  if (!Number.isSafeInteger(n) || n <= 0) throw new RuleError('Invalid id', 'invalid');
+  return n;
+}
 
 async function scope(req: FastifyRequest) {
   const { project, role } = await ctx(req);
@@ -47,29 +54,29 @@ export async function registerMeetings(app: FastifyInstance) {
         title: z.string().max(200).optional(), locationUrl: z.string().max(500).optional(), reminders: reminders.optional(),
         startsAt: date.optional(), endsAt: date.optional(), attendeeIds: attendees,
       }).parse(req.body);
-      await mt.updateMeeting(p, actor, isAdmin, Number(req.params.id), b);
+      await mt.updateMeeting(p, actor, isAdmin, idParam(req.params.id), b);
       return { ok: true };
     });
     r.delete<{ Params: { id: string } }>('/api/meetings/:id', async (req) => {
       const { p, actor, isAdmin } = await scope(req);
-      await mt.cancelMeeting(p, actor, isAdmin, Number(req.params.id));
+      await mt.cancelMeeting(p, actor, isAdmin, idParam(req.params.id));
       return { ok: true };
     });
     r.post<{ Params: { id: string } }>('/api/meetings/:id/slots', async (req) => {
       const { p, actor } = await scope(req);
       const b = z.object({ startsAt: date, endsAt: date.optional(), reason: z.string().max(300).optional() }).parse(req.body);
-      return mt.proposeSlot(p, actor, Number(req.params.id), b, req.log);
+      return mt.proposeSlot(p, actor, idParam(req.params.id), b, req.log);
     });
     r.put<{ Params: { id: string } }>('/api/meeting-slots/:id/vote', async (req) => {
       const { p, actor } = await scope(req);
       const { vote, note } = z.object({ vote: z.enum(['yes', 'maybe', 'no']).nullable(), note: z.string().max(200).nullable().optional() }).parse(req.body);
-      await mt.vote(p, actor, Number(req.params.id), vote, note);
+      await mt.vote(p, actor, idParam(req.params.id), vote, note);
       return { ok: true };
     });
     r.post<{ Params: { id: string } }>('/api/meetings/:id/pick', async (req) => {
       const { p, actor, isAdmin } = await scope(req);
       const { slotId } = z.object({ slotId: z.number().int() }).parse(req.body);
-      await mt.pickSlot(p, actor, isAdmin, Number(req.params.id), slotId, req.log);
+      await mt.pickSlot(p, actor, isAdmin, idParam(req.params.id), slotId, req.log);
       return { ok: true };
     });
 

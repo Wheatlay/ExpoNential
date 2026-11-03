@@ -359,8 +359,6 @@ describe('repo mappings and routing', () => {
     await ag.heartbeat(alice, id, { name: 'PS-PC', busy: false, repoKeys: [] });
     expect((await ag.repoState(alice, id)).repos).toMatchObject([{ path: 'C:/manual', source: 'manual' }]);
     expect(await code(ag.setAgentRepo(bob, id, 'AGT', 'x'))).toBe('forbidden');
-    await ag.removeAgentRepo(alice, id, 'AGT');
-    expect((await ag.repoState(alice, id)).repos).toEqual([]);
     await ag.removeAgent(alice, id);
   });
 

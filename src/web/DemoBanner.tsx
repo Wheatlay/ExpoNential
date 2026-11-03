@@ -1,5 +1,5 @@
 import { useConfig } from './api.ts';
-import { restartTour } from './DemoTour.tsx';
+import { restartTour } from './demoTourState.ts';
 import { GithubMark, Icon } from './icons.tsx';
 import { linkProps } from './router.ts';
 import { t } from './i18n.ts';

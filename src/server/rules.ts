@@ -72,8 +72,10 @@ export function sortBetween(before: number | null, after: number | null): number
   return (before + after) / 2;
 }
 
-/** Sekrety w adresach (webhook Coolify, link kalendarza) nie trafiają do logów. */
-export function maskUrl(url: string) { return url.replace(/([?&]secret=)[^&]*/i, '$1***').replace(/(\/calendar\/)[^/?]+/, '$1***'); }
+/** Sekrety w adresach (webhook Coolify, link kalendarza, token parowania agenta, code/state/token OAuth) nie trafiają do logów. */
+export function maskUrl(url: string) {
+  return url.replace(/([?&](?:secret|code|state|token)=)[^&]*/gi, '$1***').replace(/(\/calendar\/)[^/?]+/, '$1***').replace(/(\/api\/agent\/pair\/)[^/?]+/, '$1***');
+}
 
 /** Wpis z "@x.y" traktujemy jako e-mail (allowlista po e-mailu), inaczej jako login GitHub. */
 export function isEmail(s: string) {

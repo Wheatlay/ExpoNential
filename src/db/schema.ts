@@ -1,5 +1,5 @@
 import {
-  pgTable, serial, integer, text, boolean, timestamp, jsonb, primaryKey, uniqueIndex, index, doublePrecision, bigint, numeric,
+  pgTable, serial, integer, text, boolean, timestamp, jsonb, primaryKey, uniqueIndex, index, doublePrecision, bigint, numeric, type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -28,10 +28,12 @@ export const users = pgTable('users', {
   // Sekret w linku subskrypcji kalendarza (.ics), bez sesji.
   calendarToken: text('calendar_token').unique(),
   // Lokalna analiza (tracker://) zainstalowana na komputerze użytkownika; ustawia instalator.
-  localAgentAt: timestamp('local_agent_at', { withTimezone: true }),
   // Kreator podłączenia AI ukończony (przycisk Done przy pełnym celu).
   setupDoneAt: timestamp('setup_done_at', { withTimezone: true }),
-}, (t) => [uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`)]);
+}, (t) => [
+  uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`),
+  uniqueIndex('users_login_lower_idx').on(sql`lower(${t.login})`),
+]);
 
 /** Projekt = osobny zespół: własny prefiks numerów, członkowie, statusy, etykiety i sprinty. */
 export const projects = pgTable('projects', {
@@ -121,10 +123,10 @@ export const issues = pgTable('issues', {
   title: text('title').notNull(),
   description: text('description').notNull().default(''),
   statusId: integer('status_id').notNull().references(() => statuses.id),
-  assigneeId: integer('assignee_id').references(() => users.id),
-  creatorId: integer('creator_id').references(() => users.id),
+  assigneeId: integer('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+  creatorId: integer('creator_id').references(() => users.id, { onDelete: 'set null' }),
   priority: integer('priority').notNull().default(0),
-  parentId: integer('parent_id'),
+  parentId: integer('parent_id').references((): AnyPgColumn => issues.id, { onDelete: 'set null' }),
   sprintId: integer('sprint_id').references(() => sprints.id, { onDelete: 'set null' }),
   sortOrder: doublePrecision('sort_order').notNull().default(0),
   analysis: text('analysis').notNull().default(''),
@@ -157,14 +159,16 @@ export const issues = pgTable('issues', {
   // Kto zapytał; pytanie "do każdego" (infoFromId = null) widzą wszyscy poza nim.
   infoById: integer('info_by_id').references(() => users.id, { onDelete: 'set null' }),
   // Status sprzed Need Info: po odpowiedzi zadanie samo do niego wraca.
-  infoPrevStatusId: integer('info_prev_status_id'),
+  infoPrevStatusId: integer('info_prev_status_id').references(() => statuses.id, { onDelete: 'set null' }),
   // Komentarz z pytaniem: odpowiedź zostanie podpięta pod niego jako wątek.
-  infoCommentId: integer('info_comment_id'),
+  infoCommentId: integer('info_comment_id').references((): AnyPgColumn => comments.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
 }, (t) => [
   index('issues_status_idx').on(t.statusId), index('issues_parent_idx').on(t.parentId),
+  index('issues_analysis_queue_idx').on(t.analysisRequestedAt).where(sql`${t.analysisRequestedAt} is not null and ${t.analysisFailedAt} is null`),
+  index('issues_analysis_device_idx').on(t.analysisClaimedDevice).where(sql`${t.analysisClaimedDevice} is not null`),
   uniqueIndex('issues_project_number_uniq').on(t.projectId, t.number),
 ]);
 
@@ -176,10 +180,10 @@ export const issueLabels = pgTable('issue_labels', {
 export const comments = pgTable('comments', {
   id: serial('id').primaryKey(),
   issueId: integer('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
-  authorId: integer('author_id').references(() => users.id),
+  authorId: integer('author_id').references(() => users.id, { onDelete: 'set null' }),
   body: text('body').notNull(),
   // Odpowiedź na komentarz (np. na pytanie z Need Info) wyświetlana pod nim.
-  replyToId: integer('reply_to_id'),
+  replyToId: integer('reply_to_id').references((): AnyPgColumn => comments.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('comments_issue_idx').on(t.issueId)]);
@@ -215,7 +219,7 @@ export const inboxItems = pgTable('inbox_items', {
   excerpt: text('excerpt').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   readAt: timestamp('read_at', { withTimezone: true }),
-}, (t) => [index('inbox_user_idx').on(t.userId, t.createdAt)]);
+}, (t) => [index('inbox_user_idx').on(t.userId, t.createdAt), index('inbox_issue_user_idx').on(t.issueId, t.userId)]);
 
 export type ActivityPayload =
   | { kind: 'created' }
@@ -239,11 +243,11 @@ export type ActivityPayload =
 export const activity = pgTable('activity', {
   id: serial('id').primaryKey(),
   issueId: integer('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
-  actorId: integer('actor_id').references(() => users.id),
+  actorId: integer('actor_id').references(() => users.id, { onDelete: 'set null' }),
   viaAi: boolean('via_ai').notNull().default(false),   // zmiana przez MCP (agent na tokenie tej osoby)
   payload: jsonb('payload').$type<ActivityPayload>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index('activity_issue_idx').on(t.issueId)]);
+}, (t) => [index('activity_issue_idx').on(t.issueId), index('activity_actor_idx').on(t.actorId, t.createdAt)]);
 
 export const issueCommits = pgTable('issue_commits', {
   issueId: integer('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
@@ -287,7 +291,7 @@ export const sessions = pgTable('sessions', {
   id: text('id').primaryKey(),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-});
+}, (t) => [index('sessions_user_idx').on(t.userId)]);
 
 export const apiTokens = pgTable('api_tokens', {
   id: serial('id').primaryKey(),
@@ -298,7 +302,9 @@ export const apiTokens = pgTable('api_tokens', {
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   // Komputer (agents.id), dla którego agent wystawił ten klucz (mcp-key); removeAgent go kasuje.
   agentId: text('agent_id'),
-}, (t) => [uniqueIndex('api_tokens_hash_idx').on(t.tokenHash)]);
+  // Wygaśnięcie klucza (null = bez terminu); używanie klucza przesuwa je do przodu.
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+}, (t) => [uniqueIndex('api_tokens_hash_idx').on(t.tokenHash), index('api_tokens_agent_idx').on(t.agentId)]);
 
 // OAuth 2.1 dla klientów MCP (publiczni klienci, PKCE). W bazie tylko hashe kodów i tokenów.
 export const oauthClients = pgTable('oauth_clients', {
@@ -334,7 +340,7 @@ export const oauthGrants = pgTable('oauth_grants', {
   firstMcpAt: timestamp('first_mcp_at', { withTimezone: true }),
   // Komputer (agents.id), dla którego agent sparował się tym grantem; removeAgent odwołuje taki grant.
   agentId: text('agent_id'),
-});
+}, (t) => [index('oauth_grants_agent_idx').on(t.agentId)]);
 
 export const oauthDeviceCodes = pgTable('oauth_device_codes', {
   deviceHash: text('device_hash').primaryKey(),
@@ -497,7 +503,7 @@ export const agents = pgTable('agents', {
   // Zlecenia zespołu na tym komputerze: 'ask' (agent pyta właściciela), 'auto' (bez pytania), 'off' (tylko własne).
   teamMode: text('team_mode').notNull().default('ask'),
   // Kto zlecił to, co agent przejął jako ostatnie (claim analizy / Start). Analiza kasuje claim na zgłoszeniu, więc zapisujemy tu.
-  currentRequesterId: integer('current_requester_id'),
+  currentRequesterId: integer('current_requester_id').references(() => users.id, { onDelete: 'set null' }),
   // Co agent widzi ustawione na komputerze (z plików konfiguracji, przy każdym odpytaniu): MCP i plugin per konto Claude, Codex, Cursor.
   setup: jsonb('setup').$type<AgentSetup>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -561,7 +567,7 @@ export const agentJobs = pgTable('agent_jobs', {
   claimedAt: timestamp('claimed_at', { withTimezone: true }),
   claimedDevice: text('claimed_device'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [index('agent_jobs_poll_idx').on(t.userId, t.createdAt).where(sql`${t.claimedAt} is null`)]);
 
 /**
  * Jednorazowe linki: zaproszenie do projektu (kind 'invite', projectId + role) albo reset hasła

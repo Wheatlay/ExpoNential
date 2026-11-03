@@ -1,7 +1,7 @@
 import { and, eq, inArray, ne, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import {
-  agentJobs, agents, apiTokens, inboxItems, issueViews, issues, oauthCodes, oauthDeviceCodes, oauthGrants, projectInvites, pushSubscriptions,
+  agentJobs, agentPairings, agentTombstones, agents, apiTokens, inboxItems, userDismissals, issueViews, issues, oauthCodes, oauthDeviceCodes, oauthGrants, projectInvites, pushSubscriptions,
   sessions, statuses, userNotificationSettings, userTagMembers, userViews, users,
 } from '../db/schema.ts';
 import { RuleError } from './rules.ts';
@@ -74,6 +74,9 @@ export async function deleteAccount(userId: number, confirm: string) {
     await tx.delete(userViews).where(eq(userViews.userId, userId));
     await tx.delete(projectInvites).where(eq(projectInvites.userId, userId));
     await tx.delete(agentJobs).where(eq(agentJobs.userId, userId));
+    await tx.delete(agentPairings).where(eq(agentPairings.userId, userId));
+    await tx.delete(agentTombstones).where(eq(agentTombstones.userId, userId));
+    await tx.delete(userDismissals).where(eq(userDismissals.userId, userId));
     await tx.delete(agents).where(eq(agents.userId, userId));
     // Otwarte zgłoszenia zostają bez przypisanego; zamknięte zachowują autora pracy.
     const open = tx.select({ id: statuses.id }).from(statuses).where(inArray(statuses.type, ['backlog', 'unstarted', 'started']));

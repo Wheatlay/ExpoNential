@@ -45,21 +45,8 @@ function copyLater(text: Promise<string>): Promise<boolean> {
   return text.then((s) => navigator.clipboard.writeText(s)).then(() => true, () => false);
 }
 
-/**
- * Czy ta przeglądarka działa na komputerze z agentem (wtedy link tracker:// ruszy analizę od razu). Telefon i tablet nie;
- * laptop z ekranem dotykowym ręcznie przełącza to w Ustawieniach (localStorage), bo `pointer: coarse` bywa mylące.
- */
-export function agentHere(me?: Me | null) {
-  try {
-    const v = localStorage.getItem('tracker.agentHere');
-    if (v === '1') return true;
-    if (v === '0') return false;
-  } catch { /* prywatne okno */ }
-  return !!me?.localAgentAt && !matchMedia('(pointer: coarse)').matches;
-}
-export function runLocalAnalysis(number: number, deep: boolean) {
-  location.href = `tracker://analyze/${ident(number)}${deep ? '?deep' : ''}`;
-}
+/** Telefon i tablet (ekran dotykowy): tam "Start work" nie otworzy VS Code, więc polecenie leci do agenta na moim komputerze. */
+export const isTouchDevice = () => matchMedia('(pointer: coarse)').matches;
 
 /** "Start work": otwiera Claude z poleceniem, przypisuje do mnie i przesuwa do In Progress (gdy jeszcze nie zaczęte). */
 export async function startWork(number: number) {

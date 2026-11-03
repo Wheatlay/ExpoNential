@@ -3,6 +3,7 @@ import { useIssue } from './api.ts';
 import { Icon } from './icons.tsx';
 import { navigate, usePath } from './router.ts';
 import { t } from './i18n.ts';
+import { TOUR_ISSUE, TOUR_RESTART } from './demoTourState.ts';
 
 /**
  * Przewodnik po demo: dymek przyklejony do elementu z data-tour="…". Stan (krok, zakończenie)
@@ -10,7 +11,6 @@ import { t } from './i18n.ts';
  */
 type TourState = { step: number; done: boolean };
 const KEY = 'demoTour';
-export const TOUR_ISSUE = '/issue/ACME-12';
 
 function load(): TourState {
   try {
@@ -27,12 +27,6 @@ function set(next: TourState) {
   state = next;
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* prywatne okno */ }
   subs.forEach((s) => s());
-}
-
-/** Przewodnik od początku i na stronie zgłoszenia ACME-12. */
-export function restartTour() {
-  set({ step: 0, done: false });
-  navigate(TOUR_ISSUE);
 }
 
 type Step = { page: 'issue' | 'review'; target: string; fallback?: string; text: string };
@@ -53,6 +47,11 @@ const findTarget = (step: Step) =>
 export function DemoTour() {
   const s = useSyncExternalStore((fn) => { subs.push(fn); return () => { subs = subs.filter((x) => x !== fn); }; }, get);
   const path = usePath();
+  useEffect(() => {
+    const f = () => set({ step: 0, done: false });
+    window.addEventListener(TOUR_RESTART, f);
+    return () => window.removeEventListener(TOUR_RESTART, f);
+  }, []);
   const issue = useIssue(12).data;
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);

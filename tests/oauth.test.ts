@@ -4,7 +4,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres from 'postgres';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 const ADMIN_URL = 'postgres://tracker:tracker@localhost:5434/tracker';
 process.env.DATABASE_URL = 'postgres://tracker:tracker@localhost:5434/tracker_test_oauth';
@@ -214,44 +214,164 @@ describe('refresh, revoke and /mcp', () => {
 });
 
 describe('device flow', () => {
-  it('pending, slow_down, approved, then a token', async () => {
+  const grantType = 'urn:ietf:params:oauth:grant-type:device_code';
+  const deviceStart = async (cid: string) => (await app.inject({ method: 'POST', url: '/oauth/device_authorization', headers: FORM, payload: form({ client_id: cid }) })).json();
+  /** Przepisanie kodu w formularzu (krok 1): zwraca stronę zgody i jej csrf. */
+  const lookup = async (code: string, cookie = sessionCookie) => {
+    const entry = await app.inject({ url: '/oauth/device', headers: { cookie } });
+    const csrf = /name="csrf" value="([^"]+)"/.exec(entry.body)![1];
+    const page = await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, cookie: `${cookie}; oauth_csrf=${csrf}` }, payload: form({ csrf, step: 'lookup', code }) });
+    return { page, csrf2: /name="csrf" value="([^"]+)"/.exec(page.body)?.[1] ?? '' };
+  };
+
+  it('pending, slow_down, approved by typing the code, then a token', async () => {
     const cid = await newClient();
-    const d = (await app.inject({ method: 'POST', url: '/oauth/device_authorization', headers: FORM, payload: form({ client_id: cid }) })).json();
+    const d = await deviceStart(cid);
     expect(d.user_code).toMatch(/^[A-Z]{4}-[A-Z]{4}$/);
-    expect(d.verification_uri_complete).toContain(d.user_code);
-    const poll = () => token({ grant_type: 'urn:ietf:params:oauth:grant-type:device_code', client_id: cid, device_code: d.device_code });
+    expect(d.verification_uri_complete).toBeUndefined();
+    const poll = () => token({ grant_type: grantType, client_id: cid, device_code: d.device_code });
     expect((await poll()).json().error).toBe('authorization_pending');
     expect((await poll()).json().error).toBe('slow_down');
     await dbmod.db.update(schema.oauthDeviceCodes).set({ lastPollAt: new Date(Date.now() - 10_000) }).where(eq(schema.oauthDeviceCodes.userCode, d.user_code));
 
-    const anon = await app.inject({ url: `/oauth/device?code=${d.user_code}` });
-    expect(anon.statusCode).toBe(302);
-    // Link z gotowym kodem nie prowadzi do zgody: kod trzeba przepisać (typed=1 z formularza).
-    const linked = await app.inject({ url: `/oauth/device?code=${d.user_code}`, headers: { cookie: sessionCookie } });
-    expect(linked.body).not.toContain("Test client");
-    expect(linked.body).toContain("do not continue");
-    const page = await app.inject({ url: `/oauth/device?typed=1&code=${d.user_code}`, headers: { cookie: sessionCookie } });
-    expect(page.body).toContain("is not verified");
+    expect((await app.inject({ url: '/oauth/device' })).statusCode).toBe(302);
+    const { page, csrf2 } = await lookup(d.user_code);
+    expect(page.body).toContain('is not verified');
     expect(page.body).toContain('Test client');
-    const csrf = /name="csrf" value="([^"]+)"/.exec(page.body)![1];
-    const ok = await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, cookie: `${sessionCookie}; oauth_csrf=${csrf}` }, payload: form({ csrf, code: d.user_code, decision: 'allow' }) });
+    const ok = await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, cookie: `${sessionCookie}; oauth_csrf=${csrf2}` }, payload: form({ csrf: csrf2, code: d.user_code, decision: 'allow' }) });
     expect(ok.statusCode).toBe(200);
     const t = await poll();
     expect(t.statusCode).toBe(200);
     expect(t.json().access_token).toMatch(/^exa_/);
   });
-  it('denied and expired codes', async () => {
-    const cid = await newClient();
-    const d = (await app.inject({ method: 'POST', url: '/oauth/device_authorization', headers: FORM, payload: form({ client_id: cid }) })).json();
-    const csrf = 'c1';
-    await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, cookie: `${sessionCookie}; oauth_csrf=${csrf}` }, payload: form({ csrf, code: d.user_code, decision: 'deny' }) });
-    const grantType = 'urn:ietf:params:oauth:grant-type:device_code';
-    expect((await token({ grant_type: grantType, client_id: cid, device_code: d.device_code })).json().error).toBe('access_denied');
 
-    const e = (await app.inject({ method: 'POST', url: '/oauth/device_authorization', headers: FORM, payload: form({ client_id: cid }) })).json();
+  it('C2: the code from the URL is never used or pre-filled, with or without typed=1', async () => {
+    const cid = await newClient();
+    const d = await deviceStart(cid);
+    for (const q of [`code=${d.user_code}`, `typed=1&code=${d.user_code}`]) {
+      const r = await app.inject({ url: `/oauth/device?${q}`, headers: { cookie: sessionCookie } });
+      expect(r.statusCode).toBe(200);
+      expect(r.body).not.toContain('Test client');
+      expect(r.body).not.toContain(d.user_code);
+      expect(r.body).toContain('do not continue');
+    }
+  });
+
+  it('a POST without the CSRF cookie of the same form is refused (no approve, no lookup)', async () => {
+    const cid = await newClient();
+    const d = await deviceStart(cid);
+    const r = await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, cookie: sessionCookie }, payload: form({ csrf: 'x', code: d.user_code, decision: 'allow' }) });
+    expect(r.statusCode).toBe(400);
+    expect((await token({ grant_type: grantType, client_id: cid, device_code: d.device_code })).json().error).toBe('authorization_pending');
+  });
+
+  it('C2: deny deletes only the code of that form (csrf bound to the code)', async () => {
+    const cid = await newClient();
+    const mine = await deviceStart(cid);
+    const other = await deviceStart(cid);
+    const { csrf2 } = await lookup(mine.user_code);
+    const r = await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, cookie: `${sessionCookie}; oauth_csrf=${csrf2}` }, payload: form({ csrf: csrf2, code: other.user_code, decision: 'deny' }) });
+    expect(r.statusCode).toBe(400);
+    expect((await token({ grant_type: grantType, client_id: cid, device_code: other.device_code })).json().error).toBe('authorization_pending');
+    const { csrf2: c3 } = await lookup(mine.user_code);
+    await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, cookie: `${sessionCookie}; oauth_csrf=${c3}` }, payload: form({ csrf: c3, code: mine.user_code, decision: 'deny' }) });
+    expect((await token({ grant_type: grantType, client_id: cid, device_code: mine.device_code })).json().error).toBe('access_denied');
+  });
+
+  it('expired codes', async () => {
+    const cid = await newClient();
+    const e = await deviceStart(cid);
     await dbmod.db.update(schema.oauthDeviceCodes).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(schema.oauthDeviceCodes.userCode, e.user_code));
     expect((await token({ grant_type: grantType, client_id: cid, device_code: e.device_code })).json().error).toBe('expired_token');
   });
+});
+
+describe('C1: a bearer token cannot approve consent', () => {
+  const grant = async () => {
+    const cid = await newClient();
+    const { verifier, challenge } = pkce();
+    const code = await authorize(cid, challenge);
+    const t = (await token({ grant_type: 'authorization_code', client_id: cid, code, redirect_uri: 'http://127.0.0.1:9999/callback', code_verifier: verifier })).json();
+    return { cid, t };
+  };
+  it('GET and POST /oauth/authorize and /oauth/device are refused for exa_ tokens, token endpoints still work', async () => {
+    const { cid, t } = await grant();
+    const bearer = { authorization: `Bearer ${t.access_token}`, cookie: 'oauth_csrf=abc' };
+    const q = form({ response_type: 'code', client_id: cid, redirect_uri: REDIRECT, code_challenge: pkce().challenge, code_challenge_method: 'S256' });
+    expect((await app.inject({ method: 'GET', url: `/oauth/authorize?${q}`, headers: bearer })).statusCode).toBe(403);
+    const post = await app.inject({ method: 'POST', url: '/oauth/authorize', headers: { ...FORM, ...bearer }, payload: form({ csrf: 'abc', client_id: cid, redirect_uri: REDIRECT, code_challenge: pkce().challenge, decision: 'allow' }) });
+    expect(post.statusCode).toBe(403);
+    expect(post.headers.location).toBeUndefined();
+    const d = (await app.inject({ method: 'POST', url: '/oauth/device_authorization', headers: FORM, payload: form({ client_id: cid }) })).json();
+    expect((await app.inject({ method: 'GET', url: '/oauth/device', headers: bearer })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, ...bearer }, payload: form({ csrf: 'abc', code: d.user_code, decision: 'allow' }) })).statusCode).toBe(403);
+    expect((await token({ grant_type: 'urn:ietf:params:oauth:grant-type:device_code', client_id: cid, device_code: d.device_code })).json().error).toBe('authorization_pending');
+    expect((await app.inject({ method: 'POST', url: '/oauth/revoke', headers: { ...FORM, authorization: bearer.authorization }, payload: form({ token: t.refresh_token }) })).statusCode).toBe(200);
+  });
+});
+
+describe('the agent client only comes from pairing', () => {
+  const AGENT = 'exponential-agent';
+  beforeAll(async () => {
+    await dbmod.db.insert(schema.oauthClients).values({ id: AGENT, name: 'Exponential agent', redirectUris: ['http://127.0.0.1/cb'] }).onConflictDoNothing();
+  });
+  it('device_authorization, device_code, authorize and authorization_code are refused', async () => {
+    const d = await app.inject({ method: 'POST', url: '/oauth/device_authorization', headers: FORM, payload: form({ client_id: AGENT }) });
+    expect(d.statusCode).toBe(400);
+    expect(d.json().error).toBe('unauthorized_client');
+    // Nawet wiersz device code wstawiony wprost nie da grantu ani nie da się zatwierdzić na stronie.
+    await dbmod.db.insert(schema.oauthDeviceCodes).values({ deviceHash: auth.sha256('dev-agent'), userCode: 'BBBB-CCCC', clientId: AGENT, expiresAt: new Date(Date.now() + 60_000) });
+    expect((await token({ grant_type: 'urn:ietf:params:oauth:grant-type:device_code', client_id: AGENT, device_code: 'dev-agent' })).json().error).toBe('unauthorized_client');
+    const { page } = await (async () => {
+      const entry = await app.inject({ url: '/oauth/device', headers: { cookie: sessionCookie } });
+      const csrf = /name="csrf" value="([^"]+)"/.exec(entry.body)![1];
+      return { page: await app.inject({ method: 'POST', url: '/oauth/device', headers: { ...FORM, cookie: `${sessionCookie}; oauth_csrf=${csrf}` }, payload: form({ csrf, code: 'BBBB-CCCC' }) }) };
+    })();
+    expect(page.body).not.toContain('wants access');
+    const q = form({ response_type: 'code', client_id: AGENT, redirect_uri: 'http://127.0.0.1/cb', code_challenge: pkce().challenge, code_challenge_method: 'S256' });
+    expect((await app.inject({ url: `/oauth/authorize?${q}`, headers: { cookie: sessionCookie } })).statusCode).toBe(400);
+    expect((await token({ grant_type: 'authorization_code', client_id: AGENT, code: 'x', redirect_uri: 'http://127.0.0.1/cb', code_verifier: pkce().verifier })).json().error).toBe('unauthorized_client');
+  });
+  it('GET /api/connections lists agent grants with agent: true and the computer name', async () => {
+    const dev = randomUUID();
+    await dbmod.db.insert(schema.agents).values({ id: dev, userId, name: 'Win-PC' });
+    const { issueGrant } = await import('../src/server/oauth.ts');
+    const g = await issueGrant(AGENT, userId, '', dev);
+    const g2 = await issueGrant(AGENT, userId, '', null);
+    const list = (await app.inject({ url: '/api/connections', headers: { cookie: sessionCookie } })).json() as { id: number; client: string; agent: boolean; computerName: string | null }[];
+    const [row] = await dbmod.db.select().from(schema.oauthGrants).where(eq(schema.oauthGrants.accessHash, auth.sha256(g.access_token)));
+    const [row2] = await dbmod.db.select().from(schema.oauthGrants).where(eq(schema.oauthGrants.accessHash, auth.sha256(g2.access_token)));
+    expect(list.find((c) => c.id === row.id)).toMatchObject({ agent: true, computerName: 'Win-PC', client: 'Exponential agent' });
+    expect(list.find((c) => c.id === row2.id)).toMatchObject({ agent: true, computerName: null });
+    expect(list.filter((c) => !c.agent).every((c) => c.computerName === null)).toBe(true);
+    expect((await app.inject({ method: 'DELETE', url: `/api/connections/${row2.id}`, headers: { cookie: sessionCookie } })).statusCode).toBe(200);
+  });
+});
+
+describe('reuse of codes and refresh tokens', () => {
+  it('a reused auth code revokes the grant issued from it', async () => {
+    const cid = await newClient();
+    const { verifier, challenge } = pkce();
+    const code = await authorize(cid, challenge);
+    const body = { grant_type: 'authorization_code', client_id: cid, code, redirect_uri: 'http://127.0.0.1:9999/callback', code_verifier: verifier };
+    const t = (await token(body)).json();
+    expect(await auth.userFromToken(`Bearer ${t.access_token}`)).not.toBeNull();
+    expect((await token(body)).json().error).toBe('invalid_grant');
+    expect(await auth.userFromToken(`Bearer ${t.access_token}`)).toBeNull();
+    expect((await token({ grant_type: 'refresh_token', client_id: cid, refresh_token: t.refresh_token })).json().error).toBe('invalid_grant');
+  });
+  it('a replayed rotated refresh token revokes the successor grant', async () => {
+    const cid = await newClient();
+    const { verifier, challenge } = pkce();
+    const code = await authorize(cid, challenge);
+    const t = (await token({ grant_type: 'authorization_code', client_id: cid, code, redirect_uri: 'http://127.0.0.1:9999/callback', code_verifier: verifier })).json();
+    const n = (await token({ grant_type: 'refresh_token', client_id: cid, refresh_token: t.refresh_token })).json();
+    expect(await auth.userFromToken(`Bearer ${n.access_token}`)).not.toBeNull();
+    expect((await token({ grant_type: 'refresh_token', client_id: cid, refresh_token: t.refresh_token })).json().error).toBe('invalid_grant');
+    expect(await auth.userFromToken(`Bearer ${n.access_token}`)).toBeNull();
+  });
+});
+
 
 describe('reserved agent name', () => {
   it('register rejects "Exponential agent" in any case and with spaces', async () => {
@@ -262,5 +382,4 @@ describe('reserved agent name', () => {
     }
     expect((await registerNamed('Exponential agent 2')).statusCode).toBe(201);
   });
-});
 });

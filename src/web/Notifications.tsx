@@ -4,9 +4,10 @@ import { api, awaitsMyVote, pollAlertKey, useMe, useMeetings, useNotifySettings,
 import { Icon } from './icons.tsx';
 import { Tooltip } from './menu.tsx';
 import { toast } from './toast.ts';
-import { useNow } from './Calendar.tsx';
+import { useNow } from './time.ts';
 import { fmtTime, meetingColor, openMeeting } from './Meetings.tsx';
 import { disablePush, enablePush, pushPermission, pushSupported, refreshPush } from './push.ts';
+import { isHttpUrl } from './links.ts';
 import { t } from './i18n.ts';
 
 const DISMISSED = 'dismissedMeetingBanners';
@@ -63,8 +64,8 @@ export function MeetingBanner() {
               <div style={{ fontWeight: 600 }}>{m.title} {mins > 0 ? t('starts in {n} min', { n: mins }) : t('is starting now')}</div>
               <div className="hint">{fmtTime(m.startsAt!)}{m.locationUrl ? ' · Discord' : ''}</div>
             </button>
-            <Tooltip text={m.locationUrl ? null : t('No meeting link set for this meeting')}>
-              {m.locationUrl
+            <Tooltip text={isHttpUrl(m.locationUrl) ? null : t('No meeting link set for this meeting')}>
+              {isHttpUrl(m.locationUrl)
                 ? <a className="btn sm primary" href={m.locationUrl} target="_blank" rel="noreferrer">{t('Join')}</a>
                 : <button className="btn sm primary" disabled>{t('Join')}</button>}
             </Tooltip>

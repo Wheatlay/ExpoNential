@@ -176,7 +176,7 @@ export function DateInput({ value, onChange, disabled, style, ...rest }: Props) 
         onChange={(e) => setText(maskDate(e.target.value, text))}
         onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') commit(); }} />
       {/* Kalendarz z przeglądarki do wybierania klikiem; wpisana wartość i tak pokazuje się po polsku. */}
-      <button type="button" className="icon-btn" aria-label={t('Pick a day')} disabled={disabled} onClick={() => picker.current?.showPicker?.()}><Icon.calendar size={14} /></button>
+      <button type="button" className="icon-btn" aria-label={t('Pick a day')} disabled={disabled} onClick={() => { const el = picker.current; if (!el) return; try { el.showPicker(); } catch { el.focus(); el.click(); } }}><Icon.calendar size={14} /></button>
       <input ref={picker} type="date" tabIndex={-1} aria-hidden className="date-input-native" value={value} onChange={(e) => e.target.value && onChange(e.target.value)} />
     </span>
   );

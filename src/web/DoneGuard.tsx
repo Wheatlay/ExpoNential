@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
+import { useModal } from './modal.ts';
 import { useMeta, useUpdateIssue, type IssuePatch, type Meta, type Status } from './api.ts';
 import { Icon } from './icons.tsx';
 import { enterToSubmit } from './keys.ts';
@@ -40,6 +41,7 @@ function DoneGuardModal({ g }: { g: Guard }) {
   const update = useUpdateIssue();
   const [human, setHuman] = useState('');
   const [ai, setAi] = useState('');
+  const modalRef = useModal();
   if (!meta) return null;
   const testing = meta.statuses.find((s) => s.type === 'started' && /test/i.test(s.name));
   const filled = !!human.trim() && !!ai.trim();
@@ -54,7 +56,7 @@ function DoneGuardModal({ g }: { g: Guard }) {
   };
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="modal guard" onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') close(); }}>
+      <div className="modal guard" role="dialog" aria-modal="true" aria-label={t('Move {id} to Done?', { id: ident(g.number) })} ref={modalRef} tabIndex={-1} onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') close(); }}>
         <div className="guard-head">
           <span className="guard-icon"><Icon.question size={18} /></span>
           <div>
