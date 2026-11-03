@@ -6,7 +6,7 @@ import { Tooltip, openMenu } from './menu.tsx';
 import { linkProps } from './router.ts';
 import { toast } from './toast.ts';
 import {
-  fmtDay, meetingColor, fmtTime, joinLabel, openMeeting, openNewMeeting, sameDay, whenLabel, VOTE_COLOR, VOTE_LABEL,
+  fmtDay, meetingColor, fmtTime, joinLabel, openMeeting, openNewMeeting, sameDay, whenLabel,
 } from './Meetings.tsx';
 import { locale, t, tn } from './i18n.ts';
 
@@ -286,11 +286,11 @@ function MonthGrid({ month, meetings, now, onOpenWeek, meId }: { month: Date; me
               <Icon.plus size={14} />
             </button>
             {items.slice(0, 3).map((it) => (
-              <button key={it.key} className={`cal-month-item ${it.option ? 'option' : ''} ${it.meeting.kind === 'sprint_review' ? 'is-review' : ''} ${isInvited(it.meeting, meId) ? '' : 'other'}`}
+              <button key={it.key} className={`cal-month-item ${it.option ? 'option' : ''} ${it.option && answeredSlot(it.meeting, it.slotId, meId) ? 'answered' : ''} ${it.meeting.kind === 'sprint_review' ? 'is-review' : ''} ${isInvited(it.meeting, meId) ? '' : 'other'}`}
                 style={{ '--kind': !isInvited(it.meeting, meId) ? OTHER_COLOR : meetingColor(it.meeting) } as React.CSSProperties}
                 title={`${fmtTime(it.startsAt)} ${it.meeting.title}${it.option ? ` ${t('(poll option)')}` : ''}${isInvited(it.meeting, meId) ? '' : ` · ${t('not invited')}`}`}
                 onClick={(e) => { e.stopPropagation(); openMeeting(it.meeting.id); }}>
-                <span className="dot" />{fmtTime(it.startsAt)} {it.meeting.title}{it.option ? ' ?' : ''}{it.option && isInvited(it.meeting, meId) && !it.meeting.slots.find((s) => s.id === it.slotId)?.votes.some((v) => v.userId === meId) && <span className="unvoted-dot" />}
+                <span className="dot" />{fmtTime(it.startsAt)} {it.meeting.title}{it.option ? ' ?' : ''}
               </button>
             ))}
             {items.length > 3 && <span className="hint cal-month-more">{t('+{n} more', { n: items.length - 3 })}</span>}
@@ -301,19 +301,19 @@ function MonthGrid({ month, meetings, now, onOpenWeek, meId }: { month: Date; me
   );
 }
 
+/** Opcja ankiety, na którą już odpowiedziałem: przygaszona, żeby wzrok szedł do terminów, które jeszcze czekają. */
+const answeredSlot = (m: Meeting, slotId: number | undefined, meId: number | undefined) =>
+  meId != null && !!m.slots.find((s) => s.id === slotId)?.votes.some((v) => v.userId === meId);
+
 function CalendarCard({ item, users, meId }: { item: Item; users: { id: number; name: string; avatarUrl: string | null; active: boolean }[]; meId: number | undefined }) {
   const m = item.meeting;
   // Cudze spotkanie (nie jestem zaproszony): szare, bez koloru rodzaju, z podpisem, żeby nie myliło się z moimi.
   const mine = isInvited(m, meId);
   const color = !mine ? OTHER_COLOR : meetingColor(m);
-  // Opcja ankiety: moja odpowiedź na ten termin albo kropka, że jeszcze nie odpowiedziałem (np. termin dodany po moim głosowaniu).
-  const myVote = item.option && mine && meId != null ? m.slots.find((s) => s.id === item.slotId)?.votes.find((v) => v.userId === meId)?.vote ?? null : undefined;
+  const answered = item.option && answeredSlot(m, item.slotId, meId);
   return (
-    <button className={`cal-card ${item.option ? 'option' : ''} ${m.kind === 'sprint_review' ? 'is-review' : ''} ${mine ? '' : 'other'}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
-      <div className="cal-card-time">{item.option ? `${fmtTime(item.startsAt)} · ${t('option')}` : `${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}{mine ? '' : ` · ${t('not invited')}`}
-        {myVote === null && <span className="unvoted-dot" title={t('You have not answered this time yet')} />}
-        {myVote && <span className="cal-card-vote" style={{ color: VOTE_COLOR[myVote] }}>{VOTE_LABEL[myVote]}</span>}
-      </div>
+    <button className={`cal-card ${item.option ? 'option' : ''} ${answered ? 'answered' : ''} ${m.kind === 'sprint_review' ? 'is-review' : ''} ${mine ? '' : 'other'}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
+      <div className="cal-card-time">{item.option ? `${fmtTime(item.startsAt)} · ${t('option')}` : `${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}{mine ? '' : ` · ${t('not invited')}`}</div>
       <div className="cal-card-title">{m.title}{item.option ? ' ?' : ''}</div>
       {!item.option && (
         <div className="cal-card-people">
