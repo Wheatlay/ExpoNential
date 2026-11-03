@@ -300,9 +300,9 @@ export async function registerApi(app: FastifyInstance) {
       return svc.updateIssue(p, req.user, number, issueInputSchema.parse(req.body));
     });
     r.delete<{ Params: { id: string } }>('/api/issues/:id', async (req) => {
-      const { p, number, role } = await issueRef(req, req.params.id);
-      const cur = await svc.requireIssue(p, number);
-      if (!pr.canManage(req.user!, role) && cur.creatorId !== req.user!.id) throw new RuleError('Only the author or a project admin can delete an issue', 'forbidden');
+      // Issues są wspólne: każdy członek projektu może usunąć każde (potwierdzenie jest w UI).
+      const { p, number } = await issueRef(req, req.params.id);
+      await svc.requireIssue(p, number);
       await svc.deleteIssue(p, number);
       return { ok: true };
     });
