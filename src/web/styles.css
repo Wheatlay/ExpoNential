@@ -664,7 +664,7 @@ textarea.md-edit {
 .modal.ask textarea { border: 1px solid var(--border-secondary); border-radius: var(--radius-lg); padding: 10px 12px; min-height: 90px; color: var(--text-primary); }
 /* menu: długie pozycje w jednej linii */
 .popover { max-width: 440px; }
-.menu-item > span:not(.shortcut):not(.sub):not(.check):not(.dot):not(.avatar):not(.ws-badge) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-item > span:not(.shortcut):not(.sub):not(.check):not(.dot):not(.avatar):not(.avatar-wrap):not(.ws-badge) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .avatar-slot[role='button'], .pill[role='button'] { cursor: pointer; }
 .pill[role='button']:hover { background: var(--bg-hover); color: var(--text-primary); }
 
