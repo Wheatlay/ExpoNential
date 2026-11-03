@@ -1,4 +1,4 @@
-param([string]$Version = "0.4.0")
+﻿param([string]$Version = "0.4.1")
 # Builds dist/exponential-agent.exe (Windows GUI subsystem, no console window). Needs Go 1.27 (winget install GoLang.Go).
 # Also: generates assets/exponential.ico when missing (tools/mkicon) and embeds icon + version info (go-winres).
 $ErrorActionPreference = 'Stop'

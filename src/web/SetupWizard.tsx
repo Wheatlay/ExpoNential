@@ -287,7 +287,7 @@ export function SetupWizardHost() {
                     </div>
                   ))}
                 </div>
-                <p className="hint">{t('Connecting is done on a computer, in Settings > Claude Code. From the phone you can request analyses; your computer runs them when it is on.')}</p>
+                <p className="hint">{t('Connect on a computer, in Settings > AI. From the phone you can request analyses; your computer runs them when it is on.')}</p>
               </>
             ) : (
               <>

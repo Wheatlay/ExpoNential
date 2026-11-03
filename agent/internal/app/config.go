@@ -1,4 +1,4 @@
-package app
+﻿package app
 
 import (
 	"crypto/rand"
@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set by main (ldflags -X main.version).
-var Version = "0.4.0"
+var Version = "0.4.1"
 
 type RepoEntry struct {
 	Path   string `json:"path"`
@@ -189,7 +189,7 @@ func forgetOnServer() bool {
 // forgetFailedMsg: shown after an uninstall when the server did not confirm the removal.
 func forgetFailedMsg(lang string) string {
 	if lang == "pl" {
-		return "Nie udało się wyrejestrować komputera z serwera. Usuń go w Ustawieniach > AI."
+		return "Nie udaĹ‚o siÄ™ wyrejestrowaÄ‡ komputera z serwera. UsuĹ„ go w Ustawieniach > AI."
 	}
 	return "Could not unregister this computer from the server. Remove it in Settings > AI."
 }

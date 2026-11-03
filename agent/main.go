@@ -1,4 +1,4 @@
-// Exponential agent: polls Exponential for work and runs AI analyses on this computer.
+﻿// Exponential agent: polls Exponential for work and runs AI analyses on this computer.
 // Built as a Windows GUI-subsystem exe (no console window); see build.ps1.
 package main
 
@@ -9,7 +9,7 @@ import (
 	"exponential-agent/internal/app"
 )
 
-var version = "0.4.0"
+var version = "0.4.1"
 
 //go:embed assets/exponential.ico
 var icon []byte

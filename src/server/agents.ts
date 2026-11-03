@@ -46,7 +46,7 @@ export function agentUpToDate(version: string | null | undefined) {
 /** Urządzenie musi istnieć (install.ps1 zgłasza je pierwszym heartbeatem) i należeć do wołającego. */
 export async function requireOwnAgent(user: User, deviceId: string) {
   const [row] = await db.select().from(agents).where(eq(agents.id, deviceId));
-  if (!row) throw new RuleError('Unknown device, run the install command again', 'invalid');
+  if (!row) throw new RuleError('Unknown computer: connect the agent again (Settings > AI)', 'invalid');
   if (row.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   return row;
 }
@@ -88,7 +88,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
     agent.version = version;
   }
   // Stare skrypty nie dostają pracy: poprawki (np. blokada .env) działają dopiero po aktualizacji, więc nie puszczamy ich bez niej.
-  if (!agentUpToDate(agent.version)) throw new RuleError('PC scripts are outdated: run the install command again (Settings > Claude Code)', 'outdated');
+  if (!agentUpToDate(agent.version)) throw new RuleError('The agent on this computer is outdated: update it (Settings > AI)', 'outdated');
   // Analizę bierze tylko komputer z działającym repo projektu (chyba że projekt pozwala agentom klonować).
   if (!p.agentsMayClone) {
     const [m] = await db.select({ s: agentRepos.status }).from(agentRepos).where(and(eq(agentRepos.agentId, deviceId), eq(agentRepos.projectId, p.id)));
@@ -473,7 +473,7 @@ export async function createStartJob(p: Project, user: NonNullable<Actor>, numbe
   const mine = await myAgents(user);
   if (!mine.some((a) => a.online)) throw new RuleError('Your PC is offline', 'invalid');
   // Agent ze starymi skryptami nie dostaje pracy, więc zlecenie by tylko wisiało.
-  if (!mine.some((a) => a.online && !a.outdated)) throw new RuleError('PC scripts are outdated: run the install command again (Settings > Claude Code)', 'outdated');
+  if (!mine.some((a) => a.online && !a.outdated)) throw new RuleError('The agent on this computer is outdated: update it (Settings > AI)', 'outdated');
   const cur = await requireIssue(p, number);
   const [job] = await db.insert(agentJobs).values({ userId: user.id, issueId: cur.id, kind: 'start' }).returning({ id: agentJobs.id });
   const sts = await db.select().from(statuses).where(eq(statuses.projectId, p.id)).orderBy(asc(statuses.position));

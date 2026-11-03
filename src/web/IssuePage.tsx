@@ -157,7 +157,7 @@ export function IssuePage({ number }: { number: number }) {
   const local = !!me?.localAgentAt;
   // Stare skrypty na PC: serwer i tak nie wyda im zlecenia, więc nie dajemy go złożyć (powód + skrót do aktualizacji obok).
   const outdated = !!me?.agentOutdated && local && !me?.demo;
-  const outdatedReason = t('Your PC has old Exponential scripts. Update them first: Settings > Claude Code (or click Update needed).');
+  const outdatedReason = t('This computer has an old agent. Update it first (Settings > AI).');
   // Bez podłączonego AI link vscode:// albo nic nie otworzy, albo otworzy klienta bez dostępu do zgłoszenia: zamiast błędu
   // popover pod przyciskiem prowadzi do kreatora z celem tej funkcji.
   const ai = me?.aiStatus;
@@ -175,7 +175,7 @@ export function IssuePage({ number }: { number: number }) {
       runLocalAnalysis(number, deep);
       toast(deep ? t('Deep analysis started on your computer. It shows up here in a few minutes.') : t('Analysis started on your computer. It shows up here in a few minutes.'));
     } else if (local) toast(me?.agentOnline ? t('Queued. It runs on your PC in a moment.') : t('Queued. Your PC is offline, it runs when it is on.'));
-    else toast(t('AI analysis requested. To have it run by itself on your computer, set up local analysis in Settings > Claude Code.'));
+    else toast(t('AI analysis requested. A computer with the agent runs it.'));
   };
   // Stan zlecenia: czeka (jest online PC, który je weźmie) / czeka na PC (nikt nie słucha) / biegnie na PC (claim).
   // Utknięte liczymy od ostatniego sygnału zajętego agenta (claim jest odświeżany), nie od zlecenia: kolejka przy wyłączonym PC to nie awaria.
@@ -256,7 +256,7 @@ export function IssuePage({ number }: { number: number }) {
                 {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in project settings > AI agent.")}>{t('Team queue')}</span>}
                 {/* Czeka, a mój PC ma stare skrypty: to zwykle prawdziwa przyczyna, więc mówimy o niej tutaj, nie tylko w Ustawieniach. */}
                 {outdated && !issue.analysisClaimedAt && (
-                  <span className="pill stalled" role="button" title={t('Your PC has old Exponential scripts, so it may not pick this up. Click to open Settings > Claude Code and run the update command.')}
+                  <span className="pill stalled" role="button" title={t('This computer has an old agent and may not pick this up. Click to open Settings > AI.')}
                     onClick={(e) => { e.stopPropagation(); navigate('/settings#claude'); }}>{t('Update needed')}</span>
                 )}
                 {issue.analysisRequestedAt && <>
@@ -286,7 +286,7 @@ export function IssuePage({ number }: { number: number }) {
                   ? <div className="analyzing"><Icon.sparkle size={14} /> {t('Agent is analyzing…')}</div>
                   : <MarkdownField value={issue.analysis} onSave={(analysis) => save({ analysis })}
                   placeholder={issue.analysisRequestedAt ? t('Claude will write the analysis here.') : local ? t('No analysis yet. Analyze runs Claude on your computer and writes it here in a few minutes.')
-                    : t('No analysis yet. Click Analyze and Claude will look at the problem and the code. Tip: set up local analysis in Settings > Claude Code (one command) and it runs by itself.')} minHeight={120} />}
+                    : t('No analysis yet. Click Analyze and Claude will look at the problem and the code.')} minHeight={120} />}
               </div>
             </FoldBar>
             <FoldBar id="human" badge={<span className="badge human">HUMAN</span>} name={t('Summary')}

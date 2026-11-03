@@ -474,7 +474,7 @@ function ClaudeConnect() {
               </Tooltip>
               <span className="hint">{a.online ? (a.busy ? t('running an analysis') : t('online')) : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>
               <button className="btn sm danger" onClick={() => void askConfirm({
-                title: t('Remove "{name}"?', { name: a.name || t('Unnamed computer') }), body: t('This computer stops picking up work until the install command is run on it again.'), action: t('Remove'), danger: true,
+                title: t('Remove "{name}"?', { name: a.name || t('Unnamed computer') }), body: t('This computer stops taking requests until the agent is installed on it again.'), action: t('Remove'), danger: true,
               }).then((ok) => { if (ok) void api(`/api/agents/${a.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['agents'] })); })}>{t('Remove')}</button>
             </div>
             </Fragment>

@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.2], Agent [0.4.1] - 03.11.2026
+
+- Wording follows the current setup everywhere: "Settings > AI" instead of "Settings > Claude Code", "agent" instead of "PowerShell command" / "install command" / "old scripts", in the issue page, phone board, settings, Connect AI and server errors.
+- The agent's mute action reads "Mute for 24 h" in the toast too, like the tray menu and window.
+
 ## Server [1.3.1], Agent [0.4.0] - 03.11.2026
 
 - The tray window has tabs: General (as before, plus Show log / Copy log with tokens removed), Repo (projects with folder, source and state; "Choose folder" opens the Windows folder picker), Analyses (last 20 runs: time, issue, for whom, tokens, result with the reason).
