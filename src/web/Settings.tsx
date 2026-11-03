@@ -389,7 +389,7 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxOthersTokensPerDay: number | null; limitReached24h: boolean; forOthers24h: number; forOthersTokens24h: number; claudeLimit: string; usage30d: UsageInfo; teamMode: TeamMode; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxOthersTokensPerDay: number | null; limitReached24h: boolean; forOthers24h: number; forOthersTokens24h: number; claudeLimit: string; usage30d: UsageInfo; teamMode: TeamMode; setup?: { claude: { name: string; mcp: boolean; plugin: boolean }[]; codex: boolean; cursor: boolean } | null; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
   const projects = useProjects(!!me && !me.demo).data;
   const projectOf = (k: string) => projects?.find((p) => p.key === k);
   const refreshTeam = () => { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); };
@@ -452,6 +452,11 @@ function ClaudeConnect() {
                   {(a.limitReached24h || a.lastError || a.legacy || (a.maxOthersTokensPerDay == null && a.forOthersTokens24h >= 2_000_000)) && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />}
                 </span>
                 {a.label && a.computerName && <div className="hint">{t('Windows name: {name}', { name: a.computerName })}</div>}
+                {a.setup && a.setup.claude.length > 0 && (
+                  <Tooltip text={a.setup.claude.map((c) => `${c.name}: ${t('issues')} ${c.mcp ? '✓' : '✗'} · ${t('work trace')} ${c.plugin ? '✓' : '✗'}`).join('\n')}>
+                    <div className="hint">{t('Claude Code: issues {a}/{n} · work trace {b}/{n}', { a: a.setup.claude.filter((c) => c.mcp).length, b: a.setup.claude.filter((c) => c.plugin).length, n: a.setup.claude.length })}</div>
+                  </Tooltip>
+                )}
                 {a.usage30d.runs > 0 && (
                   <Tooltip text={byRequesterText(a.usage30d)}>
                     <div className="hint">{t('30 days: {runs} analyses · {tokens}', { runs: a.usage30d.runs, tokens: t('{n} tokens', { n: tok(a.usage30d.tokens) }) })}</div>

@@ -1,9 +1,10 @@
+import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { and, asc, eq, gt, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { activity, agentJobs, agentRepos, agentRuns, agentTombstones, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, userDismissals, users } from '../db/schema.ts';
+import { type AgentSetup, activity, agentJobs, agentRepos, agentRuns, agentTombstones, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, userDismissals, users } from '../db/schema.ts';
 import { NOT_AGENT_CLIENT } from './oauth.ts';
 import { RuleError, identifier, parseIdentifier } from './rules.ts';
 import { analysisModel } from './prompts.ts';
@@ -171,7 +172,17 @@ const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && lastSeenAt.getTime
  */
 export type RepoReport = { path?: string; source?: string; status?: string; error?: string | null };
 /** ownOnly: agent z Codexem. Codex czyta cały dysk, więc nie dostaje zleceń innych osób z kolejki zespołu (prompt injection). */
-type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean };
+type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean; setup?: AgentSetup };
+
+const setupSchema = z.object({
+  claude: z.array(z.object({ name: z.string().max(100), mcp: z.boolean(), plugin: z.boolean() })).max(20).default([]),
+  codex: z.boolean().default(false), cursor: z.boolean().default(false),
+});
+/** Stan konfiguracji zgłoszony przez agenta (JSON w zapytaniu); zły albo brak = undefined (stary agent, zostaje poprzedni). */
+export function parseSetup(raw?: string): AgentSetup | undefined {
+  if (!raw) return undefined;
+  try { return setupSchema.parse(JSON.parse(raw)); } catch { return undefined; }
+}
 
 /** Komputer usunięty w ciągu ostatniej godziny nie wraca z odpytania (agent kończący pracę przy odinstalowaniu). */
 async function recentlyRemoved(deviceId: string) {
@@ -186,7 +197,7 @@ export async function heartbeat(user: User, deviceId: string, info: HeartbeatInf
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
   // Bez podanej wersji zostaje zapisana (wersję podaje tracker-agent.ps1 z config.json).
-  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date(), ...(info.version !== undefined ? { version: info.version.slice(0, 40) } : {}) };
+  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date(), ...(info.version !== undefined ? { version: info.version.slice(0, 40) } : {}), ...(info.setup ? { setup: info.setup } : {}) };
   // Pusty błąd nie kasuje poprzedniego: zostaje widoczny do kolejnego błędu albo 24 h.
   const err = (info.error ?? '').trim().slice(0, 300);
   const errValues = err ? { lastError: err, lastErrorAt: new Date() } : {};
@@ -409,6 +420,7 @@ export async function myAgents(user: User) {
     forOthers24h: others24.get(a.id) ?? 0, forOthersTokens24h: othersTokens24.get(a.id) ?? 0, limitReached24h: a.maxOthersTokensPerDay != null && (othersTokens24.get(a.id) ?? 0) >= a.maxOthersTokensPerDay, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5, outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),
     repos: repos.filter((r) => r.agentId === a.id).map(({ agentId: _, ...r }) => r),
     teamMode: a.teamMode,
+    setup: a.setup ?? null,
     // Błąd starszy niż 24 h już nie jest istotny.
     // Błąd starszy niż 24 h już nie jest istotny, a chwilowy błąd połączenia (np. restart serwera przy wdrożeniu) znika, gdy komputer znów jest online.
     // Limit Claude użytkownika to stan, nie błąd: pokazujemy go osobno, tylko przez 6 godzin.
@@ -502,9 +514,15 @@ export async function aiStatus(user: User, mine?: Awaited<ReturnType<typeof myAg
   const [token] = grant ? [] : await db.select({ at: apiTokens.lastUsedAt }).from(apiTokens)
     .where(and(eq(apiTokens.userId, user.id), dsql`${apiTokens.lastUsedAt} > ${recent}::timestamptz`)).orderBy(dsql`${apiTokens.lastUsedAt} desc`).limit(1);
   const [wl] = await db.select({ id: activity.id }).from(activity)
-    .where(and(eq(activity.actorId, user.id), dsql`${activity.payload}->>'kind' = 'worklog'`)).limit(1);
+    .where(and(eq(activity.actorId, user.id), dsql`${activity.payload}->>'kind' = 'worklog'`, dsql`${activity.createdAt} > ${recent}::timestamptz`)).limit(1);
   const computers = mine ?? await myAgents(user);
-  const client = !!grant || !!token;
+  // Stan z plików konfiguracji, zgłoszony przez agenta (aktywne komputery): pewniejszy niż ślady użycia i widoczny od razu
+  // po instalacji. Bez agenta (np. tylko Cursor) zostają ślady użycia z 14 dni.
+  const reported = computers.filter((a) => !a.inactive && a.setup).map((a) => a.setup!);
+  const setupMcp = reported.some((s) => s.claude.some((c) => c.mcp));
+  const setupClient = setupMcp ? 'Claude Code' : reported.some((s) => s.codex) ? 'Codex' : reported.some((s) => s.cursor) ? 'Cursor' : null;
+  const client = !!grant || !!token || !!setupClient;
+  const workTrace = reported.length ? reported.some((s) => s.claude.some((c) => c.plugin)) : !!wl;
   // Co wymaga sprawdzenia (kółko przy Settings, AI i konkretnym komputerze).
   const attention: string[] = [];
   if (!client) attention.push('connect');
@@ -514,10 +532,10 @@ export async function aiStatus(user: User, mine?: Awaited<ReturnType<typeof myAg
   if (computers.some((a) => a.legacy)) attention.push('legacy');
   return {
     attention,
-    client: !!grant || !!token,
-    clientName: grant ? grant.name : token ? 'Claude Code' : null,
+    client,
+    clientName: grant ? grant.name : token ? 'Claude Code' : setupClient,
     clientAt: grant?.at ?? token?.at ?? null,
-    workTrace: !!wl,
+    workTrace,
     agent: computers.some((a) => a.online && !a.outdated),
   };
 }

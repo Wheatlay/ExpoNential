@@ -506,7 +506,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 	}
 	// Mapping with paths and sources ({KEY: {path, source}}), so the server can show and route by it.
 	reposJSON, _ := json.Marshal(cfg.Repos)
-	qs := url.Values{"deviceId": {cfg.DeviceID}, "name": {host}, "busy": {b}, "version": {ver}, "engine": {eng}, "repos": {string(reposJSON)}}
+	qs := url.Values{"deviceId": {cfg.DeviceID}, "name": {host}, "busy": {b}, "version": {ver}, "engine": {eng}, "repos": {string(reposJSON)}, "setup": {setupJSON(strings.TrimRight(cfg.URL, "/"))}}
 	if le := getLastErr(); le != "" {
 		qs.Set("error", cut(le, 300))
 	}

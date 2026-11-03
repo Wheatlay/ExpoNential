@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.3], Agent [0.4.2] - 03.11.2026
+
+- The agent reports what is actually set up on the computer, read from config files: the tracker MCP server and plugin for every Claude account (terminal and VS Code / Cursor extension share them), Codex, Cursor. Connect AI shows "Done" right after install and goes back to "Waiting" when something is removed; the computer card in Settings > AI shows "issues 2/2 · work trace 2/2" with the accounts in a tooltip. Without the agent, usage from the last 14 days still counts (work trace too, no longer "ever").
+- The downloaded file name carries the version again (taken from GitHub's first redirect).
+
 ## Server [1.3.2], Agent [0.4.1] - 03.11.2026
 
 - Wording follows the current setup everywhere: "Settings > AI" instead of "Settings > Claude Code", "agent" instead of "PowerShell command" / "install command" / "old scripts", in the issue page, phone board, settings, Connect AI and server errors.

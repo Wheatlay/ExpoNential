@@ -21,6 +21,7 @@ const DEFAULT_EXE_URL = 'https://github.com/Wheatlay/ExpoNential/releases/latest
 type Fetcher = (url: string, init?: { headers?: Record<string, string> }) => Promise<Response>;
 let fetcher: Fetcher = (url, init) => fetch(url, { redirect: 'follow', ...init });
 let exeUrl = process.env.AGENT_EXE_URL || DEFAULT_EXE_URL;
+let testSource = false;
 let cache: { bytes: Buffer; etag: string | null; at: number; version: string } | null = null;
 
 /** Wersja z adresu, pod który przekierowuje GitHub (…/download/agent-v0.4.0/…): trafia do nazwy pobieranego pliku. */
@@ -28,6 +29,7 @@ export const versionFromUrl = (u: string) => /agent-v(\d+\.\d+\.\d+)/.exec(u)?.[
 
 /** Tylko dla testów: podmiana pobierania z GitHuba. */
 export function setAgentExeSource(opts: { fetcher?: Fetcher; url?: string } | null) {
+  testSource = !!opts?.fetcher;
   fetcher = opts?.fetcher ?? ((url, init) => fetch(url, { redirect: 'follow', ...init }));
   exeUrl = opts?.url ?? (process.env.AGENT_EXE_URL || DEFAULT_EXE_URL);
   cache = null;
@@ -38,7 +40,7 @@ async function agentExe(): Promise<Buffer> {
   // Wersja jest tylko w pierwszym przekierowaniu (latest -> /download/agent-vX/); dalej GitHub kieruje na serwer plików bez niej.
   let url = exeUrl;
   let version = versionFromUrl(url);
-  if (!version && exeUrl === DEFAULT_EXE_URL) {
+  if (!version && exeUrl === DEFAULT_EXE_URL && !testSource) {
     try {
       const head = await fetch(exeUrl, { method: 'HEAD', redirect: 'manual' });
       const loc = head.headers.get('location');

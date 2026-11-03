@@ -494,8 +494,12 @@ export const agents = pgTable('agents', {
   teamMode: text('team_mode').notNull().default('ask'),
   // Kto zlecił to, co agent przejął jako ostatnie (claim analizy / Start). Analiza kasuje claim na zgłoszeniu, więc zapisujemy tu.
   currentRequesterId: integer('current_requester_id'),
+  // Co agent widzi ustawione na komputerze (z plików konfiguracji, przy każdym odpytaniu): MCP i plugin per konto Claude, Codex, Cursor.
+  setup: jsonb('setup').$type<AgentSetup>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export type AgentSetup = { claude: { name: string; mcp: boolean; plugin: boolean }[]; codex: boolean; cursor: boolean };
 
 /** Przebiegi agenta (analiza / Start) z zużyciem tokenów: statystyki i limity w Ustawieniach. */
 export const agentRuns = pgTable('agent_runs', {
