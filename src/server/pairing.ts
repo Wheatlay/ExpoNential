@@ -35,10 +35,20 @@ export function setAgentExeSource(opts: { fetcher?: Fetcher; url?: string } | nu
 
 async function agentExe(): Promise<Buffer> {
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.bytes;
-  const res = await fetcher(exeUrl, cache?.etag ? { headers: { 'If-None-Match': cache.etag } } : undefined);
+  // Wersja jest tylko w pierwszym przekierowaniu (latest -> /download/agent-vX/); dalej GitHub kieruje na serwer plików bez niej.
+  let url = exeUrl;
+  let version = versionFromUrl(url);
+  if (!version && exeUrl === DEFAULT_EXE_URL) {
+    try {
+      const head = await fetch(exeUrl, { method: 'HEAD', redirect: 'manual' });
+      const loc = head.headers.get('location');
+      if (loc) { version = versionFromUrl(loc); if (version) url = new URL(loc, exeUrl).toString(); }
+    } catch { /* plik bez wersji w nazwie */ }
+  }
+  const res = await fetcher(url, cache?.etag ? { headers: { 'If-None-Match': cache.etag } } : undefined);
   if (res.status === 304 && cache) { cache.at = Date.now(); return cache.bytes; }
   if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
-  cache = { bytes: Buffer.from(await res.arrayBuffer()), etag: res.headers.get('etag'), at: Date.now(), version: versionFromUrl(res.url ?? '') };
+  cache = { bytes: Buffer.from(await res.arrayBuffer()), etag: res.headers.get('etag'), at: Date.now(), version: version || versionFromUrl(res.url ?? '') };
   return cache.bytes;
 }
 
