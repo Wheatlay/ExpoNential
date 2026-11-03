@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, awaitsMyVote, useMe, useMeetings, useNotifySettings, type NotifySettings } from './api.ts';
+import { api, awaitsMyVote, pollAlertKey, useMe, useMeetings, useNotifySettings, type NotifySettings } from './api.ts';
 import { Icon } from './icons.tsx';
 import { Tooltip } from './menu.tsx';
 import { toast } from './toast.ts';
@@ -37,7 +37,7 @@ export function useMeetingAlerts() {
   const soon = meetings.filter((m) => m.status === 'scheduled' && m.startsAt && m.endsAt
     && new Date(m.startsAt).getTime() - 15 * 60_000 <= now.getTime() && new Date(m.endsAt) > now
     && !dismissed.includes(`m${m.id}:${m.startsAt}`));
-  const polls = meetings.filter((m) => awaitsMyVote(m, me?.id) && !dismissed.includes(`p${m.id}`));
+  const polls = meetings.filter((m) => awaitsMyVote(m, me?.id) && !dismissed.includes(pollAlertKey(m)));
   return { now, soon, polls };
 }
 
@@ -79,7 +79,7 @@ export function MeetingBanner() {
             <div className="hint">{tn(m.slots.length, '{n} option', '{n} options')} · {t('pick the times that work for you')}</div>
           </button>
           <button className="btn sm warn" onClick={() => openMeeting(m.id)}>{t('Vote')}</button>
-          <button className="btn sm" onClick={() => dismiss(`p${m.id}`)}>{t('Dismiss')}</button>
+          <button className="btn sm" onClick={() => dismiss(pollAlertKey(m))}>{t('Dismiss')}</button>
         </div>
       ))}
     </div>

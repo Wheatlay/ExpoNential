@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { api, useInbox, useMeta, useNotifySettings, type InboxItem } from './api.ts';
+import { api, pollAlertKey, useInbox, useMeta, useNotifySettings, type InboxItem } from './api.ts';
 import { Avatar, Icon } from './icons.tsx';
 import { addDismissed, useMeetingAlerts } from './Notifications.tsx';
 import { fmtTime, openMeeting } from './Meetings.tsx';
@@ -92,7 +92,7 @@ export function InboxBell() {
                   <span className="inbox-icon warn"><Icon.calendar size={14} /></span>
                   <span className="inbox-text"><span className="inbox-title">{t('Poll waits for your vote')}</span><span className="hint">{m.title}</span></span>
                 </button>
-                <button className="icon-btn inbox-x" aria-label={t('Dismiss')} title={t('Dismiss')} onClick={() => addDismissed(`p${m.id}`)}><Icon.close size={12} /></button>
+                <button className="icon-btn inbox-x" aria-label={t('Dismiss')} title={t('Dismiss')} onClick={() => addDismissed(pollAlertKey(m))}><Icon.close size={12} /></button>
               </div>
             ))}
             {soon.map((m) => (

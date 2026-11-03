@@ -357,7 +357,8 @@ function PollDialog({ m }: { m: Meeting }) {
           {m.slots.map((s) => (
             <button key={s.id} className={`poll-cell poll-time ${s.id === best?.id ? 'best' : ''} ${canPick && s.id === target?.id ? 'target' : ''}`}
               disabled={!canPick} title={canPick ? t('Select this time to pick it') : undefined} onClick={() => setPicked(s.id)}>
-              <div style={{ fontWeight: 600 }}>{fmtDayLong(s.startsAt)} · {fmtTime(s.startsAt)} {s.id === best?.id && <span className="best-tag">{t('best')}</span>}</div>
+              <div style={{ fontWeight: 600 }}>{fmtDayLong(s.startsAt)} · {fmtTime(s.startsAt)} {s.id === best?.id && <span className="best-tag">{t('best')}</span>}
+                {me && !notInvited && !myVote(s) && <span className="unvoted-dot" title={t('You have not answered this time yet')} />}</div>
               <div className="hint">{s.proposedBy === m.createdBy ? t('proposed by {name}', { name: name(s.proposedBy) }) : t('suggested by {name}', { name: name(s.proposedBy) })}{s.reason ? ` · “${s.reason}”` : ''}</div>
             </button>
           ))}
@@ -368,7 +369,7 @@ function PollDialog({ m }: { m: Meeting }) {
             <div className="poll-person" style={{ fontWeight: 600 }}><Avatar user={people.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={20} />{t('You')}</div>
             {m.slots.map((s) => (
               <Tooltip key={s.id} text={notInvited}>
-                <div className="poll-cell" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div className={`poll-cell ${!myVote(s) && !notInvited ? 'unvoted' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ display: 'flex', gap: 4 }}>
                     {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
                       <button key={v} className={`chip ${myVote(s) === v ? 'on' : ''}`} style={myVote(s) === v ? { borderColor: VOTE_COLOR[v], color: VOTE_COLOR[v] } : undefined}

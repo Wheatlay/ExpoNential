@@ -161,9 +161,13 @@ export function isInvited(m: Pick<Meeting, 'attendeeIds' | 'createdBy'>, userId:
   return !m.attendeeIds || (userId != null && (m.attendeeIds.includes(userId) || m.createdBy === userId));
 }
 
+/** Czeka na mój głos, gdy choć jeden termin nie ma mojej odpowiedzi (np. ktoś dodał nowy po moim głosowaniu). */
 export function awaitsMyVote(m: Meeting, meId: number | undefined) {
-  return m.status === 'polling' && !!meId && isInvited(m, meId) && !m.slots.some((s) => s.votes.some((v) => v.userId === meId));
+  return m.status === 'polling' && !!meId && isInvited(m, meId) && m.slots.some((s) => !s.votes.some((v) => v.userId === meId));
 }
+
+/** Klucz odrzuconego przypomnienia o ankiecie: z liczbą terminów, więc nowy termin przywraca przypomnienie. */
+export const pollAlertKey = (m: Meeting) => `p${m.id}:${m.slots.length}`;
 
 export const useConfig = () => useQuery({ queryKey: ['config'], queryFn: () => api<AppConfig>('/api/config'), staleTime: Infinity, retry: false });
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me'), retry: false, staleTime: Infinity });

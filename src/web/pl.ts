@@ -601,6 +601,7 @@ export const pl: Record<string, string> = {
   'Tag names use letters, digits, - and _ (max 30) and need a letter': 'Nazwa tagu: litery, cyfry, - i _ (do 30 znaków), co najmniej jedna litera',
   'That tag already exists': 'Taki tag już istnieje',
   'Your name': 'Imię i nazwisko',
+  'You have not answered this time yet': 'Jeszcze nie odpowiedziałeś na ten termin',
   'Environment name must be 1-30 characters': 'Nazwa środowiska: od 1 do 30 znaków',
   'Environment names must be unique': 'Nazwy środowisk nie mogą się powtarzać',
   'Unknown environment': 'Nieznane środowisko',
