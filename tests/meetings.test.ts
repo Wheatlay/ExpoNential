@@ -192,6 +192,22 @@ describe('invited people', () => {
     await expect(mt.createMeeting(P, alice, { title: 'x', kind: 'fixed', startsAt: at('2026-11-20T09:00:00Z'), endsAt: at('2026-11-20T10:00:00Z'), attendeeIds: [99999] })).rejects.toThrow(/members/);
     await pr.removeMember(P.id, carol.id);
   });
+
+  it('removing someone from the invitees drops their poll votes', async () => {
+    const c = await pr.addMember({ id: 0, isAdmin: true }, P.id, 'dora');
+    const dora = { id: c.id, name: 'Dora' };
+    const m = await mt.createMeeting(P, alice, {
+      title: 'Wypisanie', kind: 'poll', attendeeIds: [pawel.id, dora.id],
+      slots: [{ startsAt: at('2026-11-24T09:00:00Z'), endsAt: at('2026-11-24T10:00:00Z') }],
+    });
+    const slot = (await mt.listMeetings(P, at('2026-01-01'))).find((x) => x.id === m.id)!.slots[0];
+    await mt.vote(P, pawel, slot.id, 'yes');
+    await mt.vote(P, dora, slot.id, 'no');
+    await mt.updateMeeting(P, alice, false, m.id, { attendeeIds: [dora.id] });
+    const votes = (await mt.listMeetings(P, at('2026-01-01'))).find((x) => x.id === m.id)!.slots[0].votes;
+    expect(votes.map((v) => v.userId)).toEqual([dora.id]);
+    await pr.removeMember(P.id, dora.id);
+  });
 });
 
 describe('sprint review', () => {

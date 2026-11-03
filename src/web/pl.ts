@@ -1006,6 +1006,8 @@ export const pl: Record<string, string> = {
   'The wizard connects Claude Code or Codex, in VS Code, Cursor or the terminal.': 'Kreator podłącza Claude Code lub Codex w VS Code, Cursorze albo terminalu.',
   "Connect AI": "Podłącz AI",
   "Connect another": "Podłącz kolejnego",
+  "Inactive": "Nieaktywny",
+  "Not seen for over 3 days. Hidden after 14 days.": "Niewidziany od ponad 3 dni. Po 14 dniach znika z listy.",
   "Connect AI to Exponential": "Podłącz AI do Exponential",
   "Pick what you want AI for. Only the steps you need are shown.": "Wybierz, do czego chcesz AI. Kroki poza wybranym celem są wyszarzone.",
   "What do you want AI for?": "Do czego chcesz AI?",

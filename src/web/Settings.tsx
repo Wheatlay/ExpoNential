@@ -389,7 +389,7 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; lastError: string; lastErrorAt: string | null; maxForOthersPerDay: number | null; limitReached24h: boolean; forOthers24h: number; usage30d: UsageInfo; teamProjects: string[]; teamInvites: string[]; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxForOthersPerDay: number | null; limitReached24h: boolean; forOthers24h: number; usage30d: UsageInfo; teamProjects: string[]; teamInvites: string[]; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
   const projects = useProjects(!!me && !me.demo).data;
   const projectOf = (k: string) => projects?.find((p) => p.key === k);
   const refreshTeam = () => { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); };
@@ -447,6 +447,7 @@ function ClaudeConnect() {
                   {a.outdated && !a.legacy && <span className="pill stalled">{t('Update needed')}</span>}
                   {a.legacy && <button className="btn sm" onClick={() => openSetupWizard(3, 3)}>{t('Switch to the new agent')}</button>}
                   {a.limitReached24h && <span className="pill stalled">{t('Limit reached')}</span>}
+                  {a.inactive && <Tooltip text={t('Not seen for over 3 days. Hidden after 14 days.')}><span className="pill">{t('Inactive')}</span></Tooltip>}
                   {(a.limitReached24h || a.lastError || a.legacy || (a.maxForOthersPerDay == null && a.forOthers24h >= 20)) && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />}
                 </span>
                 {a.teamProjects.length > 0 && (

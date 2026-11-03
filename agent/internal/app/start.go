@@ -128,8 +128,8 @@ func mergeServerRepos(list []serverRepo) {
 			src := "hook"
 			if r.Source == "manual" || r.Source == "set" {
 				src = "manual"
-			} else if r.Source == "clone" {
-				src = "clone"
+			} else if r.Source == "clone" || r.Source == "auto" {
+				src = r.Source
 			}
 			c.Repos[r.Project] = RepoEntry{Path: r.Path, Source: src}
 		}
@@ -369,6 +369,7 @@ func cmdStart() {
 }
 
 func pollLoop() {
+	go discoverLoop()
 	delay := 2
 	errLogged := false
 	for {

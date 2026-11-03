@@ -234,11 +234,18 @@ func Main(args []string) {
 			fmt.Printf("This removes autostart and deletes %s (config, token, logs, clones). Re-run with --yes.\n", dataDir())
 			break
 		}
-		if err = uninstallAll(); err == nil {
+		var forgot bool
+		if forgot, err = uninstallAll(); err == nil {
+			msg := "Exponential agent was removed."
+			kind := uint32(dlgInfo)
+			if !forgot {
+				msg += "\n" + forgetFailedMsg(uiLang())
+				kind = dlgError
+			}
 			if hadConsole {
-				fmt.Println("Exponential agent was removed.")
+				fmt.Println(msg)
 			} else {
-				msgBox("Exponential agent was removed.", dlgInfo)
+				msgBox(msg, kind)
 			}
 		}
 	default:

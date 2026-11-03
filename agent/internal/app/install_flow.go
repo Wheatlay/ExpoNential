@@ -176,6 +176,7 @@ func doInstall(ctx *installCtx, autostart bool, progress func(int)) installResul
 		autostartOff()
 	}
 	progress(2)
+	discoverBeforeStart()
 	if err := startDetachedExe(installed); err != nil {
 		return installResult{Code: "start", Detail: err.Error()}
 	}
@@ -268,4 +269,18 @@ func fillEngine(info *installInfo) {
 		info.EngineSrc = "VS Code"
 	}
 	info.EngineIcon, info.HostIcon = engineIcons(bin)
+}
+
+// discoverBeforeStart maps already opened repos right after pairing; capped at 20 s so the install never hangs.
+func discoverBeforeStart() {
+	a, err := getAuth()
+	if err != nil || a == nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() { defer close(done); discoverRepos(a) }()
+	select {
+	case <-done:
+	case <-time.After(20 * time.Second):
+	}
 }

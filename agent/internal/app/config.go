@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set by main (ldflags -X main.version).
-var Version = "0.2.0"
+var Version = "0.2.1"
 
 type RepoEntry struct {
 	Path   string `json:"path"`
@@ -148,16 +148,27 @@ func notifyOthersOn() bool {
 }
 
 // forgetOnServer: on uninstall, remove this computer from the server so it does not linger in the list. Best effort.
-func forgetOnServer() {
+// Returns true when the server confirmed (2xx) or there was nothing to unregister.
+func forgetOnServer() bool {
 	cfg := loadConfig()
-	if cfg.DeviceID == "" {
-		return
-	}
-	if a, err := getAuth(); err == nil {
-		_ = request(a, "DELETE", "/api/agents/"+cfg.DeviceID, nil, 5*time.Second, nil)
+	ok := true
+	if cfg.DeviceID != "" {
+		ok = false
+		if a, err := getAuth(); err == nil && a != nil {
+			ok = request(a, "DELETE", "/api/agents/"+cfg.DeviceID, nil, 5*time.Second, nil) == nil
+		}
 	}
 	// The sign-in itself goes too, so it does not stay in Settings as a connection.
 	if cfg.OAuth != nil && cfg.OAuth.Refresh != "" && cfg.URL != "" {
 		_, _ = oauthPost(strings.TrimRight(cfg.URL, "/"), "/oauth/revoke", map[string]any{"token": cfg.OAuth.Refresh, "client_id": cfg.OAuth.ClientID}, false)
 	}
+	return ok
+}
+
+// forgetFailedMsg: shown after an uninstall when the server did not confirm the removal.
+func forgetFailedMsg(lang string) string {
+	if lang == "pl" {
+		return "Nie udało się wyrejestrować komputera z serwera. Usuń go w Ustawieniach > AI."
+	}
+	return "Could not unregister this computer from the server. Remove it in Settings > AI."
 }

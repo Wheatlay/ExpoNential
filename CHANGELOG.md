@@ -2,6 +2,13 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.2.1], Agent [0.2.1] - 03.11.2026
+
+- Agent finds repos by itself in folders already opened in Claude Code (`~/.claude.json` projects, also per account) and in VS Code / Cursor recent folders, including one level below an opened folder; no disk scan, never overrides a mapping set by hand.
+- Uninstall says so when the computer could not be removed from the server.
+- Computers not seen for 3 days are marked "Inactive"; after 14 days they disappear from the list (usage stays).
+- Meeting polls: removing someone from the invitees drops their votes, and votes of people no longer invited are not counted.
+
 ## Server [1.2.0], Agent [0.2.0] - 03.11.2026
 
 - Agent rewritten in Go: about 10 MB instead of 80 MB, no console windows. Downloaded from Settings > AI with the server address and a one-time pairing code inside; double-click opens an Exponential-styled installer (Claude Code or Codex icon taken from this computer, progress, done), installs to `%LOCALAPPDATA%\Programs\Exponential`, appears in Apps & features, starts with Windows on request.

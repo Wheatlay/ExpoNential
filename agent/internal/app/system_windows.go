@@ -200,15 +200,15 @@ func machineID() string {
 	return v
 }
 
-func uninstallAll() error {
+func uninstallAll() (bool, error) {
 	target := installedPath()
-	forgetOnServer()
+	forgot := forgetOnServer()
 	stopAgent(target)
 	autostartOff()
 	_ = registry.DeleteKey(registry.CURRENT_USER, uninstallKey)
 	_ = registry.DeleteKey(registry.CURRENT_USER, `Software\Classes\AppUserModelId\Exponential agent`)
 	if err := os.RemoveAll(dataDir()); err != nil {
-		return err
+		return forgot, err
 	}
 	if _, err := os.Stat(target); err == nil {
 		dir := filepath.Dir(target)
@@ -216,9 +216,9 @@ func uninstallAll() error {
 		c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow,
 			CmdLine: fmt.Sprintf(`cmd.exe /d /c ping -n 2 127.0.0.1 >nul & del /f /q "%s" & rmdir "%s"`, target, dir)}
 		if err := c.Start(); err != nil {
-			return errors.New("could not schedule the removal of " + target)
+			return forgot, errors.New("could not schedule the removal of " + target)
 		}
 		_ = c.Process.Release()
 	}
-	return nil
+	return forgot, nil
 }

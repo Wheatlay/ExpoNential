@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lte, ne, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, ne, notInArray, or } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import {
   meetingReminders, meetingSlots, meetingVotes, meetings, projectMembers, projects, reminderSends, sprints, users,
@@ -48,7 +48,8 @@ export async function listMeetings(p: Project, since = new Date(Date.now() - 14 
     ...m,
     reminders: rems.filter((r) => r.meetingId === m.id).map((r) => r.offsetMinutes).sort((a, b) => b - a),
     slots: slots.filter((s) => s.meetingId === m.id).map((s) => ({
-      ...s, votes: votes.filter((v) => v.slotId === s.id).map((v) => ({ userId: v.userId, vote: v.vote, note: v.note })),
+      // Głos osoby, którą potem usunięto z zaproszonych, nie liczy się i nie jest pokazywany.
+      ...s, votes: votes.filter((v) => v.slotId === s.id && invited(m, v.userId)).map((v) => ({ userId: v.userId, vote: v.vote, note: v.note })),
     })),
   }));
 }
@@ -246,6 +247,12 @@ export async function updateMeeting(p: Project, actor: Actor, isAdmin: boolean, 
     Object.assign(set, { startsAt, endsAt, manuallyEdited: true });
   }
   if (Object.keys(set).length) await db.update(meetings).set(set).where(eq(meetings.id, m.id));
+  // Usunięci z zaproszonych tracą swoje głosy w ankiecie (organizator zostaje zawsze).
+  if (set.attendeeIds) {
+    const keep = [...(set.attendeeIds as number[]), ...(m.createdBy != null ? [m.createdBy] : [])];
+    const slotIds = (await db.select({ id: meetingSlots.id }).from(meetingSlots).where(eq(meetingSlots.meetingId, m.id))).map((s) => s.id);
+    if (slotIds.length) await db.delete(meetingVotes).where(and(inArray(meetingVotes.slotId, slotIds), notInArray(meetingVotes.userId, keep)));
+  }
   if (patch.reminders) await setReminders(m.id, checkReminders(patch.reminders));
   await changed(p);
 }

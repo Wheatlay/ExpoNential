@@ -128,11 +128,16 @@ func runInstallerWindow() (shown bool) {
 	})
 	_ = w.Bind("disconnect", func() {
 		go func() {
-			if err := uninstallAll(); err != nil {
+			forgot, err := uninstallAll()
+			if err != nil {
 				fail("install", err.Error())
 				return
 			}
-			push("removed()")
+			if forgot {
+				push("removed(false)")
+			} else {
+				push("removed(true)")
+			}
 		}()
 	})
 	_ = w.Bind("openExponential", func() {

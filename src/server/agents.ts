@@ -364,7 +364,9 @@ export async function recordRun(user: User, r: RunReport) {
 
 /** Moje komputery do Ustawień. */
 export async function myAgents(user: User) {
-  const rows = await db.select().from(agents).where(eq(agents.userId, user.id)).orderBy(dsql`${agents.lastSeenAt} desc nulls last`);
+  // Komputer niewidziany od 14 dni znika z listy (np. odinstalowany, gdy serwer był niedostępny); dane zużycia zostają.
+  const rows = await db.select().from(agents).where(and(eq(agents.userId, user.id),
+    dsql`(${agents.lastSeenAt} is null or ${agents.lastSeenAt} > now() - interval '14 days')`)).orderBy(dsql`${agents.lastSeenAt} desc nulls last`);
   const repos = rows.length ? await db.select({ agentId: agentRepos.agentId, project: projects.key, path: agentRepos.path, source: agentRepos.source, status: agentRepos.status, error: agentRepos.error })
     .from(agentRepos).innerJoin(projects, eq(projects.id, agentRepos.projectId))
     .where(inArray(agentRepos.agentId, rows.map((a) => a.id))).orderBy(asc(projects.key)) : [];
@@ -385,7 +387,7 @@ export async function myAgents(user: User) {
       dsql`not exists (select 1 from agent_team_projects tp where tp.agent_id = ${agents.id} and tp.project_id = ${projects.id})`,
       dsql`not exists (select 1 from user_dismissals d where d.user_id = ${user.id} and d.key = 'team-invite:' || ${projects.id}::text)`)).orderBy(asc(projects.key)) : [];
   return rows.map((a) => ({ id: a.id, maxForOthersPerDay: a.maxForOthersPerDay, usage30d: usage.get(a.id)!,
-    forOthers24h: others24.get(a.id) ?? 0, limitReached24h: a.maxForOthersPerDay != null && (others24.get(a.id) ?? 0) >= a.maxForOthersPerDay, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),
+    forOthers24h: others24.get(a.id) ?? 0, limitReached24h: a.maxForOthersPerDay != null && (others24.get(a.id) ?? 0) >= a.maxForOthersPerDay, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5, outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),
     repos: repos.filter((r) => r.agentId === a.id).map(({ agentId: _, ...r }) => r),
     teamProjects: joined.filter((j) => j.agentId === a.id).map((j) => j.key),
     teamInvites: invites.filter((j) => j.agentId === a.id).map((j) => j.key),

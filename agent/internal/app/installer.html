@@ -75,7 +75,7 @@ var S = {
     trayTip: "Ikona Exponential obok zegara pokazuje, co robi agent.",
     nf: "nie znaleziono na tym komputerze", term: "Terminal",
     close: "Zamknij", open: "Otwórz Exponential", on: "● działa", off: "○ nie działa", disconnect: "Odłącz",
-    removed: "Odłączono", removedLine: "Agent został usunięty z tego komputera.", account: "twoje konto",
+    removeWarn: "Nie udało się wyrejestrować komputera z serwera. Usuń go w Ustawieniach > AI.", removed: "Odłączono", removedLine: "Agent został usunięty z tego komputera.", account: "twoje konto",
     err: {
       expired: ["Link wygasł", "Pobierz agenta jeszcze raz w Exponential."],
       notrailer: ["Pobierz agenta w Exponential", "Ten plik nie jest połączony z kontem. Pobierz go w Ustawieniach."],
@@ -90,7 +90,7 @@ var S = {
     trayTip: "The Exponential icon next to the clock shows what the agent is doing.",
     nf: "not found on this computer", term: "Terminal",
     close: "Close", open: "Open Exponential", on: "● running", off: "○ not running", disconnect: "Disconnect",
-    removed: "Disconnected", removedLine: "The agent was removed from this computer.", account: "your account",
+    removeWarn: "Could not unregister this computer from the server. Remove it in Settings > AI.", removed: "Disconnected", removedLine: "The agent was removed from this computer.", account: "your account",
     err: {
       expired: ["Link expired", "Download the agent again in Exponential."],
       notrailer: ["Download the agent in Exponential", "This file is not linked to an account. Download it in Settings."],
@@ -189,7 +189,7 @@ function viewConnected() {
   document.getElementById("b2").onclick = function () { window.close(); };
   document.getElementById("b2").focus();
 }
-function removed() { viewDone(T.removed, T.removedLine); }
+function removed(failed) { viewDone(T.removed, T.removedLine, failed ? T.removeWarn : ""); }
 function setInfo(i) {
   cur = i; T = S[i.lang] || S.en;
   if (i.state === "start") viewStart();

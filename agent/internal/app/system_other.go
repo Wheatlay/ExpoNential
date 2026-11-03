@@ -45,8 +45,8 @@ func machineID() string {
 	return strings.TrimSpace(string(b))
 }
 
-func uninstallAll() error {
-	forgetOnServer()
+func uninstallAll() (bool, error) {
+	forgot := forgetOnServer()
 	stopAgent("")
-	return os.RemoveAll(dataDir())
+	return forgot, os.RemoveAll(dataDir())
 }

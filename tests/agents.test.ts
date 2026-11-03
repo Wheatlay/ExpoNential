@@ -526,3 +526,17 @@ describe('start jobs', () => {
     expect(await code(ag.claimStartJob(bob, old.id, DEV_B1))).toBe('conflict');
   });
 });
+
+describe('inactive computers', () => {
+  it('hides a computer not seen for 14 days and flags one not seen for 3', async () => {
+    const old = 'a1a1a1a1-0000-4000-8000-000000000014';
+    const quiet = 'a1a1a1a1-0000-4000-8000-000000000003';
+    await dbmod.db.insert(schema.agents).values([
+      { id: old, userId: alice.id, name: 'OLD-PC', lastSeenAt: new Date(Date.now() - 20 * 864e5) },
+      { id: quiet, userId: alice.id, name: 'QUIET-PC', lastSeenAt: new Date(Date.now() - 5 * 864e5) },
+    ]);
+    const mine = await ag.myAgents(alice);
+    expect(mine.some((a) => a.id === old)).toBe(false);
+    expect(mine.find((a) => a.id === quiet)).toMatchObject({ inactive: true, online: false });
+  });
+});
