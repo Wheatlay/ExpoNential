@@ -82,7 +82,7 @@ mkdirSync(UPLOADS_DIR, { recursive: true });
 // Załączniki tylko dla zalogowanych (w Linearze też były za autoryzacją).
 await app.register(async (r) => {
   r.addHook('onRequest', async (req, reply) => { if (!req.user) return reply.code(401).send({ error: 'Not signed in' }); });
-  await r.register(fstatic, { root: UPLOADS_DIR, prefix: '/uploads/', decorateReply: false, setHeaders: (res) => (res as unknown as import('node:http').ServerResponse).setHeader('X-Content-Type-Options', 'nosniff') });
+  await r.register(fstatic, { root: UPLOADS_DIR, prefix: '/uploads/', decorateReply: false, setHeaders: (res) => { res.header('X-Content-Type-Options', 'nosniff'); } });
 });
 
 if (existsSync(webDir)) {

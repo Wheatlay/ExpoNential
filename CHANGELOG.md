@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.6] - 03.11.2026
+
+- Opening an uploaded image no longer crashes the server (regression in 1.3.5).
+
 ## Server [1.3.5], Agent [0.4.4] - 03.11.2026
 
 Fixes from the full code audit. Agents older than 0.4.4 get no work until they update.
