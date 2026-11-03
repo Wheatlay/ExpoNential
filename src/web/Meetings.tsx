@@ -9,6 +9,7 @@ import { linkProps } from './router.ts';
 import { toast } from './toast.ts';
 import { CurrentProjectBadge, useCurrentProject } from './ProjectSwitcher.tsx';
 import { getProjectKey } from './project.ts';
+import { PersonLink } from './PersonCard.tsx';
 import { useProjectDetail } from './Settings.tsx';
 import { locale, t, tn } from './i18n.ts';
 
@@ -416,7 +417,7 @@ const pollWidth = (n: number, min: number) => Math.max(min, Math.min(1100, 230 +
 function VoteRows({ slots, people, cols }: { slots: MeetingSlot[]; people: NonNullable<Parameters<typeof Avatar>[0]['user']>[]; cols: string }) {
   return people.map((u) => (
     <div key={u.id} className="poll-row" style={{ gridTemplateColumns: cols }}>
-      <div className="poll-person"><Avatar user={u} size={20} />{u.name}</div>
+      <div className="poll-person"><PersonLink userId={u.id}><Avatar user={u} size={20} />{u.name}</PersonLink></div>
       {slots.map((s) => {
         const v = s.votes.find((x) => x.userId === u.id)?.vote;
         const note = s.votes.find((x) => x.userId === u.id)?.note;
@@ -464,7 +465,7 @@ function PollVotes({ m }: { m: Meeting }) {
               const v = s.votes.find((x) => x.userId === u.id);
               return (
                 <div key={u.id} className="poll-list-vote">
-                  <Avatar user={u} size={18} /><span className="grow">{u.name}</span>
+                  <PersonLink userId={u.id} className="grow"><Avatar user={u} size={18} />{u.name}</PersonLink>
                   <span style={{ color: v ? VOTE_COLOR[v.vote] : 'var(--text-quaternary)', fontWeight: 600 }}>{v ? (v.vote === 'maybe' && v.note ? v.note : VOTE_LABEL[v.vote]) : '–'}</span>
                 </div>
               );

@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { useCreateIssue, useMe, useMeta, useSprints, type IssuePatch } from './api.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu } from './menu.tsx';
@@ -8,6 +8,7 @@ import { toast } from './toast.ts';
 import { Attachments, useAttachments } from './ImagePreviews.tsx';
 import { MentionHint } from './Markdown.tsx';
 import { enterToSubmit } from './keys.ts';
+import { useMentionAutocomplete } from './MentionInput.tsx';
 import { api } from './api.ts';
 import { getProjectKey, ident } from './project.ts';
 import { CurrentProjectBadge } from './ProjectSwitcher.tsx';
@@ -42,6 +43,8 @@ function NewIssueModal({ init }: { init: Init }) {
   const [another, setAnother] = useState(false);
   const [analyze, setAnalyze] = useState(false);
   const att = useAttachments();
+  const descRef = useRef<HTMLTextAreaElement>(null);
+  const mention = useMentionAutocomplete(descRef, description, setDescription);
   const defaultStatus = meta?.statuses.find((s) => s.type === 'unstarted');
   const [form, setForm] = useState<PickTarget>({
     number: 0,
@@ -82,10 +85,11 @@ function NewIssueModal({ init }: { init: Init }) {
         </div>
         <input className="title" autoFocus placeholder={t('Issue title')} value={title} onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
-        <textarea placeholder={t('What happens?\nWhat should happen?\nWhere (screen, link, steps)?')} value={description} onChange={(e) => setDescription(e.target.value)}
+        <textarea ref={descRef} placeholder={t('What happens?\nWhat should happen?\nWhere (screen, link, steps)?')} value={description} onChange={(e) => setDescription(e.target.value)}
           onPaste={att.onPaste}
-          onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') close(); enterToSubmit(e, () => void submit(), setDescription); }} />
+          onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; if (e.key === 'Escape') close(); enterToSubmit(e, () => void submit(), setDescription); }} />
         <MentionHint text={description} />
+        {mention.popup}
         <Attachments urls={att.urls} onRemove={att.remove} />
         <div className="props">
           <button className="chip" onClick={(e) => openMenu(e.currentTarget, statusMenu(meta, form, set))}>

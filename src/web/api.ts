@@ -8,12 +8,20 @@ import { t } from './i18n.ts';
 export type StatusType = 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled' | 'duplicate';
 export type Status = { id: number; name: string; type: StatusType; color: string; position: number; hiddenOnBoard: boolean; role: 'need_info' | 'testing' | null };
 export type Label = { id: number; name: string; color: string };
-export type User = { id: number; login: string; name: string; avatarUrl: string | null; isAdmin: boolean; active: boolean; role?: 'admin' | 'member' };
+export type User = { id: number; login: string; name: string; avatarUrl: string | null; isAdmin: boolean; active: boolean; role?: 'admin' | 'member'; tagIds?: number[] };
 export type ProjectSummary = { id: number; key: string; name: string; color: string; role: 'admin' | 'member'; memberCount: number; githubRepo: string; askedMe: number };
 export type Me = { id: number; name: string; login: string; isAdmin: boolean; hasPassword: boolean; localAgentAt: string | null; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean;
   setupDoneAt: string | null; aiStatus: { client: boolean; clientName: string | null; clientAt: string | null; workTrace: boolean; agent: boolean } };
 export type AppConfig = { demo: boolean; repoUrl: string | null; providers: { github: boolean; google: boolean }; devLogin?: boolean };
-export type Meta = { statuses: Status[]; labels: Label[]; users: User[]; priorities: string[] };
+export type TagColor = 'green' | 'teal' | 'sky' | 'violet' | 'pink' | 'amber' | 'blue' | 'slate';
+export const TAG_COLORS: TagColor[] = ['green', 'teal', 'sky', 'violet', 'pink', 'amber', 'blue', 'slate'];
+/** Tag osób (#nazwa): pisząc go, powiadamiasz wszystkich członków. */
+export type Tag = { id: number; name: string; color: TagColor; memberIds: number[] };
+export type Meta = { statuses: Status[]; labels: Label[]; users: User[]; priorities: string[]; tags: Tag[] };
+export type InboxItem = {
+  id: number; kind: 'mention' | 'tag' | 'question'; projectKey: string; issueNumber: number; issueTitle: string;
+  actorId: number | null; actorName: string | null; tagName: string | null; excerpt: string; createdAt: string; readAt: string | null;
+};
 export type Sprint = { id: number; name: string; startsAt: string; endsAt: string; status: 'planned' | 'active' | 'ended' | 'reviewed'; reviewNotes: string };
 
 export type Vote = 'yes' | 'maybe' | 'no';
@@ -25,7 +33,7 @@ export type Meeting = {
   attendeeIds: number[] | null;
   reminders: number[]; slots: MeetingSlot[];
 };
-export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; notifyPromptShown: boolean; pushKey: string | null };
+export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; onlyImportant: boolean; notifyPromptShown: boolean; pushKey: string | null };
 
 export type IssueRow = {
   id: number; number: number; title: string; statusId: number; assigneeId: number | null; creatorId: number | null; priority: number;
@@ -115,7 +123,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       } catch { /* prywatne okno */ }
     }
     // Demo: zablokowane akcje i limity mają jeden, zrozumiały komunikat w każdym miejscu aplikacji.
-    const msg = data.code === 'demo' ? t('Disabled in the demo') : data.code === 'rate' ? t('Too many requests, slow down') : (data.error ?? res.statusText);
+    const msg = data.code === 'demo' ? t('Disabled in the demo') : data.code === 'rate' ? t('Too many requests, slow down') : (data.error ? t(data.error) : res.statusText); // komunikat serwera po polsku, jeśli jest w pl.ts
     if (data.code === 'demo' || data.code === 'rate') toast(msg, 'warn');
     throw new ApiError(msg, res.status, data.code);
   }
@@ -130,7 +138,7 @@ export const queryClient = new QueryClient({
 });
 
 /** Dane niezależne od projektu przeżywają przełączenie; reszta znika, a widoki pobierają ją od nowa. */
-const GLOBAL_KEYS = new Set(['config', 'me', 'projects', 'online', 'tokens', 'notify-settings']);
+const GLOBAL_KEYS = new Set(['config', 'me', 'projects', 'online', 'tokens', 'notify-settings', 'inbox']);
 onProjectChange(() => {
   void queryClient.cancelQueries();
   queryClient.removeQueries({ predicate: (q) => !GLOBAL_KEYS.has(String(q.queryKey[0])) });
@@ -143,6 +151,8 @@ export const useMeetings = (since?: Date) => useQuery({
   queryFn: () => api<Meeting[]>(since ? `/api/meetings?since=${encodeURIComponent(since.toISOString())}` : '/api/meetings'),
   refetchInterval: 5 * 60_000, placeholderData: (prev) => prev,
 });
+// Skrzynka "Do ciebie": wzmianki, tagi i pytania ze wszystkich moich projektów; zdarzenia SSE ('inbox') odświeżają ją na bieżąco.
+export const useInbox = () => useQuery({ queryKey: ['inbox'], queryFn: () => api<InboxItem[]>('/api/inbox'), staleTime: 30_000, refetchInterval: 60_000 });
 export const useNotifySettings = () => useQuery({ queryKey: ['notify-settings'], queryFn: () => api<NotifySettings>('/api/notify-settings'), staleTime: Infinity });
 
 /** Ankieta czeka na mój głos: trwa i nie zagłosowałem na żaden termin. */
@@ -236,6 +246,7 @@ export function useLiveUpdates(enabled: boolean) {
       for (const key of pending) {
         if (key === 'issues') void qc.invalidateQueries({ queryKey: ['issues'] });
         else if (key === 'meta') void qc.invalidateQueries({ queryKey: ['meta'] });
+        else if (key === 'inbox') void qc.invalidateQueries({ queryKey: ['inbox'] });
         else if (key === 'deploy') void qc.invalidateQueries({ queryKey: ['deploy'] });
         else if (key === 'view') void qc.invalidateQueries({ queryKey: ['view'] });
         else if (key === 'online') void qc.invalidateQueries({ queryKey: ['online'] });

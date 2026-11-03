@@ -13,6 +13,8 @@ import { SprintReview } from './SprintReview.tsx';
 import { Settings } from './Settings.tsx';
 import { CommandMenu } from './CommandMenu.tsx';
 import { MenuHost } from './menu.tsx';
+import { PersonCardHost } from './PersonCard.tsx';
+import { InboxBell } from './Inbox.tsx';
 import { NewIssueHost, openNewIssue } from './NewIssue.tsx';
 import { AskHost } from './AskModal.tsx';
 import { LightboxHost } from './ImageBlock.tsx';
@@ -100,6 +102,7 @@ function App() {
         {page === 'settings' && <Settings />}
       </main>
       <MenuHost />
+      <PersonCardHost />
       <NewIssueHost />
       <NewProjectHost />
       <MeetingHost />
@@ -188,6 +191,7 @@ function Header({ page, number }: { page: string; number?: number }) {
         <Icon.search size={14} /><span className="grow">{t('Search issues…')}</span><kbd>Ctrl K</kbd>
       </button>
       <span className="header-end" />
+      <InboxBell />
     </div>
   );
 }

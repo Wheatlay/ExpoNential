@@ -11,27 +11,45 @@ import { t, tn } from './i18n.ts';
 
 const DISMISSED = 'dismissedMeetingBanners';
 const readDismissed = (): string[] => { try { return JSON.parse(localStorage.getItem(DISMISSED) ?? '[]'); } catch { return []; } };
+// Zamknięte komunikaty trzymamy też w pamięci (prywatne okno bez localStorage) i dajemy znać banerowi oraz dzwonkowi.
+let dismissedNow = readDismissed();
+export function addDismissed(key: string) {
+  dismissedNow = [key, ...dismissedNow].slice(0, 50);
+  try { localStorage.setItem(DISMISSED, JSON.stringify(dismissedNow)); } catch { /* prywatne okno */ }
+  window.dispatchEvent(new Event('meeting-dismissed'));
+}
+function useDismissed() {
+  const [d, setD] = useState(dismissedNow);
+  useEffect(() => {
+    const f = () => setD(dismissedNow);
+    window.addEventListener('meeting-dismissed', f);
+    return () => window.removeEventListener('meeting-dismissed', f);
+  }, []);
+  return d;
+}
+
+/** Spotkania za ≤ 15 min albo trwające i ankiety czekające na mój głos, bez zamkniętych; wspólne dla banera i dzwonka. */
+export function useMeetingAlerts() {
+  const now = useNow(20_000);
+  const me = useMe().data;
+  const meetings = useMeetings().data ?? [];
+  const dismissed = useDismissed();
+  const soon = meetings.filter((m) => m.status === 'scheduled' && m.startsAt && m.endsAt
+    && new Date(m.startsAt).getTime() - 15 * 60_000 <= now.getTime() && new Date(m.endsAt) > now
+    && !dismissed.includes(`m${m.id}:${m.startsAt}`));
+  const polls = meetings.filter((m) => awaitsMyVote(m, me?.id) && !dismissed.includes(`p${m.id}`));
+  return { now, soon, polls };
+}
 
 /**
  * Baner nad widokami: spotkanie za ≤ 15 min albo trwające (z "Join") i ankieta czekająca na mój głos.
  * Liczony z listy spotkań, więc działa też po przegapionym zdarzeniu SSE. Wyłączany w Settings (in-app).
  */
 export function MeetingBanner() {
-  const now = useNow(20_000);
-  const me = useMe().data;
   const settings = useNotifySettings().data;
-  const meetings = useMeetings().data ?? [];
-  const [dismissed, setDismissed] = useState(readDismissed);
+  const { now, soon, polls } = useMeetingAlerts();
   if (settings && !settings.inApp) return null;
-  const dismiss = (key: string) => {
-    const next = [key, ...dismissed].slice(0, 50);
-    setDismissed(next);
-    try { localStorage.setItem(DISMISSED, JSON.stringify(next)); } catch { /* prywatne okno */ }
-  };
-  const soon = meetings.filter((m) => m.status === 'scheduled' && m.startsAt && m.endsAt
-    && new Date(m.startsAt).getTime() - 15 * 60_000 <= now.getTime() && new Date(m.endsAt) > now
-    && !dismissed.includes(`m${m.id}:${m.startsAt}`));
-  const polls = meetings.filter((m) => awaitsMyVote(m, me?.id) && !dismissed.includes(`p${m.id}`));
+  const dismiss = addDismissed;
   if (!soon.length && !polls.length) return null;
 
   return (
@@ -137,8 +155,8 @@ export function NotificationSettings() {
     }
     await save({ push: on, notifyPromptShown: true });
   };
-  const row = (label: string, hint: string, checked: boolean, onChange: (v: boolean) => void, disabled?: string | null) => (
-    <div className="s-row">
+  const row = (id: string, label: string, hint: string, checked: boolean, onChange: (v: boolean) => void, disabled?: string | null) => (
+    <div className="s-row" id={id}>
       <span className="grow">{label}<div className="hint">{hint}</div></span>
       <Tooltip text={disabled}>
         <button className={`switch ${checked && !disabled ? 'on' : ''}`} role="switch" aria-checked={checked && !disabled} aria-label={label}
@@ -149,9 +167,10 @@ export function NotificationSettings() {
   return (
     <>
       <div className="s-card">
-        {row(t('In Exponential'), t('Banner when a meeting starts in 15 minutes or a poll waits for your vote.'), s.inApp, (v) => save({ inApp: v }))}
-        {row(t('Browser notifications'), t('Also when the Exponential tab is closed (the browser must be running). Per browser.'), s.push && perm === 'granted', togglePush, pushBlocked)}
-        {row('Discord', t('Post my polls and meetings to the project channel with @here. Everyone in the channel sees them.'), s.discord, (v) => save({ discord: v }))}
+        {row('notif-app', t('In Exponential'), t('Bell and banners: mentions, questions, polls, meetings.'), s.inApp, (v) => save({ inApp: v }))}
+        {row('notif-push', t('Browser notifications'), t('Also when the tab is closed. Per browser.'), s.push && perm === 'granted', togglePush, pushBlocked)}
+        {row('notif-discord', 'Discord', t('Your polls and meetings in the project channel. Issues are not posted.'), s.discord, (v) => save({ discord: v }))}
+        {row('notif-important', t('Only mentions and questions to me'), t('Polls and meeting reminders stay in the bell only.'), s.onlyImportant, (v) => save({ onlyImportant: v }))}
       </div>
     </>
   );

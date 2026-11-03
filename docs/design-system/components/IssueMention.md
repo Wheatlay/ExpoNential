@@ -7,3 +7,4 @@ Wzmianka o zgłoszeniu w tekście (opis, komentarz, analiza AI, notatki zmian), 
 - Klik nawiguje w aplikacji (`linkProps`); środkowy przycisk i Ctrl+klik otwierają nową kartę (przeglądarka, prawdziwy `href`).
 - Prawy przycisk: menu aplikacji jak przy podzadaniu (Open, Open in new tab, Status, Priority, Assignee, Copy ID, Copy link). Na stronie innego zgłoszenia także Add relation z gotowymi zdaniami („CHUB-191 waits on CHUB-19”, „… blocks …”, „… is related to …”), bez wyszukiwarki.
 - Zgłoszenie z innego projektu albo spoza listy: zwykły link z samym id.
+- `@osoba` i `#tag` w tym samym tekście to osobne wzmianki: patrz Mention.md.

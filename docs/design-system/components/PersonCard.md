@@ -1,0 +1,7 @@
+Karta osoby: mały popover z tym, kim jest ktoś i nad czym pracuje (`PersonCard.tsx`, `openPersonCard(userId, kotwica)`).
+
+- Otwiera ją klik w: wzmiankę `@login`, awatar i imię autora komentarza lub odpowiedzi, imię w historii aktywności, osoby w ankiecie spotkania (głosy), osoby i konta w Ustawieniach. Wszystko to `button.person-link`: układ bez zmian, tylko podkreślenie imienia po najechaniu. Osoba spoza bieżącego projektu nie ma karty (zwykły tekst).
+- Prawy przycisk na awatarze karty zgłoszenia na boardzie i na przycisku przypisanej osoby na stronie zgłoszenia: menu „Profile” i „Copy @login” (nie otwiera menu karty).
+- Wygląd: `bg-popover`, `shadow-popover`, szerokość 300 (w oknie), pod kotwicą; bez miejsca na dole otwiera się nad nią. Do 760 px szerokości to arkusz przy dolnej krawędzi jak menu (`.popover.sheet`).
+- Zawartość od góry: awatar 40, imię (600), `@login` w `.hint`; obecność (online `success` z kropką / „active recently” / „last seen …”, `timeAgo`); pigułki: rola w projekcie (admin w `danger-text`, członek neutralna), „Workspace admin” (też czerwona), tagi osoby w kolorach; „Working on”: do 2 zgłoszeń przypisanych w statusie `started` jako wzmianki zgłoszeń, albo przygaszone „Nothing in progress”; akcje: `.btn.sm.primary` „Issues of this person ({n})” (board z filtrem osoby, `requestAssigneeFilter`) i `.btn.sm` „Copy @login”.
+- Zamyka: klik poza kartą, Escape, zmiana strony.

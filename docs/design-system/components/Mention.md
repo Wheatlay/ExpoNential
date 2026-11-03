@@ -1,0 +1,8 @@
+Wzmianka osoby (`@login`) i tagu osób (`#tag`) w tekście (opis, komentarz, odpowiedź, notatki zmian). Renderuje `Markdown.tsx`, razem z wzmiankami zgłoszeń (IssueMention.md).
+
+- Rozpoznawane tylko znane osoby projektu (login, bez wielkości liter) i istniejące tagi. `@x` / `#x` bez dopasowania, w kodzie, w linku i w gołym adresie zostają zwykłym tekstem. Końcowa interpunkcja (`@rafal.`) zostaje poza wzmianką.
+- `.user-mention` (`span role="button"`, nie `<button>`, siedzi na linii tekstu jak `.issue-mention`): neutralne tło `bg-secondary`, ramka `border-secondary`, `radius-sm`, najechanie `bg-hover`. W środku: „@” w mono i `text-tertiary`, awatar 14, imię. Klik albo Enter otwiera kartę osoby (PersonCard.md). Prawy przycisk: menu „Profile”, „Copy @login”.
+- `.tag-mention`: tekst w kolorze taga (`--tag: var(--tag-<kolor>)`), tło `color-mix(… 14%)`, „#” w mono i przygaszone, `radius-sm`. `title` to imiona członków. Klik otwiera menu członków (awatar + imię); wybór otwiera kartę osoby.
+- Kolory tagów: tylko `tag-green … tag-slate`, wybiera je użytkownik (Ustawienia › Profil i tagi). Nigdy nie oznaczają stanu.
+- Pole tekstowe (opis, komentarz, odpowiedź, nowe zgłoszenie): po wpisaniu `@` albo `#` pojawia się lista (`.popover.mention-pop`, maks. 6 pozycji). `@` pokazuje aktywne osoby (awatar, imię, `@login` przygaszony), `#` tagi (kropka w kolorze, `#nazwa`, liczba osób). Filtr bez wielkości liter i polskich znaków. Strzałki wybierają, Enter albo Tab wstawia `@login ` / `#nazwa `, Escape zamyka, klik myszą wstawia bez utraty fokusu.
+- Osoba z tagiem: pigułka `.pill.tag-pill` (kropka + `#nazwa`) na karcie osoby, chip `.tag-chip` z ✕ w Ustawieniach.

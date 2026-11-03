@@ -32,6 +32,7 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
 - Na pełnym wypełnieniu: `on-accent` (biały) na `accent`, `danger`, `ai`, `info`; `on-warning` (ciemny) na `warning`.
 - Stan nigdy nie jest tylko kolorem: obok jest słowo, ikona albo podpowiedź (deploy ma `aria-label` i `title` ze słowem statusu).
 - `avatar-1…8` i `project-1…7` to kolory tożsamości (awatary, kolory projektów). Nigdy nie oznaczają stanu.
+- `tag-green`, `tag-teal`, `tag-sky`, `tag-violet`, `tag-pink`, `tag-amber`, `tag-blue`, `tag-slate`: kolory tagów osób (`#tag`, Mention.md). Tylko dla tagów osób, wybiera je użytkownik z tych 8; nie oznaczają stanu.
 - Spotkania w kalendarzu: kolor mówi, które to spotkanie (`project-1…7` z id, ten sam dla opcji jednej ankiety), obramowanie mówi, jaki to rodzaj: pełne z wypełnieniem = stały termin, przerywane bez wypełnienia = opcja ankiety, podwójne (`outline` 1px z odstępem 2px) = sprint review. Spotkanie bez mojego zaproszenia: szare (`text-quaternary`, `border-secondary`), bez koloru, z podpisem „not invited”. `warning` zostaje tylko na „Vote” i „Waiting for your vote”.
 
 ## Typografia

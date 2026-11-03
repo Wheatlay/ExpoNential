@@ -6,6 +6,8 @@ import { api, useMe, useMeta, useSprints, type User } from './api.ts';
 import { useProjectKey } from './project.ts';
 import { ProjectBadge } from './ProjectSwitcher.tsx';
 import { NotificationSettings } from './Notifications.tsx';
+import { ProfileTags } from './ProfileTags.tsx';
+import { PersonLink } from './PersonCard.tsx';
 import { Avatar, Icon, StatusIcon, startedFraction } from './icons.tsx';
 import { copyText, toast } from './toast.ts';
 import { timeAgo } from './time.ts';
@@ -44,6 +46,7 @@ export function Settings() {
   const groups: { name: ReactNode; items: Section[] }[] = [
     { name: t('You'), items: [
       { id: 'appearance', name: t('Appearance'), render: () => <Appearance /> },
+      { id: 'profile', name: t('Profile and tags'), render: () => <ProfileTags /> },
       { id: 'notifications', name: t('Notifications'), render: () => <NotificationSettings /> },
       { id: 'claude', name: 'Claude Code', render: () => <ClaudeConnect /> },
       { id: 'password', name: t('Password'), render: () => <PasswordSettings /> },
@@ -60,12 +63,14 @@ export function Settings() {
   const all = groups.flatMap((g) => g.items);
   const hash = useHash();
   const current = all.find((s) => s.id === hash) ?? all[0];
+  const [query, setQuery] = useState('');
   return (
     <div className="settings">
       <div className="settings-layout">
         <nav className="settings-nav" aria-label={t('Settings')}>
           <h2>{t('Settings')}</h2>
-          {groups.map((g, i) => (
+          <SettingsSearch groups={groups} isAdmin={!!me?.isAdmin} query={query} setQuery={setQuery} />
+          {!query.trim() && groups.map((g, i) => (
             <div key={i}>
               <div className="nav-section">{g.name}</div>
               {g.items.map((s) => (
@@ -101,43 +106,51 @@ const HINTS: Record<string, Hint[]> = {
     { label: t('Connect this computer'), to: 'claude', target: 'claude-connect' },
     { label: t('Your computers'), to: 'claude', target: 'your-computers' },
   ],
-  notifications: [{ label: t('Project Discord channel'), to: 'integrations', target: 'discord' }],
+  notifications: [
+    { label: t('Project Discord channel'), to: 'integrations', target: 'discord' },
+    { label: t('Your tags'), to: 'profile', target: 'my-tags' },
+  ],
+  profile: [{ label: t('Your notifications'), to: 'notifications' }],
   integrations: [{ label: t('Your notifications'), to: 'notifications' }],
   people: [{ label: t('Who can log in to the workspace'), to: 'accounts', adminOnly: true }],
 };
 
-function SettingsHints({ current, groups, isAdmin }: { current: string; groups: { name: ReactNode; items: Section[] }[]; isAdmin: boolean }) {
+type Groups = { name: ReactNode; items: Section[] }[];
+
+// Ścieżka "Ty › Powiadomienia": grupa projektu ma w menu nazwę projektu, tu wystarczy "Projekt".
+function whereIs(groups: Groups, id: string) {
+  const gi = groups.findIndex((g) => g.items.some((s) => s.id === id));
+  const sec = groups[gi]?.items.find((s) => s.id === id);
+  const group = gi === 0 ? t('You') : gi === 1 ? t('Project') : t('Workspace');
+  return sec ? `${group} › ${sec.name}` : null;
+}
+
+function goToSetting(h: Hint) {
+  history.replaceState(null, '', `#${h.to}`);
+  dispatchEvent(new HashChangeEvent('hashchange'));
+  if (!h.target) return;
+  // Po przełączeniu sekcji karta jest w DOM w następnej klatce.
+  setTimeout(() => {
+    const el = document.getElementById(h.target!);
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 1600);
+  }, 50);
+}
+
+function SettingsHints({ current, groups, isAdmin }: { current: string; groups: Groups; isAdmin: boolean }) {
   const hints = HINTS[current];
   if (!hints?.length) return null;
-  // Ścieżka "Ty › Powiadomienia": grupa projektu ma w menu nazwę projektu, tu wystarczy "Projekt".
-  const where = (id: string) => {
-    const gi = groups.findIndex((g) => g.items.some((s) => s.id === id));
-    const sec = groups[gi]?.items.find((s) => s.id === id);
-    const group = gi === 0 ? t('You') : gi === 1 ? t('Project') : t('Workspace');
-    return sec ? `${group} › ${sec.name}` : null;
-  };
-  const go = (h: Hint) => {
-    history.replaceState(null, '', `#${h.to}`);
-    dispatchEvent(new HashChangeEvent('hashchange'));
-    if (!h.target) return;
-    // Po przełączeniu sekcji karta jest w DOM w następnej klatce.
-    setTimeout(() => {
-      const el = document.getElementById(h.target!);
-      if (!el) return;
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      el.classList.add('flash');
-      setTimeout(() => el.classList.remove('flash'), 1600);
-    }, 50);
-  };
   return (
     <div className="settings-hints">
       <div className="hint">{t('Looking for something else?')}</div>
       {hints.map((h) => {
-        const path = where(h.to) ?? (h.adminOnly ? `${t('Workspace')} › ${t('Accounts')}` : '');
+        const path = whereIs(groups, h.to) ?? (h.adminOnly ? `${t('Workspace')} › ${t('Accounts')}` : '');
         const locked = h.adminOnly && !isAdmin;
         return (
           <Tooltip key={h.label} text={locked ? t('Only workspace admins can open this') : null}>
-            <button className="settings-hint" disabled={locked} onClick={() => go(h)}>
+            <button className="settings-hint" disabled={locked} onClick={() => goToSetting(h)}>
               <span>→ {h.label}</span><span className="hint">{path}</span>
             </button>
           </Tooltip>
@@ -147,11 +160,102 @@ function SettingsHints({ current, groups, isAdmin }: { current: string; groups: 
   );
 }
 
+/**
+ * Wyszukiwarka ustawień (nad menu): lista wszystkich kart i wierszy z sekcjami. Wynik przenosi do sekcji i podświetla cel
+ * tak jak "Szukasz może?". Nowe ustawienie = nowy wpis tutaj (cel to id karty/wiersza w kodzie).
+ */
+type SearchEntry = Hint & { keywords?: string[] };
+const SEARCH: SearchEntry[] = [
+  { label: t('Theme'), to: 'appearance', target: 'theme', keywords: ['dark', 'light', 'oled', 'motyw', 'ciemny', 'jasny'] },
+  { label: t('Language'), to: 'appearance', target: 'language', keywords: ['polski', 'english', 'jezyk'] },
+  { label: t('My tags'), to: 'profile', target: 'my-tags', keywords: ['tag', 'team', 'group', 'zespol', 'grupa'] },
+  { label: t('In Exponential'), to: 'notifications', target: 'notif-app', keywords: ['bell', 'banner', 'dzwonek', 'powiadomienia'] },
+  { label: t('Browser notifications'), to: 'notifications', target: 'notif-push', keywords: ['push', 'powiadomienia'] },
+  { label: 'Discord', to: 'notifications', target: 'notif-discord', keywords: ['channel', 'kanal'] },
+  { label: t('Only mentions and questions to me'), to: 'notifications', target: 'notif-important', keywords: ['mute', 'quiet', 'wycisz'] },
+  { label: t('Connect AI'), to: 'claude', target: 'claude-connect', keywords: ['claude code', 'codex', 'mcp', 'wizard'] },
+  { label: t('Connected AI clients'), to: 'claude', target: 'ai-clients', keywords: ['mcp'] },
+  { label: t('Your computers'), to: 'claude', target: 'your-computers', keywords: ['agent', 'pc', 'komputer'] },
+  { label: t('Tokens'), to: 'claude', target: 'tokens', keywords: ['api', 'key', 'klucz'] },
+  { label: t('Legacy installer (Windows script)'), to: 'claude', target: 'legacy-installer', keywords: ['install', 'powershell'] },
+  { label: t('Password'), to: 'password', target: 'password-card', keywords: ['login', 'haslo'] },
+  { label: t('Name'), to: 'project', target: 'project-name', keywords: ['project', 'projekt'] },
+  { label: t('Sprint length'), to: 'project', target: 'sprint-length', keywords: ['days', 'dni'] },
+  { label: t('Sprint review'), to: 'project', target: 'sprint-review', keywords: ['meeting', 'spotkanie'] },
+  { label: t('GitHub login or e-mail to add'), to: 'people', target: 'add-member', keywords: ['member', 'invite', 'czlonek', 'dodaj'] },
+  { label: t('Invite link'), to: 'people', target: 'invites', keywords: ['zaproszenie'] },
+  { label: t('Labels'), to: 'labels', target: 'labels', keywords: ['etykiety'] },
+  { label: t('Statuses'), to: 'labels', target: 'statuses', keywords: ['columns', 'kolumny'] },
+  { label: t('GitHub repo'), to: 'integrations', target: 'github-repo', keywords: ['commit'] },
+  { label: t('Deploys'), to: 'integrations', target: 'deploys', keywords: ['branch', 'wdrozenia'] },
+  { label: 'Discord webhook', to: 'integrations', target: 'discord', keywords: ['channel'] },
+  { label: t('Meeting place'), to: 'integrations', target: 'meeting-place', keywords: ['teams', 'meet', 'link'] },
+  { label: t('Analysis models'), to: 'prompts', target: 'agent-prompts', keywords: ['prompt', 'model', 'claude'] },
+  { label: t('Team queue'), to: 'prompts', target: 'team-queue', keywords: ['analysis', 'analiza'] },
+  { label: t('Who can log in to the workspace'), to: 'accounts', target: 'accounts-card', adminOnly: true, keywords: ['accounts', 'konta', 'admin'] },
+];
+
+// Bez wielkości liter i polskich znaków, znak po znaku (długość się nie zmienia, więc indeksy pasują do oryginału).
+const fold = (s: string) => Array.from(s).map((c) => c.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/gi, 'l').toLowerCase()).join('');
+
+function Highlight({ text, tokens }: { text: string; tokens: string[] }) {
+  const f = fold(text);
+  const marks: [number, number][] = [];
+  for (const tk of tokens) { const i = f.indexOf(tk); if (i >= 0) marks.push([i, i + tk.length]); }
+  marks.sort((x, y) => x[0] - y[0]);
+  const out: ReactNode[] = [];
+  let at = 0;
+  for (const [from, to] of marks) {
+    if (from < at) continue;
+    out.push(text.slice(at, from), <mark key={from}>{text.slice(from, to)}</mark>);
+    at = to;
+  }
+  out.push(text.slice(at));
+  return <>{out}</>;
+}
+
+function SettingsSearch({ groups, isAdmin, query, setQuery }: { groups: Groups; isAdmin: boolean; query: string; setQuery: (q: string) => void }) {
+  const [sel, setSel] = useState(0);
+  const tokens = fold(query).split(/\s+/).filter(Boolean);
+  const results = tokens.length
+    ? SEARCH.filter((e) => (!e.adminOnly || isAdmin) && whereIs(groups, e.to) != null).filter((e) => {
+      const hay = fold(`${e.label} ${whereIs(groups, e.to)} ${(e.keywords ?? []).join(' ')}`);
+      return tokens.every((tk) => hay.includes(tk));
+    })
+    : [];
+  const pick = (e: SearchEntry) => { goToSetting(e); setQuery(''); setSel(0); };
+  const cur = Math.min(sel, Math.max(0, results.length - 1));
+  return (
+    <div className="settings-search">
+      <input className="input" type="search" placeholder={t('Search settings')} aria-label={t('Search settings')} value={query}
+        onChange={(e) => { setQuery(e.target.value); setSel(0); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { e.stopPropagation(); setQuery(''); }
+          else if (e.key === 'ArrowDown') { e.preventDefault(); setSel(Math.min(results.length - 1, cur + 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(Math.max(0, cur - 1)); }
+          else if (e.key === 'Enter' && results[cur]) { e.preventDefault(); pick(results[cur]); }
+        }} />
+      {tokens.length > 0 && (
+        <div className="settings-results" role="listbox">
+          {results.map((e, i) => (
+            <button key={e.label + e.to} role="option" aria-selected={i === cur} className={`nav-item search-result${i === cur ? ' active' : ''}`}
+              onMouseEnter={() => setSel(i)} onClick={() => pick(e)}>
+              <span><Highlight text={e.label} tokens={tokens} /></span>
+              <span className="hint">{whereIs(groups, e.to)}</span>
+            </button>
+          ))}
+          {!results.length && <div className="hint search-none">{t('Nothing matches. Try another word.')}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Appearance() {
   const [theme, setT] = useState<Theme>((document.documentElement.dataset.theme as Theme) ?? 'oled');
   return (
     <div className="s-card">
-      <div className="s-row">
+      <div id="theme" className="s-row">
         <span className="grow">{t('Theme')}</span>
         <div className="seg">
           {(['dark', 'oled', 'light'] as Theme[]).map((th) => (
@@ -161,7 +265,7 @@ function Appearance() {
           ))}
         </div>
       </div>
-      <div className="s-row">
+      <div id="language" className="s-row">
         <span className="grow">{t('Language')}</span>
         <div className="seg">
           {(['pl', 'en'] as Lang[]).map((l) => (
@@ -236,7 +340,7 @@ function ClaudeConnect() {
           ))}
         </div>
       )}
-      <details className="s-card settings-legacy">
+      <details id="legacy-installer" className="s-card settings-legacy">
         <summary className="s-row">{t('Legacy installer (Windows script)')}</summary>
         <div className="s-row">
           <span className={`step-dot${installed ? ' done' : ''}`}>{installed ? <Icon.check size={12} /> : <Icon.sparkle size={12} />}</span>
@@ -312,7 +416,7 @@ function ClaudeConnect() {
         </div>
       )}
       {(tokens.data?.length ?? 0) > 0 && (
-        <div className="s-card" style={{ marginTop: 12 }}>
+        <div id="tokens" className="s-card" style={{ marginTop: 12 }}>
           <div className="s-row s-row-head"><b>{t('Tokens')}</b><span className="hint">{t('One per connected computer. Revoke the one from a computer you no longer use.')}</span></div>
           {tokens.data!.map((tk) => (
             <div key={tk.id} className="s-row">
@@ -367,7 +471,7 @@ function ProjectGeneral() {
   const off = p.reviewMeeting ? null : t('Turn on the sprint review meeting first');
   return (
     <div className="s-card">
-      <div className="s-row">
+      <div id="project-name" className="s-row">
         <span className="s-label">{t('Name')}</span>
         <Tooltip text={ro}>
           <input className="input grow" key={p.name} defaultValue={p.name} disabled={!!ro}
@@ -378,7 +482,7 @@ function ProjectGeneral() {
             onBlur={(e) => e.target.value !== toHex(p.color) && void patch({ color: e.target.value })} style={{ width: 30, height: 30, border: 0, background: 'none' }} />
         </Tooltip>
       </div>
-      <div className="s-row">
+      <div id="sprint-length" className="s-row">
         <span className="s-label">{t('Sprint length')}</span>
         {/* Zapis po wyjściu z pola, jak pozostałe pola Ustawień. */}
         <Tooltip text={ro}>
@@ -388,7 +492,7 @@ function ProjectGeneral() {
         </Tooltip>
         <span className="hint grow">{t('days. A new sprint starts by itself when the current one ends.')}</span>
       </div>
-      <div className="s-row">
+      <div id="sprint-review" className="s-row">
         <span className="s-label">{t('Sprint review')}</span>
         <Tooltip text={ro}>
           <button className={`switch ${p.reviewMeeting ? 'on' : ''}`} role="switch" aria-checked={p.reviewMeeting} aria-label={t('Plan a sprint review meeting')} disabled={!!ro}
@@ -420,7 +524,7 @@ function ProjectIntegrations() {
   const ro = c.ro ?? (demo ? t('Disabled in the demo') : null);
   return (
     <div className="s-card">
-      <div className="s-row">
+      <div id="github-repo" className="s-row">
         <span className="s-label">{t('GitHub repo')}</span>
         <Tooltip text={ro}>
           <input className="input grow" key={p.githubRepo} disabled={!!ro} placeholder="owner/name" defaultValue={p.githubRepo}
@@ -428,7 +532,7 @@ function ProjectIntegrations() {
         </Tooltip>
         <span className="hint s-hint">{t('Analyze runs Claude in this repo, and only its commits are linked to {key} issues. After a change, reinstall local analysis.', { key: p.key })}</span>
       </div>
-      <div className="s-row">
+      <div id="deploys" className="s-row">
         <span className="s-label">{t('Deploys')}</span>
         <Tooltip text={ro}>
           <input className="input" style={{ width: 130 }} key={p.deployBranch} disabled={!!ro} placeholder={t('branch')} defaultValue={p.deployBranch} aria-label={t('Deploy branch')}
@@ -473,7 +577,7 @@ function ProjectIntegrations() {
         <span className="hint s-hint">{t('Meeting polls, picked times and reminders are posted to this channel with @here.')}</span>
         {p.discordLastError && <span className="hint s-hint">{t('Last Discord message failed {when}: {error}. Check the webhook URL.', { when: p.discordLastErrorAt ? timeAgo(p.discordLastErrorAt) : '', error: p.discordLastError })}</span>}
       </div>
-      <div className="s-row">
+      <div id="meeting-place" className="s-row">
         <span className="s-label">{t('Meeting place')}</span>
         <Tooltip text={ro}>
           <input className="input grow" key={p.meetingLocationUrl} disabled={!!ro} placeholder={t('Teams, Discord or Meet link')}
@@ -495,7 +599,7 @@ function ProjectPeople() {
   const admins = p.members.filter((m) => m.role === 'admin').length;
   return (
     <>
-    <div className="s-card">
+    <div id="add-member" className="s-card">
       <div className="s-row">
         <input className="input grow" placeholder={t('GitHub login or e-mail to add')} value={login} disabled={!!ro} onChange={(e) => setLogin(e.target.value)} />
         <Tooltip text={ro}>
@@ -506,8 +610,8 @@ function ProjectPeople() {
         const lastAdmin = u.role === 'admin' && admins === 1;
         return (
           <div key={u.id} className="s-row" style={u.active ? undefined : { opacity: 0.5 }}>
-            <Avatar user={u} size={22} />
-            <span className="grow">{u.name} {u.id === me?.id && <span className="badge me">{t('You')}</span>} <span className="hint">@{u.login}</span></span>
+            <PersonLink userId={u.id}><Avatar user={u} size={22} /></PersonLink>
+            <span className="grow"><PersonLink userId={u.id}>{u.name}</PersonLink> {u.id === me?.id && <span className="badge me">{t('You')}</span>} <span className="hint">@{u.login}</span></span>
             <Tooltip text={ro ?? (lastAdmin ? t('A project needs at least one admin') : null)}>
               <div className="seg">
                 {(['member', 'admin'] as const).map((r) => (
@@ -615,7 +719,7 @@ function PasswordSettings() {
   const save = () => void api('/api/me/password', { method: 'POST', body: { current: current || undefined, password } })
     .then(() => { setCurrent(''); setPassword(''); toast(t('Password saved')); void qc.invalidateQueries({ queryKey: ['me'] }); });
   return (
-    <div className="s-card">
+    <div id="password-card" className="s-card">
       <div className="s-row">
         <span className="grow">{me?.hasPassword ? t('Change the password you use to log in with your e-mail.') : t('Set a password to log in with your e-mail. Google and GitHub keep working.')}
           <div className="hint">{t('At least 10 characters.')}</div>
@@ -646,7 +750,7 @@ function ProjectLabelsStatuses() {
   const { meta, ro, refresh } = c;
   return (
     <>
-      <div className="s-card">
+      <div id="labels" className="s-card">
         <div className="s-row s-row-head"><b>{t('Labels')}</b></div>
         <div className="s-row">
           <input type="color" value={label.color} disabled={!!ro} onChange={(e) => setLabel((l) => ({ ...l, color: e.target.value }))} style={{ width: 30, height: 30, border: 0, background: 'none' }} />
@@ -666,7 +770,7 @@ function ProjectLabelsStatuses() {
           </div>
         ); })}
       </div>
-      <div className="s-card" style={{ marginTop: 12 }}>
+      <div id="statuses" className="s-card" style={{ marginTop: 12 }}>
         <div className="s-row s-row-head"><b>{t('Statuses')}</b><span className="hint">{t('Order is the order of columns on the board.')}</span></div>
         {meta.statuses.map((s, idx) => (
           <div key={s.id} className="s-row">
@@ -745,15 +849,15 @@ function Accounts() {
   const saveUser = (body: object) => api('/api/admin/users', { method: 'POST', body }).then(refresh);
 
   return (
-    <div className="s-card">
+    <div id="accounts-card" className="s-card">
       <div className="s-row s-row-head">
         <input className="input grow" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} placeholder={t('GitHub login or e-mail to allow')} value={login} onChange={(e) => setLogin(e.target.value)} />
         <button className="btn" disabled={demo || !login.trim()} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void saveUser({ login: login.trim() }).then(() => setLogin(''))}><Icon.plus size={13} /> {t('Allow')}</button>
       </div>
       {accounts.data?.map((u) => (
         <div key={u.id} className="s-row" style={u.active ? undefined : { opacity: 0.5 }}>
-          <Avatar user={u} size={22} />
-          <span className="grow">{u.name} {u.id === me?.id && <span className="badge me">{t('You')}</span>}
+          <PersonLink userId={u.id}><Avatar user={u} size={22} /></PersonLink>
+          <span className="grow"><PersonLink userId={u.id}>{u.name}</PersonLink> {u.id === me?.id && <span className="badge me">{t('You')}</span>}
             <div className="s-meta">
               {[u.hasGithub && 'GitHub', u.hasGoogle && 'Google', u.hasPassword && t('Password')].filter(Boolean).map((m) => <span key={m as string} className="pill ok">{m}</span>)}
               {!u.hasGithub && !u.hasGoogle && !u.hasPassword && <span className="pill waiting">{t('Not logged in yet')}</span>}

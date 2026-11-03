@@ -12,3 +12,13 @@ export function useOnlineStatus(userId: number | undefined): 'online' | 'recent'
   const seen = q.data.lastSeen[userId];
   return seen && Date.now() - new Date(seen).getTime() < RECENT_MS ? 'recent' : null;
 }
+
+/** Karta osoby: obecność z dokładnością do "ostatnio widziany(a) X temu" (hook wyżej zna tylko 15 minut). */
+export function usePresenceInfo(userId: number | undefined): { state: 'online' | 'recent' | 'seen' | null; lastSeen: string | null } {
+  const q = useQuery({ queryKey: ['online'], queryFn: () => api<Online>('/api/online'), staleTime: 60_000, refetchInterval: 60_000 });
+  if (!userId || !q.data) return { state: null, lastSeen: null };
+  const seen = q.data.lastSeen[userId] ?? null;
+  if (q.data.online.includes(userId)) return { state: 'online', lastSeen: seen };
+  if (!seen) return { state: null, lastSeen: null };
+  return { state: Date.now() - new Date(seen).getTime() < RECENT_MS ? 'recent' : 'seen', lastSeen: seen };
+}

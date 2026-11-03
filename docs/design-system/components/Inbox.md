@@ -1,0 +1,9 @@
+Dzwonek „For you” w nagłówku (`Inbox.tsx`): wszystko, co czeka na mnie, w jednym miejscu.
+
+- Przycisk `.icon-btn` z `Icon.bell` po prawej stronie nagłówka. Plakietka `info` z `on-accent` liczy: nieprzeczytane wzmianki, tagi i pytania + ankiety czekające na mój głos + spotkania za ≤ 15 min albo trwające (te same reguły co `MeetingBanner`, wspólny hak `useMeetingAlerts`). Plakietka znika przy wyłączonym „In Exponential” (Ustawienia › Powiadomienia); lista dalej się otwiera.
+- Panel: popover 360 pod dzwonkiem, na telefonie arkusz. Tytuł „For you”, po prawej `.btn.sm` „Mark all as read”. Zamyka: klik poza panelem, Escape, wybór pozycji.
+- Pozycje z bazy (od najnowszej, z wszystkich moich projektów): awatar autora (pytanie: ikona pytania w tincie `warning`), tytuł w 600: „{name} mentioned you” / „{name} mentioned #tag” (tag w swoim kolorze) / „{name} asks you”; pod spodem `.hint` „KEY-N · „fragment””; czas względny (`timeAgo`), a starsze niż ~2 dni jako dd.mm.rrrr. Nieprzeczytana: tło `accent` 10% i kropka. Klik otwiera zgłoszenie (przełącza projekt) i oznacza jako przeczytaną. Otwarcie zgłoszenia też je oznacza (serwer).
+- Pozycje syntetyczne (nie w bazie), nad bazowymi: „Poll waits for your vote” i „{title} starts at {time}” / „{title} is on now”. Klik otwiera spotkanie.
+- ✕ na pozycji (widoczny po najechaniu, na dotyku zawsze): z bazy usuwa pozycję; syntetyczna zapisuje „ukryte” w tym samym `localStorage` co baner spotkań (`dismissedMeetingBanners`), więc znika i z banera.
+- Pusto: „Nothing for you right now. Mentions and questions will show up here.”
+- Ustawienie „Only mentions and questions to me” wycisza w przeglądarce ankiety i przypomnienia o spotkaniach; dzwonek pokazuje wszystko.

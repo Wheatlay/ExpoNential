@@ -20,6 +20,8 @@ import { AnalysisView } from './AnalysisView.tsx';
 import { Attachments, useAttachments } from './ImagePreviews.tsx';
 import { ImageBlock } from './ImageBlock.tsx';
 import { enterToSubmit, useAutoGrow } from './keys.ts';
+import { useMentionAutocomplete } from './MentionInput.tsx';
+import { PersonLink, profileContextMenu } from './PersonCard.tsx';
 import { rememberIssue } from './SidebarExtras.tsx';
 import { ident } from './project.ts';
 import { t, tn } from './i18n.ts';
@@ -32,12 +34,13 @@ export function MarkdownField({ value, onSave, placeholder, minHeight }: {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Hooki przed warunkowym return (inaczej klik w pole zmienia liczbę hooków i React się wywraca).
   const att = useAttachments();
+  const mention = useMentionAutocomplete(ref, draft, setDraft);
   useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
   useEffect(() => { if (editing) { const el = ref.current; el?.focus(); el?.setSelectionRange(el.value.length, el.value.length); } }, [editing]);
 
   if (!editing) {
     return (
-      <div className="editable" onClick={(e) => { if (!(e.target as HTMLElement).closest?.('a')) setEditing(true); }}>
+      <div className="editable" onClick={(e) => { if (!(e.target as HTMLElement).closest?.('a, .user-mention, .tag-mention')) setEditing(true); }}>
         <Markdown text={value} empty={placeholder} />
       </div>
     );
@@ -65,11 +68,14 @@ export function MarkdownField({ value, onSave, placeholder, minHeight }: {
         onPaste={att.onPaste}
         onKeyDown={(e) => {
           e.stopPropagation();
+          mention.onKeyDown(e);
+          if (e.defaultPrevented) return;
           if (e.key === 'Escape') { setDraft(value); setEditing(false); }
           enterToSubmit(e, save, setDraft);
         }}
       />
       <MentionHint text={draft} />
+      {mention.popup}
       <Attachments urls={att.urls} onRemove={att.remove} />
       <div className="edit-actions">
         <span className="hint" style={{ marginRight: 'auto' }}>{t('Enter to save · Alt+Enter new line · paste images')}</span>
@@ -313,7 +319,7 @@ export function IssuePage({ number }: { number: number }) {
           <button className="prop" data-prop="priority" onClick={(e) => openMenu(e.currentTarget, priorityMenu(meta, target, save))}>
             <PriorityIcon priority={issue.priority} /> <span className={issue.priority ? '' : 'hint'}>{issue.priority ? t(meta.priorities[issue.priority]) : t('Set priority')}</span>
           </button>
-          <button className="prop" data-prop="assignee" onClick={(e) => openMenu(e.currentTarget, assigneeMenu(meta, target, save, me?.id))}>
+          <button className="prop" data-prop="assignee" onContextMenu={profileContextMenu(assignee)} onClick={(e) => openMenu(e.currentTarget, assigneeMenu(meta, target, save, me?.id))}>
             <Avatar user={assignee} size={16} /> <span className={assignee ? '' : 'hint'}>{assignee?.name ?? t('Assign')}</span>
           </button>
           <button className="prop" data-prop="sprint" onClick={(e) => openMenu(e.currentTarget, sprintMenu(sprints, target, save))}>
@@ -489,6 +495,7 @@ function eventIcon(p: IssueDetail['activity'][number]['payload']) {
 function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?: number }) {
   const [body, setBody] = useState('');
   const grow = useAutoGrow(body);
+  const mention = useMentionAutocomplete(grow, body, setBody);
   const [showAll, setShowAll] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
   const qc = useQueryClient();
@@ -522,7 +529,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
           return (
             <div key={`e${en.e.id}`} className="event">
               <span className="ev-icon">{eventIcon(en.e.payload) ?? <Avatar user={actor} size={16} />}</span>
-              <span>{en.e.payload.kind !== 'commit' && en.e.payload.kind !== 'deploy' && <b>{actor?.name ?? t('System')} </b>}{en.e.viaAi && <><span className="badge ai">AI</span> </>}{eventText(en.e.payload, meta)} · <span title={fullDate(en.at)}>{timeAgo(en.at)}</span></span>
+              <span>{en.e.payload.kind !== 'commit' && en.e.payload.kind !== 'deploy' && <b>{actor ? <PersonLink userId={actor.id}>{actor.name}</PersonLink> : t('System')} </b>}{en.e.viaAi && <><span className="badge ai">AI</span> </>}{eventText(en.e.payload, meta)} · <span title={fullDate(en.at)}>{timeAgo(en.at)}</span></span>
             </div>
           );
         }
@@ -532,8 +539,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
         return (
           <div key={`c${c.id}`} className={`comment ${issue.comments.some((r) => r.replyToId === c.id) || issue.infoCommentId === c.id ? 'thread' : ''} ${issue.lastSeenAt && c.createdAt > issue.lastSeenAt && c.authorId !== meId ? 'new' : ''}`}>
             <div className="comment-head">
-              <Avatar user={author} size={20} />
-              <b>{author?.name ?? t('Unknown')}</b>
+              <PersonLink userId={author?.id}><Avatar user={author} size={20} /><b>{author?.name ?? t('Unknown')}</b></PersonLink>
               {issue.lastSeenAt && c.createdAt > issue.lastSeenAt && c.authorId !== meId && <span className="badge new">{t('New')}</span>}
               <span className="when" title={fullDate(c.createdAt)}>{timeAgo(c.createdAt)}{c.updatedAt !== c.createdAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 1000 ? ` ${t('(edited)')}` : ''}</span>
               {own && (
@@ -553,8 +559,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
                 <div key={r.id} className="reply">
                   <div className="comment-head">
                     <span className="badge answer">{t('Answer')}</span>
-                    <Avatar user={ra} size={18} />
-                    <b>{ra?.name ?? t('Unknown')}</b>
+                    <PersonLink userId={ra?.id}><Avatar user={ra} size={18} /><b>{ra?.name ?? t('Unknown')}</b></PersonLink>
                     <span className="when" title={fullDate(r.createdAt)}>{timeAgo(r.createdAt)}</span>
                   </div>
                   <Markdown text={r.body} />
@@ -572,9 +577,10 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onPaste={att.onPaste}
-          onKeyDown={(e) => { e.stopPropagation(); enterToSubmit(e, () => void send(), setBody); }}
+          onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; enterToSubmit(e, () => void send(), setBody); }}
         />
         <MentionHint text={body} />
+        {mention.popup}
         <Attachments urls={att.urls} onRemove={att.remove} />
         <div className="row">
           <button className="btn sm primary" disabled={!body.trim() && !att.urls.length} onClick={() => void send()}><Icon.arrowUp size={13} /> {t('Comment')}</button>
@@ -587,11 +593,13 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
 function CommentEditor({ initial, onSave, onCancel }: { initial: string; onSave: (b: string) => void; onCancel: () => void }) {
   const [v, setV] = useState(initial);
   const grow = useAutoGrow(v);
+  const mention = useMentionAutocomplete(grow, v, setV);
   return (
     <div>
       <textarea ref={grow} className="md-edit" style={{ minHeight: 100 }} autoFocus value={v} onChange={(e) => setV(e.target.value)}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') onCancel(); enterToSubmit(e, () => onSave(v), setV); }} />
+        onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; if (e.key === 'Escape') onCancel(); enterToSubmit(e, () => onSave(v), setV); }} />
       <MentionHint text={v} />
+      {mention.popup}
       <div className="edit-actions">
         <button className="btn sm" onClick={onCancel}>{t('Cancel')}</button>
         <button className="btn sm primary" disabled={!v.trim()} onClick={() => onSave(v)}>{t('Save')}</button>
@@ -696,6 +704,8 @@ function AnswerBox({ number }: { number: number }) {
   const [v, setV] = useState('');
   const qc = useQueryClient();
   const att = useAttachments();
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const mention = useMentionAutocomplete(taRef, v, setV);
   const send = async () => {
     if (!v.trim() && !att.urls.length) return;
     await api(`/api/issues/${ident(number)}/comments`, { method: 'POST', body: { body: att.withImages(v) } });
@@ -707,11 +717,12 @@ function AnswerBox({ number }: { number: number }) {
   };
   return (
     <div className="answer-box">
-      <textarea placeholder={t('Your answer… (Enter to send, Alt+Enter new line)')} value={v} onChange={(e) => setV(e.target.value)}
+      <textarea ref={taRef} placeholder={t('Your answer… (Enter to send, Alt+Enter new line)')} value={v} onChange={(e) => setV(e.target.value)}
         onPaste={att.onPaste}
-        onKeyDown={(e) => { e.stopPropagation(); enterToSubmit(e, () => void send(), setV); }} />
+        onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; enterToSubmit(e, () => void send(), setV); }} />
       <button className="btn sm primary" disabled={!v.trim() && !att.urls.length} onClick={() => void send()}>{t('Answer')}</button>
       <MentionHint text={v} />
+      {mention.popup}
       <Attachments urls={att.urls} onRemove={att.remove} />
     </div>
   );

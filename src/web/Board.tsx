@@ -12,6 +12,7 @@ import {
 } from '@dnd-kit/core';
 import { api, isAskedTo, queryClient, useIssues, useMe, useMeta, useSprints, useUpdateIssue, type IssueRow, type Meta, type Status } from './api.ts';
 import { Avatar, avatarColor, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
+import { profileContextMenu } from './PersonCard.tsx';
 import { openMenu, isMenuOpen, Tooltip, type MenuSpec } from './menu.tsx';
 import { assigneeMenu, doneWarning, issueContextMenu, labelMenu, priorityMenu, sprintMenu, statusMenu, type PickTarget } from './pickers.tsx';
 import { navigate } from './router.ts';
@@ -45,6 +46,10 @@ let scopeRequested = false;
 /** Sidebar prosi o zakres "Asked to me" (board może być jeszcze niezamontowany). */
 export function requestQuestionsScope() { scopeRequested = true; window.dispatchEvent(new Event('board-questions')); }
 function consumeScopeRequest() { const r = scopeRequested; scopeRequested = false; return r; }
+let assigneeRequested: number | null = null;
+/** Karta osoby prosi o board z filtrem "zgłoszenia tej osoby" (jak wyżej: board może być jeszcze niezamontowany). */
+export function requestAssigneeFilter(userId: number) { assigneeRequested = userId; window.dispatchEvent(new Event('board-assignee')); }
+function consumeAssigneeRequest() { const r = assigneeRequested; assigneeRequested = null; return r; }
 type Filters = { scope: 'all' | 'sprint' | 'questions' | 'unread'; labelIds: number[]; assigneeIds: (number | null)[]; priorities: number[] };
 
 const DEFAULT_DISPLAY: Display = { rows: 'assignee', ordering: 'priority', completed: 'week', showSubIssues: false, showEmptyRows: false, showHidden: false, props: ALL_PROPS, livePresence: true };
@@ -184,6 +189,12 @@ export function Board() {
     if (consumeScopeRequest()) on();
     window.addEventListener('board-questions', on);
     return () => window.removeEventListener('board-questions', on);
+  }, [setFilters]);
+  useEffect(() => {
+    const on = () => { const id = consumeAssigneeRequest(); if (id != null) setFilters((f) => ({ ...f, scope: 'all', assigneeIds: [id] })); };
+    on();
+    window.addEventListener('board-assignee', on);
+    return () => window.removeEventListener('board-assignee', on);
   }, [setFilters]);
   // Prawy klik w trakcie przeciągania anuluje je. Przechwytujemy prawy przycisk, zanim
   // dotrze do sensora (inaczej jego "pointerup" upuszcza kartę), i kończymy przeciąganie
@@ -700,7 +711,7 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
       title={stale ? tn(idleDays, 'No changes for {n} day', 'No changes for {n} days') : undefined}>
       <div className="card-top">
         {show.id && <span className="card-id">{ident(issue.number)}</span>}
-        {show.assignee && <span className="avatar-slot" {...pillProps('assignee')}><Avatar user={assignee} size={18} /></span>}
+        {show.assignee && <span className="avatar-slot" {...pillProps('assignee')} onContextMenu={profileContextMenu(assignee)}><Avatar user={assignee} size={18} /></span>}
       </div>
       <div className="card-title"><InlineCode text={issue.title} /></div>
       <div className="card-meta">
