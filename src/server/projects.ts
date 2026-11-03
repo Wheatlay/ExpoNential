@@ -89,7 +89,7 @@ export async function createProject(creatorId: number, input: { key: string; nam
 export type ProjectPatch = Partial<{
   name: string; color: string; discordWebhookUrl: string | null; meetingLocationUrl: string; sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
-  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; agentTeamQueue: boolean; agentsMayClone: boolean;
+  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; stageSourceRef: string; agentTeamQueue: boolean; agentsMayClone: boolean;
 }>;
 
 export async function updateProject(projectId: number, patch: ProjectPatch) {
@@ -109,6 +109,7 @@ export async function updateProject(projectId: number, patch: ProjectPatch) {
   }
   if (patch.deployBranch !== undefined && !patch.deployBranch.trim()) throw new RuleError('Deploy branch cannot be empty', 'invalid');
   if (patch.deploySourceRef !== undefined) patch.deploySourceRef = patch.deploySourceRef.trim();
+  if (patch.stageSourceRef !== undefined) patch.stageSourceRef = patch.stageSourceRef.trim();
   // Inne repo = inne ścieżki na komputerach: zapisane mapowania tracą sens.
   if (patch.githubRepo !== undefined) {
     const [old] = await db.select({ githubRepo: projects.githubRepo }).from(projects).where(eq(projects.id, projectId));

@@ -105,7 +105,7 @@ async function presentIssue(p: Project, number: number) {
     analysisRequested: !!d.analysisRequestedAt,
     changeHuman: d.changeHuman,
     changeAi: d.changeAi,
-    commits: d.commits.map((c) => ({ sha: c.sha.slice(0, 9), message: c.message.split('\n')[0], deployedAt: c.deployedAt })),
+    commits: d.commits.map((c) => ({ sha: c.sha.slice(0, 9), message: c.message.split('\n')[0], deployedAt: c.deployedAt, stagedAt: c.stagedAt })),
     // Ślad z sesji Claude Code (hooki): od tego zaczyna się zamykanie zadania, zamiast przekopywać rozmowę.
     worklog: d.activity.flatMap((a) => a.payload.kind === 'worklog'
       ? [{ by: userName(a.actorId), repo: a.payload.repo, startedAt: a.createdAt, updatedAt: a.payload.updatedAt, files: a.payload.files, commits: a.payload.commits, prompts: a.payload.prompts }]

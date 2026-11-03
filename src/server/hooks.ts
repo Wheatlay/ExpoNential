@@ -7,7 +7,7 @@ import { extractIssueRefs, identifier } from './rules.ts';
 import { publish } from './service.ts';
 import { z } from 'zod';
 import { getProjectByKey, listAllProjects, type Project } from './projects.ts';
-import { reportDeploy, type DeployStatus } from './deploys.ts';
+import { reportDeploy, type DeployEnv, type DeployStatus } from './deploys.ts';
 
 type GhCommit = { id: string; message: string; url: string; timestamp: string; author: { name: string; username?: string } };
 
@@ -62,12 +62,13 @@ export async function github(path: string) {
 }
 
 /**
- * Udany deploy: commity od poprzedniego deployu dostają deployed_at, a ich zadania wpis "Deployed".
+ * Udany deploy: commity od poprzedniego deployu dostają deployed_at (stage: staged_at), a ich zadania wpis "Deployed".
+ * Prod i stage mają osobną historię deployów.
  * Status zadania się nie zmienia (decyzja zespołu).
  */
-export async function recordDeploy(p: Project, sha: string) {
+export async function recordDeploy(p: Project, sha: string, env: DeployEnv = 'prod') {
   if (!p.githubRepo) return [];
-  const [prev] = await db.select().from(deploys).where(eq(deploys.projectId, p.id)).orderBy(desc(deploys.at)).limit(1);
+  const [prev] = await db.select().from(deploys).where(and(eq(deploys.projectId, p.id), eq(deploys.env, env))).orderBy(desc(deploys.at)).limit(1);
   if (prev?.sha === sha) return [];
   let shas: string[] = [sha];
   if (prev) {
@@ -79,18 +80,19 @@ export async function recordDeploy(p: Project, sha: string) {
       // Poprzedni SHA zniknął (force-push): zapisujemy deploy mimo to, inaczej każdy kolejny też by padł.
     }
   }
-  await db.insert(deploys).values({ projectId: p.id, sha });
+  await db.insert(deploys).values({ projectId: p.id, sha, env });
   if (!shas.length) return [];
 
   const now = new Date();
-  const rows = await db.update(issueCommits).set({ deployedAt: now })
-    .where(and(inArray(issueCommits.sha, shas), isNull(issueCommits.deployedAt),
+  const col = env === 'stage' ? issueCommits.stagedAt : issueCommits.deployedAt;
+  const rows = await db.update(issueCommits).set(env === 'stage' ? { stagedAt: now } : { deployedAt: now })
+    .where(and(inArray(issueCommits.sha, shas), isNull(col),
       inArray(issueCommits.issueId, db.select({ id: issues.id }).from(issues).where(eq(issues.projectId, p.id)))))
     .returning({ issueId: issueCommits.issueId });
   const issueIds = [...new Set(rows.map((r) => r.issueId))];
   const touched: string[] = [];
   for (const issueId of issueIds) {
-    await db.insert(activity).values({ issueId, actorId: null, createdAt: now, payload: { kind: 'deploy', sha } });
+    await db.insert(activity).values({ issueId, actorId: null, createdAt: now, payload: env === 'stage' ? { kind: 'deploy', sha, env: 'stage' } : { kind: 'deploy', sha } });
     const [i] = await db.select({ number: issues.number, projectKey: projects.key }).from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId)).where(eq(issues.id, issueId));
     touched.push(identifier(i.projectKey, i.number));
@@ -103,6 +105,7 @@ export const deployHookBody = z.object({
   project: z.string().min(1), sha: z.string().min(1).max(100),
   status: z.enum(['queued', 'in_progress', 'finished', 'failed']).default('finished'),
   message: z.string().max(500).optional(), author: z.string().max(200).optional(),
+  env: z.enum(['prod', 'stage']).default('prod'),
 });
 
 type Log = { warn: (o: unknown, m: string) => void };
@@ -114,7 +117,7 @@ export async function reportDeployHook(body: z.infer<typeof deployHookBody>, log
   if (p.deploySource !== 'webhook') return { code: 409, body: { error: 'Project deploy source is not webhook' } };
   const now = new Date().toISOString();
   const done = body.status === 'finished' || body.status === 'failed';
-  await reportDeploy(p, { status: body.status, startedAt: now, finishedAt: done ? now : null, commit: body.sha, message: body.message ?? null, author: body.author ?? null }, log);
+  await reportDeploy(p, { status: body.status, startedAt: now, finishedAt: done ? now : null, commit: body.sha, message: body.message ?? null, author: body.author ?? null }, log, body.env);
   return { code: 200, body: { ok: true } };
 }
 
@@ -134,10 +137,13 @@ export async function reportGithubDeployment(
   const touched: string[] = [];
   for (const p of await listAllProjects()) {
     if (p.deploySource !== 'github' || p.githubRepo.toLowerCase() !== repo) continue;
-    if (p.deploySourceRef && p.deploySourceRef !== body.deployment?.environment) continue;
+    const environment = body.deployment?.environment;
+    const env: DeployEnv | null = p.stageSourceRef && p.stageSourceRef === environment ? 'stage'
+      : (!p.deploySourceRef || p.deploySourceRef === environment) ? 'prod' : null;
+    if (!env) continue;
     const now = new Date().toISOString();
     const done = status === 'finished' || status === 'failed';
-    await reportDeploy(p, { status, startedAt: now, finishedAt: done ? now : null, commit: sha, message: null, author: null }, log);
+    await reportDeploy(p, { status, startedAt: now, finishedAt: done ? now : null, commit: sha, message: null, author: null }, log, env);
     touched.push(p.key);
   }
   return touched;

@@ -64,6 +64,8 @@ export const projects = pgTable('projects', {
   deploySource: text('deploy_source').$type<'' | 'webhook' | 'github' | 'coolify'>().notNull().default(''),
   // Odnośnik źródła: github = środowisko (opcjonalne), coolify = uuid aplikacji.
   deploySourceRef: text('deploy_source_ref').notNull().default(''),
+  // Odnośnik źródła dla stage (github = środowisko, coolify = uuid aplikacji stage). Pusty = bez stage; webhook podaje env w body.
+  stageSourceRef: text('stage_source_ref').notNull().default(''),
   // Domyślny widok boardu dla członków (Display + filtry), ustawia admin projektu. null = wartości z kodu.
   defaultView: jsonb('default_view').$type<Record<string, unknown>>(),
   // Ostatnio nadany numer zgłoszenia: numer usuniętego zgłoszenia nie wraca do obiegu.
@@ -226,7 +228,7 @@ export type ActivityPayload =
   | { kind: 'sprint'; to: string | null }
   | { kind: 'parent'; to: number | null }
   | { kind: 'commit'; sha: string; message: string; url: string; author: string }
-  | { kind: 'deploy'; sha: string }
+  | { kind: 'deploy'; sha: string; env?: 'stage' }
   | { kind: 'worklog'; session: string; repo: string; files: string[]; commits: { sha: string; message: string }[]; prompts: string[]; updatedAt: string }
   | { kind: 'question'; to: string; question: string }
   | { kind: 'answered'; by: string; backTo: string | null }
@@ -249,12 +251,14 @@ export const issueCommits = pgTable('issue_commits', {
   author: text('author').notNull(),
   committedAt: timestamp('committed_at', { withTimezone: true }).notNull(),
   deployedAt: timestamp('deployed_at', { withTimezone: true }),
+  stagedAt: timestamp('staged_at', { withTimezone: true }),
 }, (t) => [primaryKey({ columns: [t.issueId, t.sha] }), index('issue_commits_sha_idx').on(t.sha)]);
 
 export const deploys = pgTable('deploys', {
   id: serial('id').primaryKey(),
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
   sha: text('sha').notNull(),
+  env: text('env').$type<'prod' | 'stage'>().notNull().default('prod'),
   at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
 });
 

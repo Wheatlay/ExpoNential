@@ -16,27 +16,30 @@ export type DeployStatus = {
   author: string | null;
 } | null;
 
-/** Ostatni znany deploy każdego projektu (po id projektu). */
-const current = new Map<number, DeployStatus>();
+export type DeployEnv = 'prod' | 'stage';
 
-export function deployStatusOf(projectId: number) {
-  return current.get(projectId) ?? null;
+/** Ostatni znany deploy każdego projektu i środowiska (klucz `${projectId}:${env}`). */
+const current = new Map<string, DeployStatus>();
+
+export function deployStatusOf(projectId: number, env: DeployEnv = 'prod') {
+  return current.get(`${projectId}:${env}`) ?? null;
 }
 
 /** Każde źródło (webhook, GitHub, Coolify) zgłasza deploy tutaj: stan na pasku, zdarzenie SSE, a po sukcesie znacznik Deployed w zgłoszeniach. */
-export async function reportDeploy(p: Project, next: NonNullable<DeployStatus>, log?: { warn: (o: unknown, m: string) => void }) {
-  const prev = current.get(p.id);
-  current.set(p.id, next);
+export async function reportDeploy(p: Project, next: NonNullable<DeployStatus>, log?: { warn: (o: unknown, m: string) => void }, env: DeployEnv = 'prod') {
+  const key = `${p.id}:${env}`;
+  const prev = current.get(key);
+  current.set(key, next);
   if (JSON.stringify(prev ?? null) !== JSON.stringify(next)) await publish({ type: 'deploy', projectKey: p.key });
   // recordDeploy jest idempotentny po sha, więc powtórne zgłoszenie tego samego deployu niczego nie psuje.
   if (next.status === 'finished' && next.commit && (!prev || prev.status !== 'finished' || prev.commit !== next.commit)) {
-    await recordDeploy(p, next.commit).catch((e) => log?.warn(e, 'recordDeploy failed'));
+    await recordDeploy(p, next.commit, env).catch((e) => log?.warn(e, 'recordDeploy failed'));
   }
 }
 
 export async function registerDeploys(app: FastifyInstance) {
   app.get('/api/deploy-status', { preHandler: requireUser }, async (req) => {
     const { project } = await requireMember(req.user!, projectKeyOf(req));
-    return { enabled: !!project.deploySource && (project.deploySource !== 'coolify' || coolifyConfigured()), deploy: deployStatusOf(project.id) };
+    return { enabled: !!project.deploySource && (project.deploySource !== 'coolify' || coolifyConfigured()), deploy: deployStatusOf(project.id), stage: deployStatusOf(project.id, 'stage') };
   });
 }

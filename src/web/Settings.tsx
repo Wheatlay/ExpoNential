@@ -435,7 +435,7 @@ type ProjectDetail = {
   id: number; key: string; name: string; color: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
-  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; agentTeamQueue: boolean;
+  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; stageSourceRef: string; agentTeamQueue: boolean;
   defaultModels: { analyze: string; deep: string };
   role: 'admin' | 'member'; canEdit: boolean;
   members: { id: number; login: string; name: string; avatarUrl: string | null; active: boolean; role: 'admin' | 'member' }[];
@@ -540,33 +540,38 @@ function ProjectIntegrations() {
         </Tooltip>
         <Tooltip text={ro}>
           <select className="input" value={p.deploySource} disabled={!!ro} aria-label={t('Deploy status source')}
-            onChange={(e) => void patch({ deploySource: e.target.value as ProjectDetail['deploySource'], deploySourceRef: '' })}>
+            onChange={(e) => void patch({ deploySource: e.target.value as ProjectDetail['deploySource'], deploySourceRef: '', stageSourceRef: '' })}>
             <option value="">{t('None')}</option>
             <option value="webhook">{t('Webhook')}</option>
             <option value="github">{t('GitHub Deployments')}</option>
             <option value="coolify">{t('Coolify')}</option>
           </select>
         </Tooltip>
-        {p.deploySource === 'github' && (
-          <Tooltip text={ro}>
-            <input className="input grow" key={p.deploySourceRef} disabled={!!ro} placeholder={t('Environment (optional)')} defaultValue={p.deploySourceRef} aria-label={t('Environment (optional)')}
-              onBlur={(e) => e.target.value.trim() !== p.deploySourceRef && void patch({ deploySourceRef: e.target.value.trim() })} />
-          </Tooltip>
-        )}
-        {p.deploySource === 'coolify' && (
-          <Tooltip text={ro}>
-            <input className="input grow" key={p.deploySourceRef} disabled={!!ro} placeholder={t('Coolify application UUID')} defaultValue={p.deploySourceRef} aria-label={t('Coolify application UUID')}
-              onBlur={(e) => e.target.value.trim() !== p.deploySourceRef && void patch({ deploySourceRef: e.target.value.trim() })} />
-          </Tooltip>
-        )}
         <span className="hint s-hint">
-          {p.deploySource === 'webhook'
-            ? <>{t('After each deploy, send the deployed commit:')} <code>{`curl -X POST ${location.origin}/hooks/deploy -H "X-Webhook-Secret: …" -d '{"project":"${p.key}","sha":"…"}'`}</code></>
-            : p.deploySource === 'github' ? t('GitHub deployment_status events (webhook /hooks/github) mark commits as deployed and show the status in the sidebar.')
+          {p.deploySource === 'github' ? t('GitHub deployment_status events (webhook /hooks/github) mark commits as deployed and show the status in the sidebar.')
             : p.deploySource === 'coolify' ? t('Successful deploys of this Coolify app mark commits as deployed and show the status in the sidebar.')
+            : p.deploySource === 'webhook' ? t('After each deploy, send the deployed commit:')
             : t('Pick where deploys are reported from. None: no deploy tracking.')}
         </span>
       </div>
+      {p.deploySource && (['prod', 'stage'] as const).map((env) => {
+        const field = env === 'prod' ? 'deploySourceRef' : 'stageSourceRef';
+        const ph = p.deploySource === 'coolify' ? t('Coolify application UUID') : env === 'prod' ? t('Environment (optional)') : t('Environment');
+        return (
+          <div key={env} className="s-row">
+            <span className="s-label">{env === 'prod' ? t('Prod') : t('Stage')}</span>
+            {p.deploySource === 'webhook'
+              ? <code className="hint">{`curl -X POST ${location.origin}/hooks/deploy -H "X-Webhook-Secret: …" -d '{"project":"${p.key}","sha":"…"${env === 'stage' ? ',"env":"stage"' : ''}}'`}</code>
+              : (
+                <Tooltip text={ro}>
+                  <input className="input grow" key={p[field]} disabled={!!ro} placeholder={ph} defaultValue={p[field]} aria-label={`${env === 'prod' ? t('Prod') : t('Stage')}: ${ph}`}
+                    onBlur={(e) => e.target.value.trim() !== p[field] && void patch({ [field]: e.target.value.trim() })} />
+                </Tooltip>
+              )}
+            {env === 'stage' && p.deploySource !== 'webhook' && <span className="hint s-hint">{t('Empty: no stage.')}</span>}
+          </div>
+        );
+      })}
       <div className="s-row" id="discord">
         <span className="s-label">Discord webhook</span>
         <Tooltip text={ro}>

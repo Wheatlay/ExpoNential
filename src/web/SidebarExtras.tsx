@@ -69,22 +69,31 @@ type Deploy = { status: string; startedAt: string | null; finishedAt: string | n
 
 /** Status deployu aplikacji bieżącego projektu: trwa / udany / nieudany, odświeżany na żywo przez SSE. */
 export function DeployStatus() {
-  const q = useQuery({ queryKey: ['deploy'], queryFn: () => api<{ enabled: boolean; deploy: Deploy }>('/api/deploy-status'), refetchInterval: 60_000 });
+  const q = useQuery({ queryKey: ['deploy'], queryFn: () => api<{ enabled: boolean; deploy: Deploy; stage: Deploy }>('/api/deploy-status'), refetchInterval: 60_000 });
   const [, tick] = useState(0);
   useEffect(() => { const t = setInterval(() => tick((x) => x + 1), 15_000); return () => clearInterval(t); }, []);
-  const d = q.data?.deploy;
-  if (!q.data?.enabled || !d) return null;
+  const { deploy, stage } = q.data ?? {};
+  if (!q.data?.enabled || (!deploy && !stage)) return null;
+  return (
+    <>
+      {stage && <DeployCard d={stage} env={t('Stage')} />}
+      {deploy && <DeployCard d={deploy} env={stage ? t('Prod') : null} />}
+    </>
+  );
+}
+
+function DeployCard({ d, env }: { d: NonNullable<Deploy>; env: string | null }) {
   const running = d.status === 'queued' || d.status === 'in_progress';
   const label = running ? (d.status === 'queued' ? t('Deploy queued') : t('Deploying…'))
     : d.status === 'finished' ? t('Deployed') : d.status === 'failed' ? t('Deploy failed') : t('Deploy cancelled');
   const when = running ? d.startedAt : d.finishedAt ?? d.startedAt;
   // Status mówi kolor (kropka i ramka), słowo zostaje w podpowiedzi i dla czytników ekranu.
   return (
-    <div className={`deploy-status ${d.status}`} role="status" aria-label={label}
-      title={[label, d.commit?.slice(0, 7), d.message].filter(Boolean).join(' · ')}>
+    <div className={`deploy-status ${d.status}`} role="status" aria-label={env ? `${env}: ${label}` : label}
+      title={[env, label, d.commit?.slice(0, 7), d.message].filter(Boolean).join(' · ')}>
       <span className="deploy-dot" />
       <span className="deploy-text">
-        <span className="deploy-meta">{when ? timeAgo(when) : ''}{d.author && <> · <b>{d.author}</b></>}</span>
+        <span className="deploy-meta">{env && <><b>{env}</b> · </>}{when ? timeAgo(when) : ''}{d.author && <> · <b>{d.author}</b></>}</span>
         {d.message && <span className="deploy-msg">{d.message}</span>}
       </span>
     </div>

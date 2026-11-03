@@ -461,4 +461,29 @@ describe('reportDeploy', () => {
     expect(row.deployedAt).toBeInstanceOf(Date);
     expect((await svc.getIssueDetail(p, i.number)).activity.map((a) => a.payload.kind)).toContain('deploy');
   });
+
+  it('a stage deploy sets stagedAt only, prod later sets deployedAt', async () => {
+    const deploys = await import('../src/server/deploys.ts');
+    const { issueCommits } = await import('../src/db/schema.ts');
+    const { eq } = await import('drizzle-orm');
+    const web = await projects.createProject((await member('stager', 'Stager')).id, { key: 'DEPS', name: 'Deploy stage' });
+    await projects.updateProject(web.id, { githubRepo: 'acme/deps', deploySource: 'webhook' });
+    const p = (await projects.getProjectByKey('DEPS'))!;
+    const i = await svc.createIssue(p, null, { title: 'staged' });
+    const c = { id: 'stg0001', message: `fix DEPS-${i.number}`, url: 'https://x', timestamp: new Date().toISOString(), author: { name: 'K' } };
+    expect(await hooks.recordCommits([c], 'acme/deps')).toEqual([`DEPS-${i.number}`]);
+    const now = new Date().toISOString();
+    const finished = { status: 'finished' as const, startedAt: now, finishedAt: now, commit: 'stg0001', message: null, author: null };
+    await deploys.reportDeploy(p, finished, undefined, 'stage');
+    expect(deploys.deployStatusOf(p.id, 'stage')?.status).toBe('finished');
+    expect(deploys.deployStatusOf(p.id)).toBeNull();
+    let [row] = await dbmod.db.select().from(issueCommits).where(eq(issueCommits.sha, 'stg0001'));
+    expect(row.stagedAt).toBeInstanceOf(Date);
+    expect(row.deployedAt).toBeNull();
+    const acts = (await svc.getIssueDetail(p, i.number)).activity.map((a) => a.payload);
+    expect(acts).toContainEqual({ kind: 'deploy', sha: 'stg0001', env: 'stage' });
+    await deploys.reportDeploy(p, finished);
+    [row] = await dbmod.db.select().from(issueCommits).where(eq(issueCommits.sha, 'stg0001'));
+    expect(row.deployedAt).toBeInstanceOf(Date);
+  });
 });

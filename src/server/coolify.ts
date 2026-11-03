@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { projects } from '../db/schema.ts';
 import { github } from './hooks.ts';
 import { listAllProjects } from './projects.ts';
-import { reportDeploy, type DeployStatus } from './deploys.ts';
+import { reportDeploy, type DeployEnv, type DeployStatus } from './deploys.ts';
 
 /**
  * Opcjonalne źródło deployów: Coolify (projekt z deploySource = 'coolify', uuid aplikacji w deploySourceRef).
@@ -26,9 +26,9 @@ async function authorOf(repo: string, sha: string | null) {
   return authors.get(sha) ?? null;
 }
 
-async function pollProject(p: typeof projects.$inferSelect, log: FastifyInstance['log']) {
+async function pollProject(p: typeof projects.$inferSelect, ref: string, env: DeployEnv, log: FastifyInstance['log']) {
   try {
-    const res = await fetch(`${API}/api/v1/deployments/applications/${p.deploySourceRef}?skip=0&take=1`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    const res = await fetch(`${API}/api/v1/deployments/applications/${ref}?skip=0&take=1`, { headers: { Authorization: `Bearer ${TOKEN}` } });
     if (!res.ok) throw new Error(`Coolify ${res.status}`);
     const { deployments } = (await res.json()) as { deployments: { status: string; created_at: string; updated_at: string; commit: string | null; commit_message: string | null }[] };
     const d = deployments[0];
@@ -41,14 +41,18 @@ async function pollProject(p: typeof projects.$inferSelect, log: FastifyInstance
       commit: d.commit,
       message: d.commit_message?.split('\n')[0] ?? null,
       author: await authorOf(p.githubRepo, d.commit),
-    }, log);
+    }, log, env);
   } catch (e) {
-    log.warn({ err: (e as Error).message, project: p.key }, 'deploy status poll failed');
+    log.warn({ err: (e as Error).message, project: p.key, env }, 'deploy status poll failed');
   }
 }
 
 async function poll(log: FastifyInstance['log']) {
-  for (const p of await listAllProjects()) if (p.deploySource === 'coolify' && p.deploySourceRef) await pollProject(p, log);
+  for (const p of await listAllProjects()) {
+    if (p.deploySource !== 'coolify') continue;
+    if (p.deploySourceRef) await pollProject(p, p.deploySourceRef, 'prod', log);
+    if (p.stageSourceRef) await pollProject(p, p.stageSourceRef, 'stage', log);
+  }
 }
 
 export async function registerCoolify(app: FastifyInstance) {
@@ -66,15 +70,16 @@ export async function registerCoolify(app: FastifyInstance) {
       if (!/success/.test(String(body.event ?? body.type ?? text))) return { ignored: true };
       // Powiadomienia Coolify przychodzą dla wszystkich aplikacji na serwerze (też trackera i innych stron).
       // Projekt rozpoznajemy po uuid jego aplikacji; bez dopasowania nic nie oznaczamy.
-      const p = (await listAllProjects()).find((x) => x.deploySource === 'coolify' && x.githubRepo && x.deploySourceRef
-        && text.includes(x.deploySourceRef.toLowerCase()));
+      const p = (await listAllProjects()).find((x) => x.deploySource === 'coolify' && x.githubRepo
+        && ((x.deploySourceRef && text.includes(x.deploySourceRef.toLowerCase())) || (x.stageSourceRef && text.includes(x.stageSourceRef.toLowerCase()))));
       if (!p) return { ignored: true };
+      const env: DeployEnv = p.stageSourceRef && text.includes(p.stageSourceRef.toLowerCase()) ? 'stage' : 'prod';
       // Coolify nie zawsze podaje SHA, więc bierzemy aktualny HEAD deployowanej gałęzi.
       const sha = typeof body.commit === 'string' && /^[0-9a-f]{7,40}$/.test(body.commit)
         ? body.commit
         : ((await github(`/repos/${p.githubRepo}/commits/${p.deployBranch}`)) as { sha: string }).sha;
       const now = new Date().toISOString();
-      await reportDeploy(p, { status: 'finished', startedAt: now, finishedAt: now, commit: sha, message: null, author: await authorOf(p.githubRepo, sha) }, app.log);
+      await reportDeploy(p, { status: 'finished', startedAt: now, finishedAt: now, commit: sha, message: null, author: await authorOf(p.githubRepo, sha) }, app.log, env);
       return { sha };
     });
   });
