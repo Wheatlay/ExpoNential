@@ -395,12 +395,12 @@ function PollDialog({ m }: { m: Meeting }) {
       <div className="foot" style={{ marginTop: 16 }}>
         <span className="hint">{m.attendeeIds ? t('A suggested time becomes a new column; invited people get a ping to vote on it.') : t('A suggested time becomes a new column; everyone gets a Discord ping to vote on it.')}</span>
         <span className="spacer" />
-        <button className="btn" onClick={closeDialog}>{t('Close')}</button>
         <Tooltip text={canPick ? null : t('Only {name} or a project admin can pick the time', { name: organizer })}>
           <button className={isOrganizer ? 'btn primary' : 'btn'} disabled={!canPick || !target} onClick={() => void pick()}>
             {target ? t('Pick {when}', { when: `${fmtDayLong(target.startsAt)}, ${fmtTime(target.startsAt)}` }) : t('Pick a time')}
           </button>
         </Tooltip>
+        <button className="btn" onClick={closeDialog}>{t('Close')}</button>
       </div>
     </Backdrop>
   );
