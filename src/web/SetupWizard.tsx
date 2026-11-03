@@ -79,7 +79,7 @@ function AiHint() {
 }
 
 /* ---------- polecenia ---------- */
-type ClientName = 'Claude Code' | 'Codex';
+type ClientName = 'Claude Code' | 'Codex' | 'Cursor';
 type Where = 'VS Code' | 'Cursor' | 'Terminal';
 type AgentRepo = { project: string; path: string; source?: string; status?: string; error?: string | null };
 type AgentRow = { id: string; name: string; computerName: string; label: string; online: boolean; outdated?: boolean; lastSeenAt: string | null; repos?: AgentRepo[] };
@@ -156,7 +156,9 @@ export function SetupWizardHost() {
   const claude = client === 'Claude Code';
   // Ślad pracy dotyczy tylko Claude Code: przy Codex krok jest wyszarzony i nie liczy się do postępu.
   const off2 = !claude && !done[2];
-  const needed = ([1, 2, 3] as Goal[]).filter((n) => n <= goal && !(n === 2 && off2));
+  // Asystent Cursora łączy się sam (link instalacyjny, logowanie OAuth); ślad pracy i agent wymagają Claude Code albo Codex.
+  const cursor = client === 'Cursor';
+  const needed = ([1, 2, 3] as Goal[]).filter((n) => n <= goal && !(n === 2 && off2) && !(n === 3 && cursor));
   const doneCount = needed.filter((n) => done[n]).length;
   const current = needed.find((n) => !done[n]) ?? null;
   // Kliknięty krok (np. agent przed śladem pracy albo drugi klient po pierwszym) wygrywa z bieżącym.
@@ -205,8 +207,8 @@ export function SetupWizardHost() {
           {(['VS Code', 'Cursor', 'Terminal'] as Where[]).map((w) => <button key={w} className={where === w ? 'on' : ''} onClick={() => setWhere(w)}>{w}</button>)}
         </div>
       </div>
-      {where === 'Cursor' && <div className="wiz-line"><a className="btn primary" href={cursorLink()}>{t('Open in Cursor')}</a><span className="hint">{t('Use a command instead')}</span></div>}
-      <Cmd lines={claude ? [claudeCmd()] : codexCmds()} />
+      {(where === 'Cursor' || cursor) && <div className="wiz-line"><a className="btn primary" href={cursorLink()}>{t('Open in Cursor')}</a>{!cursor && <span className="hint">{t('Use a command instead')}</span>}</div>}
+      {!cursor && <Cmd lines={claude ? [claudeCmd()] : codexCmds()} />}
       <Wait text={t('Waiting for the first call…')} hintText={clientHint} slow={slow} />
     </>
   );
@@ -305,14 +307,23 @@ export function SetupWizardHost() {
                   {/* Domyślna ścieżka: jeden instalator (klient, plik, status poziomów na żywo); ręczne kroki za przełącznikiem. */}
                   <section className="wiz-block" aria-label={t('Download and run')}>
                     <div className="seg" role="group" aria-label={t('Client')}>
-                      {(['Claude Code', 'Codex'] as ClientName[]).map((c) => <button key={c} className={client === c ? 'on' : ''} onClick={() => setClient(c)}>{c}</button>)}
+                      {(['Claude Code', 'Codex', 'Cursor'] as ClientName[]).map((c) => <button key={c} className={client === c ? 'on' : ''} onClick={() => setClient(c)}>{c}</button>)}
                     </div>
+                    {cursor ? (
+                      <div className="wiz-line">
+                        <a className="btn primary" href={cursorLink()}>{t('Open in Cursor')}</a>
+                        <Tooltip text={t('Cursor adds tracker and asks you to sign in. Work trace and the agent need Claude Code or Codex.')}>
+                          <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Cursor adds tracker and asks you to sign in. Work trace and the agent need Claude Code or Codex.')}><Icon.question size={14} /></span>
+                        </Tooltip>
+                      </div>
+                    ) : (
                     <div className="wiz-line">
                       <a className="btn primary" href={`/agent/download?engine=${client === 'Codex' ? 'codex' : 'claude'}&goal=${goal}`}><Icon.download size={13} /> {t('Download and run')}</a>
                       <Tooltip text={t('Windows may warn about an unsigned file: More info, then Run anyway.')}>
                         <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Windows may warn about an unsigned file: More info, then Run anyway.')}><Icon.question size={14} /></span>
                       </Tooltip>
                     </div>
+                    )}
                     {needed.map((n) => (
                       <div key={n} className="wiz-line">
                         <span className={`wiz-mark${done[n] ? ' done' : ''}`} aria-hidden="true">{done[n] && <Icon.check size={12} />}</span>

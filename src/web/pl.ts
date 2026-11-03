@@ -979,6 +979,7 @@ export const pl: Record<string, string> = {
   'Waiting for the agent to come online…': 'Czekam, aż agent się zgłosi…',
   'Connect at least one client first': 'Najpierw podłącz przynajmniej jednego klienta',
   'Open in Cursor': 'Otwórz w Cursorze',
+  'Cursor adds tracker and asks you to sign in. Work trace and the agent need Claude Code or Codex.': 'Cursor doda tracker i poprosi o zalogowanie. Ślad pracy i agent wymagają Claude Code albo Codex.',
   'Use a command instead': 'Albo użyj polecenia',
   'Sign-in happens on the first use. If Claude Code asks, run /mcp and choose Authenticate.': 'Logowanie odbywa się przy pierwszym użyciu. Jeśli Claude Code o to poprosi, uruchom /mcp i wybierz Authenticate.',
   'The second command opens the sign-in in your browser.': 'Drugie polecenie otwiera logowanie w przeglądarce.',
