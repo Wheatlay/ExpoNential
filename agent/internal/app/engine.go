@@ -72,7 +72,12 @@ func findEngine(engine string) string {
 // allowed explicitly: without consent they only work inside the repo. Secrets in the repo are denied too.
 const allowedTools = "Skill,mcp__tracker__get_procedure,mcp__tracker__get_issue,mcp__tracker__list_comments,mcp__tracker__list_issues,mcp__tracker__set_analysis"
 
-var secretGlobs = []string{"**/.env*", "**/*.pem", "**/*.key", "**/*.pfx", "**/*.p12"}
+var secretGlobs = []string{"**/.env*", "**/*.pem", "**/*.key", "**/*.pfx", "**/*.p12",
+	"**/secrets*.json", "**/appsettings.*.json", "**/id_rsa*", "**/*.keystore", "**/credentials*"}
+
+// othersRun: the analysis was requested by someone other than this account (or the identity is unknown), so the
+// repo's own .claude settings must not load.
+func othersRun(own int, rq requesterInfo) bool { return own == 0 || rq.ID == 0 || rq.ID != own }
 
 func deniedTools() string {
 	parts := []string{"Bash", "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch"}

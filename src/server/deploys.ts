@@ -54,6 +54,11 @@ export type DeployEnvInput = { id?: number; name: string; sourceRef: string; isP
 export async function saveDeployEnvs(p: Project, input: DeployEnvInput[]) {
   const envs = input.map((e) => ({ ...e, name: e.name.trim(), sourceRef: e.sourceRef.trim() }));
   if (envs.some((e) => !e.name || e.name.length > 30)) throw new RuleError('Environment name must be 1-30 characters', 'invalid');
+  if (envs.length) {
+    const prod = envs.filter((e) => e.isProduction).length;
+    if (prod === 0) envs[0].isProduction = true;
+    else if (prod > 1) throw new RuleError('Exactly one environment must be production', 'invalid');
+  }
   if (new Set(envs.map((e) => e.name.toLowerCase())).size !== envs.length) throw new RuleError('Environment names must be unique', 'invalid');
   await db.transaction(async (tx) => {
     const old = await tx.select().from(deployEnvs).where(eq(deployEnvs.projectId, p.id));

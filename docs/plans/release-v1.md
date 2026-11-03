@@ -126,6 +126,8 @@ Check Codex and Cursor docs for MCP OAuth and MCP prompts support. Where missing
 
 ## Legacy removal
 
+Done 03.11.2026 (Server 1.3.4): prod had no non-semver agent.
+
 Remove `scripts/local-agent`, the `/agent/*.ps1`, `/agent/exponential-install.cmd` / `exponential-uninstall.cmd` and `/agent/version` routes (and `agentScriptsVersion`) once no agent with a non-semver version has been seen for 30 days (`agents.last_seen_at`). Check:
 
 ```sql

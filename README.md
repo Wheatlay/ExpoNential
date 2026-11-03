@@ -60,7 +60,6 @@ Three optional layers (see [docs/agent.md](docs/agent.md) for what each installs
 - `src/web/IssuePage.tsx` - the issue view with analysis and decisions.
 - `plugin/` - Claude Code plugin: skills and worklog hook.
 - `agent/` - exponential-agent (standalone exe).
-- `scripts/local-agent/` - legacy PowerShell installer, still served for existing installs.
 - `tests/` - Vitest suites against a real Postgres.
 
 ## Run locally

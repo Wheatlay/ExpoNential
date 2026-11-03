@@ -79,7 +79,7 @@ export async function createApiToken(userId: number, name: string) {
 
 /**
  * Token Bearer (trk_ i exa_) działa tylko dla klientów AI i agenta: /mcp, /oauth/*, trasy wołane przez agenta
- * (agent/src) i hook worklog (plugin/scripts/worklog.mjs). Reszta (m.in. /api/tokens, /api/connections) wymaga ciasteczka sesji.
+ * (agent/src) i hook worklog (exponential-agent hook). Reszta (m.in. /api/tokens, /api/connections) wymaga ciasteczka sesji.
  */
 const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
   [/^(GET|POST|DELETE|PUT|PATCH|HEAD|OPTIONS)$/, /^\/(mcp|oauth|\.well-known)(\/|$)/],

@@ -315,7 +315,7 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 			logf("%s: account %s", key, accountName(acct))
 		}
 		started := time.Now()
-		code, usage, f := runEngine(runOpts{engine: engine, bin: bin, prompt: res.Prompt, model: model, untrusted: entry.Source == "clone", cwd: dir, base: a.Base, auth: a.Auth, activeAccount: acct})
+		code, usage, f := runEngine(runOpts{engine: engine, bin: bin, prompt: res.Prompt, model: model, untrusted: entry.Source == "clone" || othersRun(ownUserID(a), rq), cwd: dir, base: a.Base, auth: a.Auth, activeAccount: acct})
 		logf("end %s (code %d)", key, code)
 		reportRun(a, deviceID, key, "analyze", engine, model, started, code, usage)
 		rec := runRecord{Key: key, For: forName, Engine: engine, Model: model, Duration: time.Since(started).Milliseconds(), Tokens: usageTokens(usage), Result: runOK}
@@ -488,7 +488,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 	if a == nil {
 		return errors.New("not logged in (run: exponential-agent login)")
 	}
-	busyOther := running.Load() || freshLocks()
+	busyOther := running.Load() || freshLocks() || updating.Load() // no new work while an update waits to swap the exe
 	_, paused := pausedUntil()
 	busy := busyOther || paused // while every Claude account is at its limit the server offers no jobs
 	b := "0"
@@ -509,6 +509,9 @@ func pollOnce(delay *int, errLogged *bool) error {
 	qs := url.Values{"deviceId": {cfg.DeviceID}, "name": {host}, "busy": {b}, "version": {ver}, "engine": {eng}, "repos": {string(reposJSON)}, "setup": {setupJSON(strings.TrimRight(cfg.URL, "/"))}}
 	if le := getLastErr(); le != "" {
 		qs.Set("error", cut(le, 300))
+	}
+	if sk := skipParam(); sk != "" {
+		qs.Set("skip", sk)
 	}
 	var res struct {
 		Jobs         []pollJob         `json:"jobs"`
@@ -556,7 +559,11 @@ func pollOnce(delay *int, errLogged *bool) error {
 		for i := range res.Jobs {
 			j := &res.Jobs[i]
 			if j.Kind == "analyze" {
-				if paused || recentlyDeclined(j.Key) {
+				if paused {
+					continue
+				}
+				if recentlyDeclined(j.Key) {
+					skipJob(j)
 					continue
 				}
 				rq := newRequester(j.RequestedBy, j.RequestedAt)
@@ -568,6 +575,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 					continue
 				}
 				if d == dNo {
+					skipJob(j)
 					continue
 				}
 				if _, ok := cards.RemovePrompt(j.Key); ok {

@@ -15,7 +15,7 @@ func TestClaudeMcpArgs(t *testing.T) {
 	if strings.Join(claudeMcpRemoveArgs(), " ") != "mcp remove tracker --scope user" {
 		t.Fatal("remove")
 	}
-	if len(claudePluginSteps("https://x.example")) != 4 {
+	if len(claudePluginSteps("https://x.example")) != 5 {
 		t.Fatal("plugin steps")
 	}
 }

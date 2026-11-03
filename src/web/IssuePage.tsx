@@ -157,7 +157,7 @@ export function IssuePage({ number }: { number: number }) {
   const local = !!me?.localAgentAt;
   // Stare skrypty na PC: serwer i tak nie wyda im zlecenia, więc nie dajemy go złożyć (powód + skrót do aktualizacji obok).
   const outdated = !!me?.agentOutdated && local && !me?.demo;
-  const outdatedReason = t('This computer has an old agent. Update it first (Settings > AI).');
+  const outdatedReason = t('This computer has an old agent. Update it first (Settings > My AI).');
   // Bez podłączonego AI link vscode:// albo nic nie otworzy, albo otworzy klienta bez dostępu do zgłoszenia: zamiast błędu
   // popover pod przyciskiem prowadzi do kreatora z celem tej funkcji.
   const ai = me?.aiStatus;
@@ -256,7 +256,7 @@ export function IssuePage({ number }: { number: number }) {
                 {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in project settings > AI agent.")}>{t('Team queue')}</span>}
                 {/* Czeka, a mój PC ma stare skrypty: to zwykle prawdziwa przyczyna, więc mówimy o niej tutaj, nie tylko w Ustawieniach. */}
                 {outdated && !issue.analysisClaimedAt && (
-                  <span className="pill stalled" role="button" title={t('This computer has an old agent and may not pick this up. Click to open Settings > AI.')}
+                  <span className="pill stalled" role="button" title={t('This computer has an old agent and may not pick this up. Click to open Settings > My AI.')}
                     onClick={(e) => { e.stopPropagation(); navigate('/settings#claude'); }}>{t('Update needed')}</span>
                 )}
                 {issue.analysisRequestedAt && <>

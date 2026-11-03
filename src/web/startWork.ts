@@ -45,10 +45,6 @@ function copyLater(text: Promise<string>): Promise<boolean> {
   return text.then((s) => navigator.clipboard.writeText(s)).then(() => true, () => false);
 }
 
-/** Analiza na komputerze dewelopera: lokalny skrypt obsługuje tracker:// (scripts/local-agent, instalacja z Settings). */
-/** Z tokenem: pierwsza instalacja, instalator sam dodaje serwer MCP trackera każdemu kontu Claude Code. */
-export const agentInstallCommand = (token?: string) =>
-  `${token ? `$env:TRACKER_TOKEN='${token}'; ` : ''}irm ${location.origin}/agent/install.ps1 | iex`;
 /**
  * Czy ta przeglądarka działa na komputerze z agentem (wtedy link tracker:// ruszy analizę od razu). Telefon i tablet nie;
  * laptop z ekranem dotykowym ręcznie przełącza to w Ustawieniach (localStorage), bo `pointer: coarse` bywa mylące.

@@ -246,9 +246,6 @@ func doUpdate(onProgress func(pct int), onInstalling func()) error {
 		return errors.New("already updating")
 	}
 	defer updating.Store(false)
-	if running.Load() {
-		return errors.New("an analysis is running")
-	}
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -256,6 +253,14 @@ func doUpdate(onProgress func(pct int), onInstalling func()) error {
 	tmp, err := downloadUpdate(u, filepath.Dir(exe), onProgress)
 	if err != nil {
 		return err
+	}
+	// `updating` keeps pollOnce from taking new work; wait (up to 2 h) until the running analysis is done.
+	for waited := time.Duration(0); running.Load() || freshLocks(); waited += 5 * time.Second {
+		if waited >= 2*time.Hour {
+			_ = os.Remove(tmp)
+			return errors.New("an analysis is running")
+		}
+		time.Sleep(5 * time.Second)
 	}
 	if onInstalling != nil {
 		onInstalling()

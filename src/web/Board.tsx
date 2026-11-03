@@ -385,7 +385,8 @@ export function Board() {
     else if (what === 'assignee') openMenu(el, assigneeMenu(meta, tg, updateOne(i), me?.id));
   };
 
-  const countFor = (s: Status) => visible.filter((i) => i.statusId === s.id).length;
+  // Przed załadowaniem zgłoszeń kolumny nie są "puste": bez licznika i bez zwężenia, żeby nic nie mrugało.
+  const countFor = (s: Status) => (issues ? visible.filter((i) => i.statusId === s.id).length : 1);
   const widths = layoutWidths(columns, countFor);
   const widthOf = (s: Status) => widths.get(s.id)!;
   const columnMenu = (s: Status): MenuSpec => ({
@@ -531,7 +532,7 @@ export function Board() {
                     <button key={s.id} className="col-head collapsed" style={{ width: w }} title={t('Expand {name}', { name: s.name })}
                       onClick={() => setColCollapsed((c) => ({ ...c, [s.id]: false }))}>
                       <StatusIcon status={s} fraction={startedFraction(meta.statuses, s)} />
-                      <span className="n">{n}</span>
+                      <span className="n">{issues ? n : null}</span>
                     </button>
                   );
                 }
@@ -541,7 +542,7 @@ export function Board() {
                     onContextMenu={(e) => { e.preventDefault(); openMenu({ x: e.clientX, y: e.clientY }, columnMenu(s)); }}>
                     <StatusIcon status={s} fraction={startedFraction(meta.statuses, s)} />
                     <span className="name">{s.name}</span>
-                    <span className="n">{n}</span>
+                    <span className="n">{issues ? n : null}</span>
                     {/* Zakończone kolumny pokazują tylko część zadań: zakres widać i zmienia się tutaj (ten sam co w Display). */}
                     {isClosedType(s) && w >= 180 && (
                       <button className="col-range" title={t('Which completed issues are shown')}

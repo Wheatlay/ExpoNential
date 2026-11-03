@@ -6,14 +6,16 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, desc, eq, gt, isNull, lt, notExists, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { agentPairings, oauthClients, oauthCodes, oauthDeviceCodes, oauthGrants, users } from '../db/schema.ts';
+import { agentPairings, agentTombstones, oauthClients, oauthCodes, oauthDeviceCodes, oauthGrants, users } from '../db/schema.ts';
 import { requireUser, sha256, type SessionUser } from './auth.ts';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173';
 const isProd = process.env.NODE_ENV === 'production';
 const tmpCookie = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: isProd, maxAge: 600 };
 /** Logowania samego agenta (parowanie albo `exponential-agent login`) to nie klient AI: pomijane w liście połączeń i stanie AI. */
-export const NOT_AGENT_CLIENT = sql`${oauthClients.id} <> 'exponential-agent' and ${oauthClients.name} <> 'Exponential agent'`;
+export const AGENT_CLIENT_ID = 'exponential-agent';
+export const AGENT_CLIENT_NAME = 'Exponential agent';
+export const NOT_AGENT_CLIENT = sql`${oauthClients.id} <> ${AGENT_CLIENT_ID}`;
 const ACCESS_MS = 3600e3;
 const REFRESH_MS = 90 * 864e5;
 const CODE_MS = 600e3;
@@ -73,11 +75,11 @@ function pkceOk(verifier: string, challenge: string) {
   return /^[A-Za-z0-9\-._~]{43,128}$/.test(verifier) && createHash('sha256').update(verifier).digest('base64url') === challenge;
 }
 
-export async function issueGrant(clientId: string, userId: number, scope: string) {
+export async function issueGrant(clientId: string, userId: number, scope: string, agentId?: string | null) {
   const access = `exa_${randomBytes(32).toString('base64url')}`;
   const refresh = `exr_${randomBytes(32).toString('base64url')}`;
   await db.insert(oauthGrants).values({
-    clientId, userId, accessHash: sha256(access), refreshHash: sha256(refresh),
+    clientId, userId, agentId: agentId ?? null, accessHash: sha256(access), refreshHash: sha256(refresh),
     accessExpiresAt: new Date(Date.now() + ACCESS_MS), refreshExpiresAt: new Date(Date.now() + REFRESH_MS),
   });
   return { access_token: access, token_type: 'Bearer', expires_in: ACCESS_MS / 1000, refresh_token: refresh, scope };
@@ -198,6 +200,9 @@ export async function registerOAuth(app: FastifyInstance) {
         return reply.code(400).send({ error: 'invalid_redirect_uri', error_description: 'redirect_uris must be https, loopback http or an app scheme' });
       }
       const name = (typeof b.client_name === 'string' && b.client_name.trim() ? b.client_name.trim() : 'MCP client').slice(0, 100);
+      if (name.toLowerCase() === AGENT_CLIENT_NAME.toLowerCase() || (b as { client_id?: unknown }).client_id === AGENT_CLIENT_ID) {
+        return reply.code(400).send({ error: 'invalid_client_metadata', error_description: 'This client name is reserved' });
+      }
       const id = randomBytes(18).toString('base64url');
       await db.insert(oauthClients).values({ id, name, redirectUris: uris as string[] });
       return reply.code(201).send({
@@ -261,6 +266,7 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
         if (!c || c.clientId !== client.id || c.expiresAt < now || c.redirectUri !== b.redirect_uri || !pkceOk(b.code_verifier, c.codeChallenge)) {
           return oerr(reply, 'invalid_grant');
         }
+        if (client.id === AGENT_CLIENT_ID) await db.delete(agentTombstones).where(eq(agentTombstones.userId, c.userId));
         return reply.header('Cache-Control', 'no-store').send(await issueGrant(client.id, c.userId, c.scope));
       }
 
@@ -271,7 +277,7 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
         if (!g) return oerr(reply, 'invalid_grant');
         const [u] = await db.select({ active: users.active }).from(users).where(eq(users.id, g.userId));
         if (!u?.active) return oerr(reply, 'invalid_grant');
-        return reply.header('Cache-Control', 'no-store').send(await issueGrant(client.id, g.userId, ''));
+        return reply.header('Cache-Control', 'no-store').send(await issueGrant(client.id, g.userId, '', g.agentId));
       }
 
       if (b.grant_type === 'urn:ietf:params:oauth:grant-type:device_code') {
@@ -290,6 +296,7 @@ ${clientFacts(client.name, client.createdAt, q.redirect_uri)}
         }
         const [taken] = await db.delete(oauthDeviceCodes).where(eq(oauthDeviceCodes.deviceHash, hash)).returning();
         if (!taken) return oerr(reply, 'invalid_grant');
+        if (client.id === AGENT_CLIENT_ID) await db.delete(agentTombstones).where(eq(agentTombstones.userId, d.userId));
         return reply.header('Cache-Control', 'no-store').send(await issueGrant(client.id, d.userId, ''));
       }
 

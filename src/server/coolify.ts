@@ -87,9 +87,11 @@ export async function registerCoolify(app: FastifyInstance) {
       }
       if (!p || !env) return { ignored: true };
       // Coolify nie zawsze podaje SHA: bierzemy HEAD gałęzi, z której buduje się aplikacja TEGO środowiska (prod i stage mają różne).
-      const sha = typeof body.commit === 'string' && /^[0-9a-f]{7,40}$/.test(body.commit)
-        ? body.commit
-        : ((await github(`/repos/${p.githubRepo}/commits/${encodeURIComponent(await appBranch(env.sourceRef))}`)) as { sha: string }).sha;
+      let sha: string | null = typeof body.commit === 'string' && /^[0-9a-f]{7,40}$/.test(body.commit) ? body.commit : null;
+      if (!sha && coolifyConfigured()) {
+        try { sha = ((await github(`/repos/${p.githubRepo}/commits/${encodeURIComponent(await appBranch(env.sourceRef))}`)) as { sha: string }).sha; }
+        catch (e) { app.log.warn(e, 'coolify webhook: no sha'); }
+      }
       const now = new Date().toISOString();
       await reportDeploy(p, { status: 'finished', startedAt: now, finishedAt: now, commit: sha, message: null, author: await authorOf(p.githubRepo, sha) }, app.log, env);
       return { sha };

@@ -7,7 +7,7 @@ import { toast } from './toast.ts';
 import { useNow } from './Calendar.tsx';
 import { fmtTime, meetingColor, openMeeting } from './Meetings.tsx';
 import { disablePush, enablePush, pushPermission, pushSupported, refreshPush } from './push.ts';
-import { t, tn } from './i18n.ts';
+import { t } from './i18n.ts';
 
 const DISMISSED = 'dismissedMeetingBanners';
 const readDismissed = (): string[] => { try { return JSON.parse(localStorage.getItem(DISMISSED) ?? '[]'); } catch { return []; } };
@@ -42,15 +42,15 @@ export function useMeetingAlerts() {
 }
 
 /**
- * Baner nad widokami: spotkanie za ≤ 15 min albo trwające (z "Join") i ankieta czekająca na mój głos.
+ * Baner nad widokami: spotkanie za ≤ 15 min albo trwające (z "Join"). Ankieta czekająca na głos jest tylko w dzwonku i liczniku Kalendarza.
  * Liczony z listy spotkań, więc działa też po przegapionym zdarzeniu SSE. Wyłączany w Settings (in-app).
  */
 export function MeetingBanner() {
   const settings = useNotifySettings().data;
-  const { now, soon, polls } = useMeetingAlerts();
+  const { now, soon } = useMeetingAlerts();
   if (settings && !settings.inApp) return null;
   const dismiss = addDismissed;
-  if (!soon.length && !polls.length) return null;
+  if (!soon.length) return null;
 
   return (
     <div className="meeting-banners">
@@ -72,16 +72,6 @@ export function MeetingBanner() {
           </div>
         );
       })}
-      {polls.map((m) => (
-        <div key={`p${m.id}`} className="meeting-banner poll">
-          <button className="banner-text" onClick={() => openMeeting(m.id)}>
-            <div style={{ fontWeight: 600, color: 'var(--warning-text)' }}>{t('Vote')}: {m.title}</div>
-            <div className="hint">{tn(m.slots.length, '{n} option', '{n} options')} · {t('pick the times that work for you')}</div>
-          </button>
-          <button className="btn sm warn" onClick={() => openMeeting(m.id)}>{t('Vote')}</button>
-          <button className="btn sm" onClick={() => dismiss(pollAlertKey(m))}>{t('Dismiss')}</button>
-        </div>
-      ))}
     </div>
   );
 }

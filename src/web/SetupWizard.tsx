@@ -152,13 +152,14 @@ export function SetupWizardHost() {
 
   const ai = me?.aiStatus;
   const goal: Goal = picked ?? defaultGoal(ai);
-  const done: Record<Goal, boolean> = { 1: !!ai?.client, 2: !!ai?.workTrace, 3: !!ai?.agent };
+  const cursor = client === 'Cursor';
+  // Przy Cursorze krok 1 jest zrobiony dopiero, gdy podłączonym klientem jest Cursor (nie Claude Code).
+  const done: Record<Goal, boolean> = { 1: cursor ? ai?.clientName === 'Cursor' : !!ai?.client, 2: !!ai?.workTrace, 3: !!ai?.agent };
   const claude = client === 'Claude Code';
   // Ślad pracy dotyczy tylko Claude Code: przy Codex krok jest wyszarzony i nie liczy się do postępu.
   const off2 = !claude && !done[2];
   // Asystent Cursora łączy się sam (link instalacyjny, logowanie OAuth); ślad pracy i agent wymagają Claude Code albo Codex.
-  const cursor = client === 'Cursor';
-  const needed = ([1, 2, 3] as Goal[]).filter((n) => n <= goal && !(n === 2 && off2) && !(n === 3 && cursor));
+  const needed = ([1, 2, 3] as Goal[]).filter((n) => n <= goal && !(n === 2 && off2) && !(n > 1 && cursor));
   const doneCount = needed.filter((n) => done[n]).length;
   const current = needed.find((n) => !done[n]) ?? null;
   // Kliknięty krok (np. agent przed śladem pracy albo drugi klient po pierwszym) wygrywa z bieżącym.
@@ -177,8 +178,9 @@ export function SetupWizardHost() {
   if (!open) return <AiHint />;
 
   // Done przy pełnym celu zapisuje setupDoneAt na serwerze (na telefonie: gdy wszystkie trzy poziomy są zrobione).
+  const complete = narrow ? ([1, 2, 3] as Goal[]).every((n) => done[n]) : full;
   const finish = () => {
-    if (narrow ? ([1, 2, 3] as Goal[]).every((n) => done[n]) : full) void api('/api/me/setup-done', { method: 'PUT' }).then(() => qc.invalidateQueries({ queryKey: ['me'] }));
+    if (complete) void api('/api/me/setup-done', { method: 'PUT' }).then(() => qc.invalidateQueries({ queryKey: ['me'] }));
     closeSetupWizard();
   };
   const savePath = (a: AgentRow, project: string) => {
@@ -289,7 +291,7 @@ export function SetupWizardHost() {
                     </div>
                   ))}
                 </div>
-                <p className="hint">{t('Connect on a computer, in Settings > AI. From the phone you can request analyses; your computer runs them when it is on.')}</p>
+                <p className="hint">{t('Connect on a computer, in Settings > My AI. From the phone you can request analyses; your computer runs them when it is on.')}</p>
               </>
             ) : (
               <>
@@ -324,15 +326,24 @@ export function SetupWizardHost() {
                       </Tooltip>
                     </div>
                     )}
-                    {needed.map((n) => (
+                    {([1, 2, 3] as Goal[]).filter((n) => n <= goal).map((n) => needed.includes(n) ? (
                       <div key={n} className="wiz-line">
                         <span className={`wiz-mark${done[n] ? ' done' : ''}`} aria-hidden="true">{done[n] && <Icon.check size={12} />}</span>
                         <span className="grow">{chipText[n]}</span>
                         {done[n] ? <span className="wiz-ok">{t('Done')}</span> : <span className="wiz-wait"><span className="wiz-pulse" aria-hidden="true" />{t('Waiting')}</span>}
                       </div>
-                    ))}
+                    ) : cursor ? (
+                      // Poziom niedostępny dla Cursora: wyszarzony z powodem, nie ukryty.
+                      <Tooltip key={n} text={t('Cursor supports only step 1. Work trace and the agent need Claude Code or Codex.')}>
+                        <div className="wiz-line wiz-off" aria-disabled="true">
+                          <span className="wiz-mark" aria-hidden="true" />
+                          <span className="grow">{chipText[n]}</span>
+                          <span className="hint">{t('Unavailable')}</span>
+                        </div>
+                      </Tooltip>
+                    ) : null)}
                   </section>
-                  <button type="button" className="wiz-link" aria-expanded={manual} onClick={() => setManual(!manual)}>{t('Manually (Cursor, terminal, no installer)')}</button>
+                  <button type="button" className="wiz-link" aria-expanded={manual} onClick={() => setManual(!manual)}>{t('Other ways to connect')}</button>
                   {manual && <>
                   {/* Kroki celu jako zakładki (ten sam przełącznik co wybór klienta): widać, że da się klikać i który jest otwarty. */}
                   {needed.length > 1 && (
@@ -368,7 +379,7 @@ export function SetupWizardHost() {
             )}
             <span className="spacer" />
             <button className="btn" onClick={closeSetupWizard}>{t('Later')}</button>
-            <button className="btn primary" onClick={finish}>{t('Done')}</button>
+            <button className="btn primary" onClick={finish}>{complete ? t('Done') : t('Close')}</button>
           </div>
         </div>
       </div>

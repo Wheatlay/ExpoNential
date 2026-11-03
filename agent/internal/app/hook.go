@@ -1,6 +1,6 @@
 package app
 
-// `hook <Event>`: port of plugin/scripts/worklog.mjs. Reads the Claude Code hook JSON from stdin and sends the
+// `hook <Event>`: port of the former plugin/scripts/worklog.mjs. Reads the Claude Code hook JSON from stdin and sends the
 // work trace (files, commits, prompts) of a session pinned to an issue to the tracker as a "worklog".
 // Never fails, always exit 0, 2 s network timeout. Off: TRACKER_HOOKS=0 or "bez trackera" in the prompt.
 

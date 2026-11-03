@@ -54,7 +54,7 @@ function maskDate(raw: string, prev: string) {
 /** Wybór w dwóch kolumnach: godziny 00-23 i minuty co 5. */
 const HOURS = Array.from({ length: 24 }, (_, i) => pad(i));
 const MINUTES = Array.from({ length: 12 }, (_, i) => pad(i * 5));
-const ROW = 30;
+const ROW = 28; // = --control-sm
 
 export function TimeInput({ value, onChange, disabled, style, ...rest }: Props) {
   const { text, setText, commit, invalid } = useCommitted(value, (v) => v, parseTime, onChange, t('That is not a time. Use e.g. 14:30.'));

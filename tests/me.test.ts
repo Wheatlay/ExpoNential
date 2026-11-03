@@ -95,7 +95,7 @@ describe('aiStatus', () => {
     const { db } = dbmod;
     const [a] = await db.insert(schema.agents).values({ id: '66666666-6666-4666-8666-666666666666', userId: u.id, name: 'PC', version: 'old', lastSeenAt: new Date() }).returning();
     expect((await ag.aiStatus(u)).agent).toBe(false);
-    await db.update(schema.agents).set({ version: ag.agentScriptsVersion() }).where(dz2(a.id));
+    await db.update(schema.agents).set({ version: ag.MIN_EXE_AGENT }).where(dz2(a.id));
     expect((await ag.aiStatus(u)).agent).toBe(true);
     await db.update(schema.agents).set({ lastSeenAt: new Date(Date.now() - 10 * 60_000) }).where(dz2(a.id));
     expect((await ag.aiStatus(u)).agent).toBe(false);

@@ -40,7 +40,7 @@ beforeAll(async () => {
   [bob] = await db.insert(schema.users).values({ login: 'bob', name: 'Bob' }).returning();
   [carol] = await db.insert(schema.users).values({ login: 'carol', name: 'Carol' }).returning();
   await db.insert(schema.projectMembers).values([alice, bob, carol].map((u) => ({ projectId: P.id, userId: u.id })));
-  await db.insert(schema.agents).values({ id: DEV_A, userId: alice.id, name: 'ALICE-PC', repoKeys: ['USG'], version: ag.agentScriptsVersion(), lastSeenAt: new Date() });
+  await db.insert(schema.agents).values({ id: DEV_A, userId: alice.id, name: 'ALICE-PC', repoKeys: ['USG'], version: ag.MIN_EXE_AGENT, lastSeenAt: new Date() });
   await db.insert(schema.agentRepos).values({ agentId: DEV_A, projectId: P.id, path: 'C:/usg', source: 'manual' });
   await db.insert(schema.agentTeamProjects).values({ agentId: DEV_A, projectId: P.id });
   P = await projects.updateProject(P.id, { agentTeamQueue: true });

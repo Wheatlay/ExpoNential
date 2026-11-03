@@ -1,7 +1,7 @@
 {
   "name": "tracker",
-  "version": "1.1.0",
-  "displayName": "Tracker",
-  "description": "Analiza zgłoszeń, zamykanie (HUMAN/TECH) i ślad pracy w zgłoszeniu dla projektów trackera zespołu",
-  "author": { "name": "Tracker" }
+  "version": "1.2.0",
+  "displayName": "Exponential",
+  "description": "Analiza zgłoszeń, zamykanie (HUMAN/AI) i ślad pracy w zgłoszeniu dla projektów Exponential",
+  "author": { "name": "Exponential" }
 }

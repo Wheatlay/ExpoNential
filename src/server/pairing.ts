@@ -5,17 +5,18 @@
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, eq, gt, isNull } from 'drizzle-orm';
+import { z } from 'zod';
 import { db } from '../db/index.ts';
-import { agentPairings, oauthClients, oauthGrants, apiTokens, users } from '../db/schema.ts';
+import { agentPairings, agentTombstones, oauthClients, oauthGrants, apiTokens, users } from '../db/schema.ts';
 import { createApiToken, sha256 } from './auth.ts';
-import { issueGrant } from './oauth.ts';
+import { AGENT_CLIENT_ID, AGENT_CLIENT_NAME, issueGrant } from './oauth.ts';
 import { createAttemptLimiter } from './password.ts';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173';
 const PAIR_MS = 15 * 60_000;
 const CACHE_MS = 3600e3;
 const MAGIC = 'EXPCFG01';
-export const AGENT_CLIENT_ID = 'exponential-agent';
+export { AGENT_CLIENT_ID };
 const DEFAULT_EXE_URL = 'https://github.com/Wheatlay/ExpoNential/releases/latest/download/exponential-agent.exe';
 
 type Fetcher = (url: string, init?: { headers?: Record<string, string> }) => Promise<Response>;
@@ -102,14 +103,17 @@ export async function registerPairing(app: FastifyInstance) {
 
   app.post('/api/agent/pair', async (req, reply) => {
     if (limited(req, reply)) return;
-    const b = (req.body && typeof req.body === 'object' ? req.body : {}) as { pairing?: unknown; name?: unknown };
+    const b = (req.body && typeof req.body === 'object' ? req.body : {}) as { pairing?: unknown; name?: unknown; deviceId?: unknown };
+    const deviceId = z.string().uuid().safeParse(b.deviceId).data ?? null;
     if (typeof b.pairing !== 'string' || !b.pairing) return reply.code(404).send({ error: 'Not found' });
     const [row] = await db.update(agentPairings).set({ usedAt: new Date() }).where(validPairing(b.pairing.slice(0, 200))).returning();
     if (!row) return reply.code(404).send({ error: 'Not found' });
     const [u] = await db.select({ name: users.name, active: users.active }).from(users).where(eq(users.id, row.userId));
     if (!u?.active) return reply.code(404).send({ error: 'Not found' });
-    await db.insert(oauthClients).values({ id: AGENT_CLIENT_ID, name: 'Exponential agent', redirectUris: ['http://127.0.0.1/cb'] }).onConflictDoNothing();
-    const grant = await issueGrant(AGENT_CLIENT_ID, row.userId, '');
+    await db.insert(oauthClients).values({ id: AGENT_CLIENT_ID, name: AGENT_CLIENT_NAME, redirectUris: ['http://127.0.0.1/cb'] }).onConflictDoNothing();
+    // Świeże parowanie kasuje nagrobek ręcznie usuniętego komputera (ponowna instalacja działa od razu).
+    await db.delete(agentTombstones).where(deviceId ? and(eq(agentTombstones.id, deviceId), eq(agentTombstones.userId, row.userId)) : eq(agentTombstones.userId, row.userId));
+    const grant = await issueGrant(AGENT_CLIENT_ID, row.userId, '', deviceId);
     return reply.header('Cache-Control', 'no-store').send({ client_id: AGENT_CLIENT_ID, ...grant, user: { name: u.name } });
   });
 
@@ -120,15 +124,17 @@ export async function registerPairing(app: FastifyInstance) {
   app.post('/api/agent/mcp-key', async (req, reply) => {
     const m = /^Bearer\s+(exa_\S+)$/i.exec(req.headers.authorization ?? '');
     if (req.authVia !== 'token' || !req.user || !m) return reply.code(403).send({ error: 'Only the Exponential agent can create this key' });
-    const [g] = await db.select({ clientId: oauthGrants.clientId, clientName: oauthClients.name }).from(oauthGrants)
-      .innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId)).where(eq(oauthGrants.accessHash, sha256(m[1])));
-    if (!g || (g.clientId !== AGENT_CLIENT_ID && g.clientName !== 'Exponential agent')) return reply.code(403).send({ error: 'Only the Exponential agent can create this key' });
+    const [g] = await db.select({ clientId: oauthGrants.clientId, agentId: oauthGrants.agentId }).from(oauthGrants)
+      .where(eq(oauthGrants.accessHash, sha256(m[1])));
+    if (!g || g.clientId !== AGENT_CLIENT_ID) return reply.code(403).send({ error: 'Only the Exponential agent can create this key' });
     const b = (req.body && typeof req.body === 'object' ? req.body : {}) as { client?: unknown; device?: unknown };
     if (typeof b.client !== 'string' || !b.client.trim() || b.client.length > 40 || typeof b.device !== 'string' || !b.device.trim() || b.device.length > 80) {
       return reply.code(400).send({ error: 'client (max 40) and device (max 80) are required' });
     }
     const name = `${b.client.trim()} · ${b.device.trim()}`;
     await db.delete(apiTokens).where(and(eq(apiTokens.userId, req.user.id), eq(apiTokens.name, name)));
-    return reply.header('Cache-Control', 'no-store').send({ token: await createApiToken(req.user.id, name) });
+    const token = await createApiToken(req.user.id, name);
+    if (g.agentId) await db.update(apiTokens).set({ agentId: g.agentId }).where(and(eq(apiTokens.userId, req.user.id), eq(apiTokens.name, name)));
+    return reply.header('Cache-Control', 'no-store').send({ token });
   });
 }

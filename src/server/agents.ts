@@ -1,8 +1,5 @@
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
-import { and, asc, eq, gt, inArray, isNull, sql as dsql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, notInArray, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { type AgentSetup, activity, agentJobs, agentRepos, agentRuns, agentTombstones, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, userDismissals, users } from '../db/schema.ts';
 import { NOT_AGENT_CLIENT } from './oauth.ts';
@@ -18,26 +15,12 @@ export const LOCAL_RESERVE_S = 60;
 
 type User = { id: number };
 
-/**
- * Wersja skryptów PC = skrót ich treści na serwerze. Bez samoaktualizacji (kod z serwera nie podmienia się po cichu na PC
- * całego zespołu): agent zgłasza swoją wersję, a Ustawienia pokazują, że trzeba ponownie uruchomić instalację.
- */
-export const AGENT_SCRIPTS = ['tracker-agent.ps1', 'tracker-handler.ps1'];
-let scriptsVersion: string | null = null;
-export function agentScriptsVersion() {
-  scriptsVersion ??= createHash('sha256')
-    .update(AGENT_SCRIPTS.map((f) => readFileSync(path.join(process.cwd(), 'scripts/local-agent', f), 'utf8')).join('\n'))
-    .digest('hex').slice(0, 12);
-  return scriptsVersion;
-}
-
 /** Najstarszy agent z agent/ (exponential-agent.exe, wersja semver), który jeszcze dostaje pracę. */
 export const MIN_EXE_AGENT = '0.1.3';
 const semver = (v: string) => /^(\d+)\.(\d+)\.(\d+)$/.exec(v)?.slice(1).map(Number);
-/** Aktualny agent: skrypty PS w wersji z serwera albo agent .exe nie starszy niż MIN_EXE_AGENT. */
+/** Aktualny agent: agent .exe nie starszy niż MIN_EXE_AGENT. */
 export function agentUpToDate(version: string | null | undefined) {
   if (!version) return false;
-  if (version === agentScriptsVersion()) return true;
   const v = semver(version), min = semver(MIN_EXE_AGENT)!;
   if (!v) return false;
   for (let i = 0; i < 3; i++) if (v[i] !== min[i]) return v[i] > min[i];
@@ -47,7 +30,7 @@ export function agentUpToDate(version: string | null | undefined) {
 /** Urządzenie musi istnieć (install.ps1 zgłasza je pierwszym heartbeatem) i należeć do wołającego. */
 export async function requireOwnAgent(user: User, deviceId: string) {
   const [row] = await db.select().from(agents).where(eq(agents.id, deviceId));
-  if (!row) throw new RuleError('Unknown computer: connect the agent again (Settings > AI)', 'invalid');
+  if (!row) throw new RuleError('Unknown computer: connect the agent again (Settings > My AI)', 'invalid');
   if (row.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   return row;
 }
@@ -80,7 +63,6 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
   // Kliknięcie w przeglądarce może odpalić handler, zanim agent w tle zdąży się pierwszy raz zgłosić: wtedy rejestrujemy
   // urządzenie tutaj (należy do właściciela tokenu), zamiast wywracać analizę na "Unknown device".
   if (await recentlyRemoved(deviceId)) throw new RuleError('This computer was removed', 'conflict');
-  if (await recentlyRemoved(deviceId)) throw new RuleError('This computer was removed', 'conflict');
   await db.insert(agents).values({ id: deviceId, userId: user.id }).onConflictDoNothing();
   const agent = await requireOwnAgent(user, deviceId);
   // Handler podaje swoją wersję: świeżo zaktualizowany PC nie czeka na pierwszy sygnał agenta.
@@ -89,7 +71,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
     agent.version = version;
   }
   // Stare skrypty nie dostają pracy: poprawki (np. blokada .env) działają dopiero po aktualizacji, więc nie puszczamy ich bez niej.
-  if (!agentUpToDate(agent.version)) throw new RuleError('The agent on this computer is outdated: update it (Settings > AI)', 'outdated');
+  if (!agentUpToDate(agent.version)) throw new RuleError('The agent on this computer is outdated: update it (Settings > My AI)', 'outdated');
   // Analizę bierze tylko komputer z działającym repo projektu (chyba że projekt pozwala agentom klonować).
   if (!p.agentsMayClone) {
     const [m] = await db.select({ s: agentRepos.status }).from(agentRepos).where(and(eq(agentRepos.agentId, deviceId), eq(agentRepos.projectId, p.id)));
@@ -172,7 +154,14 @@ const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && lastSeenAt.getTime
  */
 export type RepoReport = { path?: string; source?: string; status?: string; error?: string | null };
 /** ownOnly: agent z Codexem. Codex czyta cały dysk, więc nie dostaje zleceń innych osób z kolejki zespołu (prompt injection). */
-type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean; setup?: AgentSetup };
+type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean; setup?: AgentSetup; skip?: number[] };
+
+/** Parametr skip=1,2,3 z odpytania agenta: tylko liczby całkowite dodatnie, bez powtórzeń, najwyżej 50. */
+export function parseSkip(raw?: string): number[] {
+  if (!raw) return [];
+  const ids = raw.split(',').map((s) => s.trim()).filter((s) => /^\d{1,9}$/.test(s)).map(Number).filter((n) => n > 0);
+  return [...new Set(ids)].slice(0, 50);
+}
 
 const setupSchema = z.object({
   claude: z.array(z.object({ name: z.string().max(100), mcp: z.boolean(), plugin: z.boolean() })).max(20).default([]),
@@ -184,10 +173,9 @@ export function parseSetup(raw?: string): AgentSetup | undefined {
   try { return setupSchema.parse(JSON.parse(raw)); } catch { return undefined; }
 }
 
-/** Komputer usunięty w ciągu ostatniej godziny nie wraca z odpytania (agent kończący pracę przy odinstalowaniu). */
+/** Ręcznie usunięty komputer nie wraca z odpytania (agent kończący pracę przy odinstalowaniu), dopóki nie sparuje się na nowo. */
 async function recentlyRemoved(deviceId: string) {
-  const [t] = await db.select({ id: agentTombstones.id }).from(agentTombstones)
-    .where(and(eq(agentTombstones.id, deviceId), dsql`${agentTombstones.deletedAt} > now() - interval '1 hour'`));
+  const [t] = await db.select({ id: agentTombstones.id }).from(agentTombstones).where(eq(agentTombstones.id, deviceId));
   return !!t;
 }
 
@@ -278,29 +266,32 @@ export async function removeAgentRepo(user: User, deviceId: string, projectKey: 
 }
 
 /** requestedBy: kto zlecił analizę, żeby agent mógł zapytać właściciela komputera o zgodę, zanim przejmie cudze zlecenie. */
-export type AgentJob = { kind: 'analyze'; key: string; deep: boolean; requestedAt?: string | null; requestedBy?: { id: number; name: string } | null } | { kind: 'start'; id: number; key: string };
+export type AgentJob = { kind: 'analyze'; id: number; key: string; deep: boolean; requestedAt?: string | null; requestedBy?: { id: number; name: string } | null } | { kind: 'start'; id: number; key: string };
 
 /** Co ten agent może teraz wziąć: moje zlecenia (i kolejka zespołu w projektach z włączonym przełącznikiem) oraz zlecenia Start. */
-export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string; ownOnly?: boolean; maxOthersTokensPerDay?: number | null }): Promise<AgentJob[]> {
+export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string; ownOnly?: boolean; maxOthersTokensPerDay?: number | null },
+  opts: { limited?: boolean; skip?: number[] } = {}): Promise<AgentJob[]> {
   // Stara wersja skryptów: nic nie dostaje (Ustawienia i pasek analizy pokazują "Update needed").
   if (agent.busy || !agentUpToDate(agent.version)) return [];
   const jobs: AgentJob[] = [];
   // Wyczerpany limit dla innych: oferujemy tylko zlecenia właściciela.
-  const limited = !!agent.id && await limitReached(agent.id, user.id, agent.maxOthersTokensPerDay);
+  const limited = opts.limited ?? (!!agent.id && await limitReached(agent.id, user.id, agent.maxOthersTokensPerDay));
+  const skip = opts.skip?.length ? opts.skip.slice(0, 50) : [];
   {
-    const rows = await db.select({ key: projects.key, number: issues.number, deep: issues.analysisDeep, requestedAt: issues.analysisRequestedAt, byId: issues.analysisRequestedBy, byName: users.name })
+    const rows = await db.select({ id: issues.id, key: projects.key, number: issues.number, deep: issues.analysisDeep, requestedAt: issues.analysisRequestedAt, byId: issues.analysisRequestedBy, byName: users.name })
       .from(issues).innerJoin(projects, eq(projects.id, issues.projectId))
       .leftJoin(users, eq(users.id, issues.analysisRequestedBy))
       .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
       .where(and(
         dsql`${issues.analysisRequestedAt} is not null`,
         isNull(issues.analysisFailedAt),
+        skip.length ? notInArray(issues.id, skip) : undefined,
         dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}))`,
         dsql`(${projects.agentsMayClone} or exists (select 1 from agent_repos r where r.agent_id = ${agent.id ?? ''} and r.project_id = ${projects.id} and r.status = 'ok'))`,
         dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and ${!agent.ownOnly && !limited}::boolean and exists (select 1 from agents ta where ta.id = ${agent.id ?? ''} and ta.team_mode <> 'off') and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
       ))
-      .orderBy(asc(issues.analysisRequestedAt)).limit(5);
-    for (const r of rows) jobs.push({ kind: 'analyze', key: identifier(r.key, r.number), deep: r.deep,
+      .orderBy(dsql`(${issues.analysisRequestedBy} = ${user.id}) desc nulls last`, asc(issues.analysisRequestedAt)).limit(5);
+    for (const r of rows) jobs.push({ kind: 'analyze', id: r.id, key: identifier(r.key, r.number), deep: r.deep,
       requestedAt: r.requestedAt ? new Date(r.requestedAt).toISOString() : null, requestedBy: r.byId != null ? { id: r.byId, name: r.byName ?? '' } : null });
   }
   const starts = await db.select({ id: agentJobs.id, key: projects.key, number: issues.number })
@@ -321,8 +312,10 @@ const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) =
 export async function waitForWork(user: User, deviceId: string, info: HeartbeatInfo, signal: AbortSignal) {
   const agent = await heartbeat(user, deviceId, info);
   const until = Date.now() + 25_000;
+  // Limit dla innych liczymy raz na odpytanie, nie co 2 s.
+  const limited = await limitReached(deviceId, user.id, agent.maxOthersTokensPerDay);
   for (;;) {
-    const jobs = await pendingWork(user, { ...agent, ownOnly: info.ownOnly });
+    const jobs = await pendingWork(user, { ...agent, ownOnly: info.ownOnly }, { limited, skip: info.skip });
     if (jobs.length || signal.aborted || Date.now() >= until) return { jobs, ...(await repoState(user, deviceId)) };
     await sleep(2000, signal);
   }
@@ -403,6 +396,25 @@ export async function recordRun(user: User, r: RunReport) {
 const CLAUDE_LIMIT = /^(Limit Claude do|Claude limit until) \d{1,2}:\d{2}/;
 const TRANSIENT_ERROR = /HTTP 5\d\d|did not answer|cannot reach|ECONNREFUSED|ECONNRESET|ETIMEDOUT|timeout/i;
 
+type AgentRow = typeof agents.$inferSelect;
+/** Pola komputera wspólne dla listy w Ustawieniach i lekkiego odczytu (bez zużycia z 30 dni, repo i zleceń). */
+const agentCore = (a: AgentRow, others24: number, othersTokens24: number) => ({ id: a.id, maxOthersTokensPerDay: a.maxOthersTokensPerDay,
+  forOthers24h: others24, forOthersTokens24h: othersTokens24, limitReached24h: a.maxOthersTokensPerDay != null && othersTokens24 >= a.maxOthersTokensPerDay,
+  lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5,
+  outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version), setup: a.setup ?? null,
+  lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 && !CLAUDE_LIMIT.test(a.lastError ?? '') && !(isOnline(a.lastSeenAt) && TRANSIENT_ERROR.test(a.lastError ?? '')) ? a.lastError : '' });
+export type AgentLite = ReturnType<typeof agentCore>;
+
+/** Lekki odczyt komputerów do /api/me i createStartJob: online, wersja, konfiguracja i (opcjonalnie) tokeny z doby, bez zużycia z 30 dni. */
+export async function agentsLite(user: User, withDay = false): Promise<AgentLite[]> {
+  const rows = await db.select().from(agents).where(and(eq(agents.userId, user.id), dsql`(${agents.lastSeenAt} is null or ${agents.lastSeenAt} > now() - interval '14 days')`));
+  const day = withDay && rows.length ? await db.select({ agentId: agentRuns.agentId, n: dsql<number>`count(*)::int`, tokens: dsql<string>`coalesce(sum(${RUN_TOKENS}), 0)` }).from(agentRuns)
+    .where(and(inArray(agentRuns.agentId, rows.map((a) => a.id)), dsql`${agentRuns.requesterId} <> ${agentRuns.ownerId}`, dsql`${agentRuns.createdAt} >= now() - interval '24 hours'`))
+    .groupBy(agentRuns.agentId) : [];
+  const byId = new Map(day.map((d) => [d.agentId, d]));
+  return rows.map((a) => agentCore(a, byId.get(a.id)?.n ?? 0, Number(byId.get(a.id)?.tokens ?? 0)));
+}
+
 export async function myAgents(user: User) {
   // Komputer niewidziany od 14 dni znika z listy (np. odinstalowany, gdy serwer był niedostępny); dane zużycia zostają.
   const rows = await db.select().from(agents).where(and(eq(agents.userId, user.id),
@@ -459,6 +471,11 @@ export async function setAgentLimit(user: User, id: string, max: number | null) 
 
 export async function removeAgent(user: User, id: string) {
   const gone = await db.delete(agents).where(and(eq(agents.id, id), eq(agents.userId, user.id))).returning({ id: agents.id });
+  if (gone.length) {
+    // Agent traci dostęp: odwołujemy jego grant OAuth i kasujemy klucz trk_ wystawiony przy parowaniu dla tego komputera.
+    await db.update(oauthGrants).set({ revokedAt: new Date() }).where(and(eq(oauthGrants.agentId, id), eq(oauthGrants.userId, user.id), isNull(oauthGrants.revokedAt)));
+    await db.delete(apiTokens).where(and(eq(apiTokens.agentId, id), eq(apiTokens.userId, user.id)));
+  }
   if (gone.length) await db.insert(agentTombstones).values({ id, userId: user.id }).onConflictDoUpdate({ target: agentTombstones.id, set: { deletedAt: new Date() } });
   return { ok: true };
 }
@@ -482,10 +499,10 @@ export async function projectAgents(p: Project) {
  * do In Progress, co robi startWork() w aplikacji, bo na telefonie nikt tego nie zrobi po stronie przeglądarki.
  */
 export async function createStartJob(p: Project, user: NonNullable<Actor>, number: number) {
-  const mine = await myAgents(user);
+  const mine = await agentsLite(user);
   if (!mine.some((a) => a.online)) throw new RuleError('Your PC is offline', 'invalid');
   // Agent ze starymi skryptami nie dostaje pracy, więc zlecenie by tylko wisiało.
-  if (!mine.some((a) => a.online && !a.outdated)) throw new RuleError('The agent on this computer is outdated: update it (Settings > AI)', 'outdated');
+  if (!mine.some((a) => a.online && !a.outdated)) throw new RuleError('The agent on this computer is outdated: update it (Settings > My AI)', 'outdated');
   const cur = await requireIssue(p, number);
   const [job] = await db.insert(agentJobs).values({ userId: user.id, issueId: cur.id, kind: 'start' }).returning({ id: agentJobs.id });
   const sts = await db.select().from(statuses).where(eq(statuses.projectId, p.id)).orderBy(asc(statuses.position));
@@ -503,7 +520,7 @@ export async function createStartJob(p: Project, user: NonNullable<Actor>, numbe
  * worklog tego użytkownika) i agent (któryś własny komputer online ze świeżą wersją). Kilka tanich zapytań z LIMIT 1.
  */
 const CLIENT_FRESH_MS = 14 * 864e5;
-export async function aiStatus(user: User, mine?: Awaited<ReturnType<typeof myAgents>>) {
+export async function aiStatus(user: User, mine?: AgentLite[]) {
   // Klient liczy się, gdy był używany w ostatnich 14 dniach (nieużywany token albo grant nie dowodzi działającego połączenia).
   const recent = new Date(Date.now() - CLIENT_FRESH_MS).toISOString();
   const [grant] = await db.select({ name: oauthClients.name, at: oauthGrants.firstMcpAt }).from(oauthGrants)
@@ -515,7 +532,7 @@ export async function aiStatus(user: User, mine?: Awaited<ReturnType<typeof myAg
     .where(and(eq(apiTokens.userId, user.id), dsql`${apiTokens.lastUsedAt} > ${recent}::timestamptz`)).orderBy(dsql`${apiTokens.lastUsedAt} desc`).limit(1);
   const [wl] = await db.select({ id: activity.id }).from(activity)
     .where(and(eq(activity.actorId, user.id), dsql`${activity.payload}->>'kind' = 'worklog'`, dsql`${activity.createdAt} > ${recent}::timestamptz`)).limit(1);
-  const computers = mine ?? await myAgents(user);
+  const computers = mine ?? await agentsLite(user, true);
   // Stan z plików konfiguracji, zgłoszony przez agenta (aktywne komputery): pewniejszy niż ślady użycia i widoczny od razu
   // po instalacji. Bez agenta (np. tylko Cursor) zostają ślady użycia z 14 dni.
   const reported = computers.filter((a) => !a.inactive && a.setup).map((a) => a.setup!);

@@ -508,7 +508,8 @@ describe('reportDeploy', () => {
     const e = (name: string, isProduction = false) => ({ name, sourceRef: '', isProduction });
     await expect(deploys.saveDeployEnvs(p, [e('Prod', true), e('prod')])).rejects.toThrow('Environment names must be unique');
     await expect(deploys.saveDeployEnvs(p, [e('')])).rejects.toThrow('1-30');
-    expect((await deploys.saveDeployEnvs(p, [e('Prod', true), e('EU', true)])).length).toBe(2);
+    await expect(deploys.saveDeployEnvs(p, [e('Prod', true), e('EU', true)])).rejects.toThrow('production');
+    expect((await deploys.saveDeployEnvs(p, [e('Prod', true), e('EU')])).length).toBe(2);
     expect(await deploys.saveDeployEnvs(p, [])).toEqual([]);
     expect(web.id).toBe(p.id);
     const [prod, qa] = await deploys.saveDeployEnvs(p, [e('Prod', true), e('QA')]);
@@ -525,7 +526,10 @@ describe('reportDeploy', () => {
     await projects.createProject((await member('twoprod', 'Twoprod')).id, { key: 'DEPB', name: 'Two prod' });
     await projects.updateProject((await projects.getProjectByKey('DEPB'))!.id, { githubRepo: 'acme/dep2', deploySource: 'webhook' });
     const p = (await projects.getProjectByKey('DEPB'))!;
-    const [eu, us] = await deploys.saveDeployEnvs(p, [{ name: 'EU', sourceRef: '', isProduction: true }, { name: 'US', sourceRef: '', isProduction: true }]);
+    const [eu, us] = await deploys.saveDeployEnvs(p, [{ name: 'EU', sourceRef: '', isProduction: true }, { name: 'US', sourceRef: '', isProduction: false }]);
+    // saveDeployEnvs wymusza jedno środowisko produkcyjne; dwa ustawiamy w bazie (stare dane).
+    const { deployEnvs } = await import('../src/db/schema.ts');
+    await dbmod.db.update(deployEnvs).set({ isProduction: true }).where(eq(deployEnvs.id, us.id));
     const i = await svc.createIssue(p, null, { title: 'two prods' });
     await hooks.recordCommits([{ id: 'two0001', message: `fix DEPB-${i.number}`, url: 'https://x', timestamp: new Date().toISOString(), author: { name: 'K' } }], 'acme/dep2');
     await expect(hooks.reportDeployHook({ project: 'DEPB', sha: 'two0001', status: 'finished' })).rejects.toThrow('Specify env: one of EU, US');

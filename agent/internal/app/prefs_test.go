@@ -119,4 +119,10 @@ func TestDecideOther(t *testing.T) {
 	if decideOther(ask, 1, other, now, true, false) != dYes {
 		t.Fatal("just this once")
 	}
+	if decideOther(Config{TeamMode: teamAuto}, 0, other, now, false, false) == dYes {
+		t.Fatal("unknown own id must not approve")
+	}
+	if decideOther(Config{TeamMode: teamAuto}, 1, requesterInfo{}, now, false, false) == dYes {
+		t.Fatal("unknown requester must not approve")
+	}
 }

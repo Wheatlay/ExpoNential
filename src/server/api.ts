@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { and, asc, desc, eq, inArray, isNull, notInArray, sql as dsql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.ts';
-import { TAG_COLORS, apiTokens, inboxItems, issues, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
+import { TAG_COLORS, apiTokens, inboxItems, issues, projectMembers, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
 import { clearSessionCookie, createApiToken, requireAdmin, requireUser } from './auth.ts';
 import * as inv from './invites.ts';
 import { hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
@@ -101,7 +101,7 @@ export async function registerApi(app: FastifyInstance) {
         localAgentAt: users.localAgentAt, setupDoneAt: users.setupDoneAt, passwordHash: users.passwordHash,
         avatarUrl: users.avatarUrl, avatarCustom: users.avatarCustom, providerAvatarUrl: users.providerAvatarUrl, githubId: users.githubId,
       }).from(users).where(eq(users.id, req.user!.id));
-      const mine = await ag.myAgents(req.user!);
+      const mine = await ag.agentsLite(req.user!, true);
       const lastSeen = mine.map((a) => a.lastSeenAt).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
       // provider: skąd wraca zdjęcie po "Use … photo"; null = konto bez zdjęcia od dostawcy (zostają inicjały).
       return { ...req.user, avatarUrl: u?.avatarUrl ?? null, avatarCustom: !!u?.avatarCustom, provider: u?.providerAvatarUrl ? (u.githubId ? 'github' : 'google') : null,
@@ -152,7 +152,7 @@ export async function registerApi(app: FastifyInstance) {
     // Agent na PC (tracker-agent.ps1): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
     r.get<{ Querystring: Record<string, string> }>('/api/agent/work', async (req) => {
       const q = z.object({
-        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(300).default(''), engine: z.enum(['claude', 'codex']).optional(), setup: z.string().max(4000).optional(),
+        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(300).default(''), engine: z.enum(['claude', 'codex']).optional(), setup: z.string().max(4000).optional(), skip: z.string().max(400).optional(),
       }).parse(req.query);
       // Zamknięte połączenie przerywa czekanie, żeby pętla nie trzymała zapytań do bazy po odejściu agenta.
       const ac = new AbortController();
@@ -163,7 +163,7 @@ export async function registerApi(app: FastifyInstance) {
         try { repos = z.record(z.string(), z.union([z.string(), z.object({ path: z.string().optional(), source: z.string().optional(), status: z.string().optional(), error: z.string().nullable().optional() })])).parse(JSON.parse(q.repos)); } catch { repos = {}; }
         repoKeys = Object.keys(repos);
       } else repoKeys = q.repos.split(',').filter(Boolean);
-      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error, ownOnly: q.engine === 'codex', setup: ag.parseSetup(q.setup) }, ac.signal);
+      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error, ownOnly: q.engine === 'codex', setup: ag.parseSetup(q.setup), skip: ag.parseSkip(q.skip) }, ac.signal);
     });
     r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
       const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);
@@ -213,15 +213,9 @@ export async function registerApi(app: FastifyInstance) {
     // projekty
     r.get('/api/projects', async (req) => {
       const me = req.user!.id;
-      // Pytania czekające na mnie w każdym projekcie (ta sama reguła co isAskedTo w aplikacji): widać je bez przełączania.
-      const asked = await db.select({ projectId: issues.projectId, n: dsql<number>`count(*)::int` }).from(issues)
-        .where(dsql`${issues.infoQuestion} <> '' and (${issues.infoFromId} = ${me} or ${issues.infoTagId} in (select m.tag_id from user_tag_members m where m.user_id = ${me}) or (${issues.infoFromId} is null and ${issues.infoTagId} is null and ${issues.infoById} is distinct from ${me}))`)
-        .groupBy(issues.projectId);
-      const askedBy = new Map(asked.map((a) => [a.projectId, a.n]));
       return (await pr.projectsOf(req.user!)).map(({ project, role, memberCount }) => ({
         id: project.id, key: project.key, name: project.name, color: project.color, logoUrl: project.logoUrl, role, memberCount, githubRepo: project.githubRepo,
         agentsMayClone: project.agentsMayClone,
-        askedMe: askedBy.get(project.id) ?? 0,
       }));
     });
     r.post('/api/projects', async (req) => {

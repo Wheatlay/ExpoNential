@@ -40,8 +40,8 @@ beforeAll(async () => {
   await db.insert(schema.projectMembers).values([{ projectId: P.id, userId: alice.id }, { projectId: P.id, userId: bob.id }]);
   const now = new Date();
   await db.insert(schema.agents).values([
-    { id: DEV_A, userId: alice.id, name: 'ALICE-PC', version: ag.agentScriptsVersion(), lastSeenAt: now },
-    { id: DEV_B, userId: bob.id, name: 'BOB-PC', version: ag.agentScriptsVersion(), lastSeenAt: now },
+    { id: DEV_A, userId: alice.id, name: 'ALICE-PC', version: ag.MIN_EXE_AGENT, lastSeenAt: now },
+    { id: DEV_B, userId: bob.id, name: 'BOB-PC', version: ag.MIN_EXE_AGENT, lastSeenAt: now },
   ]);
   await db.insert(schema.agentRepos).values([DEV_A, DEV_B].map((agentId) => ({ agentId, projectId: P.id, path: 'C:/tq', source: 'manual' as const })));
   P = await projects.updateProject(P.id, { agentTeamQueue: true });
@@ -138,7 +138,7 @@ describe('team mode per computer', () => {
     await clear();
     await setMode(DEV_B, 'auto');
     await requested(bob);
-    const res = await app.inject({ method: 'GET', url: `/api/agent/work?deviceId=${DEV_B}&version=${ag.agentScriptsVersion()}`, headers: { authorization: `Bearer ${tokenBob}` } });
+    const res = await app.inject({ method: 'GET', url: `/api/agent/work?deviceId=${DEV_B}&version=${ag.MIN_EXE_AGENT}`, headers: { authorization: `Bearer ${tokenBob}` } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ teamMode: 'auto' });
   });

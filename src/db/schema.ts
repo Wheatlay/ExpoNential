@@ -296,6 +296,8 @@ export const apiTokens = pgTable('api_tokens', {
   tokenHash: text('token_hash').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  // Komputer (agents.id), dla którego agent wystawił ten klucz (mcp-key); removeAgent go kasuje.
+  agentId: text('agent_id'),
 }, (t) => [uniqueIndex('api_tokens_hash_idx').on(t.tokenHash)]);
 
 // OAuth 2.1 dla klientów MCP (publiczni klienci, PKCE). W bazie tylko hashe kodów i tokenów.
@@ -330,6 +332,8 @@ export const oauthGrants = pgTable('oauth_grants', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   // Pierwsze wywołanie /mcp tym tokenem (kreator pokazuje "połączono").
   firstMcpAt: timestamp('first_mcp_at', { withTimezone: true }),
+  // Komputer (agents.id), dla którego agent sparował się tym grantem; removeAgent odwołuje taki grant.
+  agentId: text('agent_id'),
 });
 
 export const oauthDeviceCodes = pgTable('oauth_device_codes', {

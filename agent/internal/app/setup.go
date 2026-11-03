@@ -41,9 +41,11 @@ func claudeMcpAddArgs(base, token string) []string {
 	return []string{"mcp", "add", "--transport", "http", "--scope", "user", "tracker", base + "/mcp", "--header", "Authorization: Bearer " + token}
 }
 
-// claudePluginSteps are run in order for every config dir; errors are ignored (an "already ..." answer is normal).
+// claudePluginSteps are run in order for every config dir. The first (marketplace remove) and the update steps may
+// fail harmlessly; an error of marketplace add / install is reported (an "already ..." answer is normal).
 func claudePluginSteps(base string) [][]string {
 	return [][]string{
+		{"plugin", "marketplace", "remove", "tracker"},
 		{"plugin", "marketplace", "add", base + "/agent/marketplace.json"},
 		{"plugin", "marketplace", "update", "tracker"},
 		{"plugin", "install", "tracker@tracker"},
@@ -228,11 +230,14 @@ func setupTrace(base string) error {
 		for _, args := range claudePluginSteps(base) {
 			out, err := runCmd(bin, args, d, 90*time.Second, "")
 			if err != nil && !strings.Contains(strings.ToLower(out), "already") {
-				last = shortOut(out, err)
+				if args[1] == "marketplace" && args[2] == "remove" || args[1] == "update" || args[2] == "update" {
+					continue // best effort
+				}
+				last = shortOut(out, err) // marketplace add / install failed
 			}
 		}
 		out, err := runCmd(bin, []string{"plugin", "list"}, d, 60*time.Second, "")
-		if !pluginListHas(out) {
+		if last != "" || !pluginListHas(out) {
 			if last == "" {
 				last = shortOut(out, err)
 			}
@@ -251,7 +256,11 @@ func setupTrace(base string) error {
 func pairOnly(ctx *installCtx) (installResult, string) {
 	host := hostOf(ctx.base)
 	hn, _ := os.Hostname()
-	payload, _ := json.Marshal(map[string]string{"pairing": ctx.tr.Pairing, "name": hn})
+	devID := loadConfig().DeviceID
+	if devID == "" {
+		devID = updateConfig(func(c *Config) {}).DeviceID // generates the stable id
+	}
+	payload, _ := json.Marshal(map[string]string{"pairing": ctx.tr.Pairing, "name": hn, "deviceId": devID})
 	status, body, err := httpDo("POST", ctx.base+"/api/agent/pair", map[string]string{"Content-Type": "application/json", "Accept": "application/json"}, payload, 30*time.Second)
 	if err != nil {
 		return installResult{Code: "network", Detail: err.Error()}, ""
@@ -281,6 +290,7 @@ func pairOnly(ctx *installCtx) (installResult, string) {
 		c.OAuth = &OAuth{Access: pr.AccessToken, Refresh: pr.RefreshToken, ExpiresAt: nowMs() + exp*1000, ClientID: pr.ClientID}
 		c.LastPairing = ctx.tr.Pairing
 		c.UserName = pr.User.Name
+		c.UserID = 0
 		if e := ctx.tr.Engine; e == "claude" || e == "codex" {
 			c.Engine = e
 		}

@@ -31,10 +31,14 @@ export function setTheme(t: Theme) {
  */
 type Section = { id: string; name: string; render: () => ReactNode; dot?: boolean };
 
+const PATH_ALIAS: Record<string, string> = { ai: 'claude' };
+
 function useHash() {
-  const [hash, setHash] = useState(() => location.hash.slice(1));
+  // /settings/ai otwiera sekcję AI (id 'claude'); hash ma pierwszeństwo.
+  const fromPath = () => { const seg = location.pathname.split('/')[2] ?? ''; return PATH_ALIAS[seg] ?? seg; };
+  const [hash, setHash] = useState(() => location.hash.slice(1) || fromPath());
   useEffect(() => {
-    const f = () => setHash(location.hash.slice(1));
+    const f = () => setHash(location.hash.slice(1) || fromPath());
     window.addEventListener('hashchange', f);
     return () => window.removeEventListener('hashchange', f);
   }, []);
@@ -49,7 +53,7 @@ export function Settings() {
       { id: 'profile', name: t('Profile'), render: () => <ProfileSettings /> },
       { id: 'appearance', name: t('Appearance'), render: () => <Appearance /> },
       { id: 'notifications', name: t('Notifications'), render: () => <NotificationSettings /> },
-      { id: 'claude', name: 'AI', render: () => <ClaudeConnect />, dot: !me?.demo && (me?.aiStatus?.attention?.length ?? 0) > 0 },
+      { id: 'claude', name: t('My AI'), render: () => <ClaudeConnect />, dot: !me?.demo && (me?.aiStatus?.attention?.length ?? 0) > 0 },
       { id: 'password', name: t('Password'), render: () => <PasswordSettings /> },
     ] },
     { name: p ? <span className="settings-nav-project"><ProjectBadge project={p} size={14} /> {p.name}</span> : t('Project'), items: [
@@ -88,7 +92,7 @@ export function Settings() {
         <div className="settings-inner">
           <h3 className="settings-title">{current.name}</h3>
           {current.render()}
-          <SettingsHints current={current.id} groups={groups} isAdmin={!!me?.isAdmin} />
+          {!query.trim() && <SettingsHints current={current.id} groups={groups} isAdmin={!!me?.isAdmin} />}
         </div>
       </div>
     </div>
@@ -330,8 +334,8 @@ function ProfileSettings() {
         </div>
         <div id="profile-name" className="s-row">
           <span className="s-label">{t('Your name')}</span>
-          <input className="input grow" key={`${me.name}-${rev}`} defaultValue={me.name} maxLength={60} aria-label={t('Your name')}
-            onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+          <Tooltip text={reason}><input className="input grow" key={`${me.name}-${rev}`} defaultValue={me.name} maxLength={60} aria-label={t('Your name')} disabled={demo}
+            onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></Tooltip>
         </div>
       </div>
       <div id="profile-danger" className="s-card" style={{ marginTop: 24 }}>
@@ -444,6 +448,7 @@ function ClaudeConnect() {
                     title={t('Your name for this computer. Empty: the Windows name.')}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                     onBlur={(e) => { const v = e.target.value.trim(); if (v !== a.label) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { label: v } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); }); }} />
+                  {!a.online && <Tooltip text={a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}><span className="pill">{t('Offline')}</span></Tooltip>}
                   {a.outdated && !a.legacy && <span className="pill stalled">{t('Update needed')}</span>}
                   {a.legacy && <button className="btn sm" onClick={() => openSetupWizard(3)}>{t('Switch to the new agent')}</button>}
                   {a.limitReached24h && <span className="pill stalled">{t('Limit reached')}</span>}
@@ -451,6 +456,7 @@ function ClaudeConnect() {
                   {a.inactive && <Tooltip text={t('Not seen for over 3 days. Hidden after 14 days.')}><span className="pill">{t('Inactive')}</span></Tooltip>}
                   {(a.limitReached24h || a.lastError || a.legacy || (a.maxOthersTokensPerDay == null && a.forOthersTokens24h >= 2_000_000)) && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />}
                 </span>
+                {(agentList.data ?? []).some((o) => o.id !== a.id && (o.label || o.computerName) === (a.label || a.computerName)) && <div className="hint">{t('Same name as another computer. ID: {id}', { id: a.id.slice(-4) })}</div>}
                 {a.label && a.computerName && <div className="hint">{t('Windows name: {name}', { name: a.computerName })}</div>}
                 {a.setup && a.setup.claude.length > 0 && (
                   <Tooltip text={a.setup.claude.map((c) => `${c.name}: ${t('issues')} ${c.mcp ? '✓' : '✗'} · ${t('work trace')} ${c.plugin ? '✓' : '✗'}`).join('\n')}>
@@ -568,6 +574,7 @@ function ProjectGeneral() {
   const [days, setDays] = useState<number | null>(null);
   if (!c) return null;
   const { p, ro, patch, qc } = c;
+  const demo = !!useMe().data?.demo;
   const off = p.reviewMeeting ? null : t('Turn on the sprint review meeting first');
   return (
     <div className="s-card">
@@ -577,7 +584,7 @@ function ProjectGeneral() {
           <input className="input grow" key={p.name} defaultValue={p.name} disabled={!!ro}
             onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== p.name && void patch({ name: e.target.value.trim() })} />
         </Tooltip>
-        <ProjectLogo p={p} ro={ro} patch={patch} />
+        <ProjectLogo p={p} ro={ro ?? (demo ? t('Disabled in the demo') : null)} patch={patch} />
         {!p.logoUrl && <Tooltip text={ro}>
           <input type="color" key={p.color} defaultValue={toHex(p.color)} disabled={!!ro} aria-label={t('Project color')}
             onBlur={(e) => e.target.value !== toHex(p.color) && void patch({ color: e.target.value })} style={{ width: 30, height: 30, border: 0, background: 'none' }} />
@@ -632,7 +639,8 @@ function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deployS
   const edit = (i: number, part: Partial<DeployEnvRow>) => save(envs.map((e, j) => (j === i ? { ...e, ...part } : e)));
   const add = () => {
     const name = envs.some((e) => e.name.toLowerCase() === 'stage') ? t('Env {n}', { n: envs.length + 1 }) : t('Stage');
-    return save([...envs, { name, sourceRef: '', isProduction: false }]);
+    // Pierwsze środowisko to produkcja; potem dokładnie jedno środowisko jest produkcyjne.
+    return save([...envs, { name, sourceRef: '', isProduction: envs.length === 0 }]);
   };
   const ph = source === 'coolify' ? t('Coolify app UUID') : t('GitHub environment');
   return (
@@ -647,16 +655,16 @@ function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deployS
       {/* Środowiska wcięte pod nagłówkiem (kolumna pól), bez kresek między nimi: widać, że to jedna lista. */}
       {envs.map((e, i) => (
         <div key={e.id} className={`s-row s-sub ${i === envs.length - 1 ? 'last' : ''}`}>
-          <input className="input" style={{ width: 140 }} key={`${e.name}-${rev}`} disabled={!!ro} maxLength={30} defaultValue={e.name} aria-label={t('Environment name')}
+          <input className="input env-name" key={`${e.name}-${rev}`} disabled={!!ro} maxLength={30} defaultValue={e.name} aria-label={t('Environment name')}
             onBlur={(ev) => ev.target.value.trim() && ev.target.value.trim() !== e.name && void edit(i, { name: ev.target.value.trim() })} />
           {source !== 'webhook' ? (
             <input className="input grow" key={`${e.sourceRef}-${rev}`} disabled={!!ro} placeholder={ph} defaultValue={e.sourceRef} aria-label={ph}
               onBlur={(ev) => ev.target.value.trim() !== e.sourceRef && void edit(i, { sourceRef: ev.target.value.trim() })} />
           ) : <span className="grow" />}
           <Tooltip text={ro}>
-            <span className="hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span className="hint s-inline">
               <button className={`switch ${e.isProduction ? 'on' : ''}`} role="switch" aria-checked={e.isProduction} aria-label={t('Production')} disabled={!!ro}
-                onClick={() => void edit(i, { isProduction: !e.isProduction })} />
+                onClick={() => { if (!e.isProduction) void save(envs.map((x, j) => ({ ...x, isProduction: j === i }))); }} />
               {t('Production')}
             </span>
           </Tooltip>

@@ -54,6 +54,8 @@ afterAll(async () => { await app?.close(); await dbmod?.sql.end(); });
 
 const register = async (redirect_uris: string[]) =>
   app.inject({ method: 'POST', url: '/oauth/register', payload: { client_name: 'Test client', redirect_uris } });
+const registerNamed = async (client_name: string) =>
+  app.inject({ method: 'POST', url: '/oauth/register', payload: { client_name, redirect_uris: [REDIRECT] } });
 const newClient = async () => (await register([REDIRECT])).json().client_id as string;
 
 /** Pełne przejście przez stronę zgody: zwraca kod z przekierowania. */
@@ -250,4 +252,15 @@ describe('device flow', () => {
     await dbmod.db.update(schema.oauthDeviceCodes).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(schema.oauthDeviceCodes.userCode, e.user_code));
     expect((await token({ grant_type: grantType, client_id: cid, device_code: e.device_code })).json().error).toBe('expired_token');
   });
+
+describe('reserved agent name', () => {
+  it('register rejects "Exponential agent" in any case and with spaces', async () => {
+    for (const n of ['Exponential agent', '  exponential AGENT ']) {
+      const r = await registerNamed(n);
+      expect(r.statusCode).toBe(400);
+      expect(r.json().error).toBe('invalid_client_metadata');
+    }
+    expect((await registerNamed('Exponential agent 2')).statusCode).toBe(201);
+  });
+});
 });

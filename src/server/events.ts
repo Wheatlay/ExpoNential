@@ -22,10 +22,10 @@ async function refreshKeys(c: Client) {
 
 export async function registerEvents(app: FastifyInstance) {
   await sql.listen('tracker_events', async (payload) => {
-    const e = JSON.parse(payload) as { type: string; projectKey?: string };
+    const e = JSON.parse(payload) as { type: string; projectKey?: string; userIds?: number[] };
     // Zmiana członkostwa: najpierw odświeżamy, co kto widzi, potem rozdajemy zdarzenie.
     if (e.type === 'projects') await Promise.all([...clients].map(refreshKeys));
-    for (const c of clients) if (!e.projectKey || c.keys.has(e.projectKey)) c.reply.raw.write(`data: ${payload}\n\n`);
+    for (const c of clients) if (e.userIds ? e.userIds.includes(c.user.id) : (!e.projectKey || c.keys.has(e.projectKey))) c.reply.raw.write(`data: ${payload}\n\n`);
   });
 
   // Proxy (Traefik w Coolify) zamyka bezczynne połączenia, więc co 25 s pusty komentarz.

@@ -4,25 +4,13 @@ import { inboxItems, projectMembers, userTagMembers, userTags, users } from '../
 import { sendPush } from './notify.ts';
 import type { Project } from './projects.ts';
 import { publish, type Actor } from './service.ts';
+import { SKIP, TAG_TRAILING, USER_TRAILING, findByName, tagRe, userRe } from '../shared/mentions.ts';
 
 /**
  * Wzmianki w tekście: @login (osoba) i #tag (grupa osób). Każda nowa wzmianka trafia do skrzynki
  * adresata i jako push oznaczony jako ważny.
  */
 
-// Te same fragmenty co w src/web/Markdown.tsx: kod, linki i adresy nie są wzmiankami.
-const SKIP = /(```[\s\S]*?```|`[^`\n]*`|\[[^\]\n]*\]\([^)\n]*\)|https?:\/\/\S+)/;
-const USER_RE = /(?<![\w@/.])@([A-Za-z0-9][A-Za-z0-9._-]*)/g;
-const TAG_RE = /(?<![\w&/#])#([A-Za-z0-9][A-Za-z0-9_-]*)/g;
-
-/** Dopasowanie bez rozróżniania wielkości liter; końcowa kropka/przecinek/myślnik to zwykle interpunkcja ("@rafal."). */
-function resolve<T extends { id: number }>(raw: string, byName: Map<string, T>, trailing: RegExp): number | null {
-  const exact = byName.get(raw.toLowerCase());
-  if (exact) return exact.id;
-  const stripped = raw.replace(trailing, '');
-  if (stripped && stripped !== raw) return byName.get(stripped.toLowerCase())?.id ?? null;
-  return null;
-}
 
 export function parseMentions(
   body: string,
@@ -35,12 +23,12 @@ export function parseMentions(
   const tagIds: number[] = [];
   body.split(SKIP).forEach((part, i) => {
     if (i % 2) return;
-    for (const m of part.matchAll(USER_RE)) {
-      const id = resolve(m[1], byLogin, /[.,_-]+$/);
+    for (const m of part.matchAll(userRe())) {
+      const id = findByName(byLogin, m[1], USER_TRAILING)?.[0].id;
       if (id != null && !userIds.includes(id)) userIds.push(id);
     }
-    for (const m of part.matchAll(TAG_RE)) {
-      const id = resolve(m[1], byTag, /[_-]+$/);
+    for (const m of part.matchAll(tagRe())) {
+      const id = findByName(byTag, m[1], TAG_TRAILING)?.[0].id;
       if (id != null && !tagIds.includes(id)) tagIds.push(id);
     }
   });

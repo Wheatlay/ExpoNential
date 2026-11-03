@@ -2,6 +2,33 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.4], Agent [0.4.3] - 03.11.2026
+
+Security and bugs:
+- The agent is recognized by its fixed client id, not by its name: a client registered as "Exponential agent" no longer gets agent rights or an MCP key, and that name can't be registered.
+- Removing a computer in Settings revokes its sign-in and its MCP key; it stays removed until it is paired again. Pairing again (reinstall) works right away.
+- Consent: a job whose requester or owner is unknown is not run (it used to be). After pairing or login the agent re-reads who its owner is.
+- Analyses for other people always run without the repo's own Claude Code settings and hooks; more secret files are blocked (secrets*.json, appsettings.*.json, id_rsa*, *.keystore, credentials*).
+- An agent update waits for a running analysis to finish instead of killing it, and takes no new work while updating.
+- The owner's own analyses come first in the queue, and jobs a computer declined no longer block the next ones.
+- @mentions work for logins that are e-mail addresses; server and app use one parser (trailing punctuation is not part of the mention).
+- Deploy environments: exactly one is production, the first one added is production.
+- The Coolify webhook no longer fails when the Coolify API is not configured.
+- MCP save_issue with only a #tag no longer clears the open question.
+- Demo: profile, project logo and deploy environments can't be changed.
+
+Consistency and UX:
+- The bell shows only issues from projects you are still a member of; inbox events go only to their recipients.
+- Connect AI with Cursor: steps 2 and 3 are shown as unavailable, step 1 is done only when Cursor is connected; "Close" until the goal is fully done.
+- Settings: the personal section is "My AI" (the project section stays "AI agent"); /settings/ai opens it; offline pill and an id hint for computers with the same name.
+- A poll waiting for your vote is in the bell and the Calendar counter, no longer in the banner.
+- Board counters appear together with the cards.
+
+Housekeeping:
+- The Claude Code hooks call the agent directly (the installer adds its folder to the user PATH); the Node script is gone. Plugin 1.2.0 named Exponential. The installer re-adds the plugin marketplace and reports when that fails.
+- The legacy PowerShell installer is no longer served.
+- Lighter /api/me and job start queries.
+
 ## Server [1.3.3], Agent [0.4.2] - 03.11.2026
 
 - The agent reports what is actually set up on the computer, read from config files: the tracker MCP server and plugin for every Claude account (terminal and VS Code / Cursor extension share them), Codex, Cursor. Connect AI shows "Done" right after install and goes back to "Waiting" when something is removed; the computer card in Settings > AI shows "issues 2/2 · work trace 2/2" with the accounts in a tooltip. Without the agent, usage from the last 14 days still counts (work trace too, no longer "ever").

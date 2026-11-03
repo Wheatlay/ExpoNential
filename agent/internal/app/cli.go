@@ -52,7 +52,7 @@ func cmdLogin(args []string) error {
 		return err
 	}
 	if token != "" { // trk_ tokens are long-lived, no refresh
-		updateConfig(func(c *Config) { c.URL, c.Token, c.OAuth = u, token, nil })
+		updateConfig(func(c *Config) { c.URL, c.Token, c.OAuth, c.UserID = u, token, nil, 0 })
 		fmt.Printf("Logged in to %s with a token.\n", u)
 		return nil
 	}
@@ -97,6 +97,7 @@ func cmdLogin(args []string) error {
 			}
 			updateConfig(func(c *Config) {
 				c.URL, c.Token = u, ""
+				c.UserID = 0
 				c.OAuth = &OAuth{Access: at, Refresh: str(r["refresh_token"]), ExpiresAt: nowMs() + exp*1000, ClientID: clientID}
 			})
 			fmt.Printf("Logged in to %s.\n", u)

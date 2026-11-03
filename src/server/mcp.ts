@@ -226,8 +226,8 @@ function buildServer(user: SessionUser) {
       priority: a.priority === undefined ? undefined : r.priority(a.priority),
       labelIds: a.labels?.map((l) => r.label(l)),
       parentNumber: a.parentId === undefined ? undefined : a.parentId === null ? null : numIn(p, a.parentId),
-      infoFromId: askTag ? null : a.askUser && a.askUser.toLowerCase() !== 'anyone' ? r.user(a.askUser, me) : a.question ? null : undefined,
-      infoTagId: askTag ? tagId(askTag) : a.question ? null : undefined,
+      infoFromId: !a.question ? undefined : askTag ? null : a.askUser && a.askUser.toLowerCase() !== 'anyone' ? r.user(a.askUser, me) : null,
+      infoTagId: !a.question ? undefined : askTag ? tagId(askTag) : null,
       infoQuestion: a.question,
     };
     if (a.id) {

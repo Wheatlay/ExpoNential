@@ -3,10 +3,10 @@ import { createPortal } from 'react-dom';
 import { useMe, useMeta } from './api.ts';
 import { Avatar } from './icons.tsx';
 import { t, tn } from './i18n.ts';
+import { MENTION_TRIGGER } from '../shared/mentions.ts';
 
 // Bez polskich znaków i wielkości liter: "lukasz" znajdzie "Łukasz".
 const plain = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/gi, 'l').toLowerCase();
-const WORD = /(^|\s)([@#])([\w.-]*)$/;
 const MAX = 6;
 
 type Option = { key: string; insert: string; node: React.ReactNode };
@@ -25,7 +25,7 @@ export function useMentionAutocomplete(ref: RefObject<HTMLTextAreaElement | null
   const el = ref.current;
   const focused = !!el && document.activeElement === el;
   const caret = focused ? el.selectionStart : 0;
-  const m = focused ? WORD.exec(value.slice(0, caret)) : null;
+  const m = focused ? MENTION_TRIGGER.exec(value.slice(0, caret)) : null;
   const sign = m?.[2];
   const q = m?.[3] ?? '';
   const start = m ? caret - (sign!.length + q.length) : 0;

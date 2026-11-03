@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -151,7 +152,30 @@ func registerApp(target string) error {
 		}
 	}
 	_ = os.Remove(filepath.Join(dataDir(), "start-hidden.vbs"))
+	dir := filepath.Dir(target)
+	userPathEdit(func(p string) string { return pathWith(p, dir) }) // so `exponential-agent hook ...` resolves
 	return autostartOn(target)
+}
+
+// userPathEdit rewrites HKCU\Environment\Path (REG_EXPAND_SZ) with f and tells running programs about it.
+func userPathEdit(f func(string) string) {
+	k, _, err := registry.CreateKey(registry.CURRENT_USER, `Environment`, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return
+	}
+	defer k.Close()
+	cur, _, _ := k.GetStringValue("Path") // unexpanded for REG_EXPAND_SZ
+	next := f(cur)
+	if next == cur {
+		return
+	}
+	if err := k.SetExpandStringValue("Path", next); err != nil {
+		return
+	}
+	env, _ := syscall.UTF16PtrFromString("Environment")
+	var res uintptr
+	// WM_SETTINGCHANGE = 0x1A, HWND_BROADCAST = 0xFFFF, SMTO_ABORTIFHUNG = 2
+	_, _, _ = user32.NewProc("SendMessageTimeoutW").Call(0xFFFF, 0x1A, 0, uintptr(unsafe.Pointer(env)), 2, 2000, uintptr(unsafe.Pointer(&res)))
 }
 
 func autostartOn(exe string) error {
@@ -204,6 +228,7 @@ func uninstallAll() (bool, error) {
 	target := installedPath()
 	forgot := stopAndForget(target) // stop first: a running agent would re-create the device with its next poll
 	autostartOff()
+	userPathEdit(func(p string) string { return pathWithout(p, filepath.Dir(target)) })
 	_ = registry.DeleteKey(registry.CURRENT_USER, uninstallKey)
 	_ = registry.DeleteKey(registry.CURRENT_USER, `Software\Classes\AppUserModelId\Exponential agent`)
 	if err := os.RemoveAll(dataDir()); err != nil {

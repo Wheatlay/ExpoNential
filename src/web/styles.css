@@ -641,7 +641,7 @@ textarea.md-edit {
 .relation-row a { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--text-md); }
 .relation-row a span { color: var(--text-primary); font-weight: 500; }
 .relation-row.blocking a span { color: var(--danger-text); }
-.relation-row .icon-btn { width: 22px; height: 22px; opacity: 0; }
+.relation-row .icon-btn { width: var(--control-sm); height: var(--control-sm); opacity: 0; }
 .relation-row:hover .icon-btn { opacity: 1; }
 .toast.warn { border-left: 3px solid var(--warning); }
 
@@ -1056,16 +1056,16 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .time-list { box-sizing: content-box; height: 210px; }
 /* Dwie kolumny przewijane swobodnie (kółko, przeciąganie, palec); wybrana wartość podświetlona i stawiana na środku. */
 /* Snap przeglądarki (proximity): dociąga do wiersza płynnie, w tej samej animacji co przewijanie. Przy przeciąganiu myszą wyłączony (.dragging). */
-.time-col { width: 56px; height: 210px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; scrollbar-width: none; padding: 90px 0; box-sizing: border-box; user-select: none; scroll-snap-type: y proximity; scroll-padding-top: 90px; }
+.time-col { width: 56px; height: 210px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; scrollbar-width: none; padding: calc((210px - var(--control-sm)) / 2) 0; box-sizing: border-box; user-select: none; scroll-snap-type: y proximity; scroll-padding-top: calc((210px - var(--control-sm)) / 2); }
 .time-col.dragging { scroll-snap-type: none; }
 .time-col button { scroll-snap-align: start; }
 .time-col::-webkit-scrollbar { display: none; }
 .time-col + .time-col { box-shadow: inset 1px 0 0 var(--border-secondary); }
-.time-col button { height: 30px; flex-shrink: 0; padding: 0; line-height: 30px; border: 0; background: none; color: var(--text-secondary); font: inherit; font-variant-numeric: tabular-nums; border-radius: var(--radius-md); cursor: pointer; }
+.time-col button { height: var(--control-sm); flex-shrink: 0; padding: 0; line-height: var(--control-sm); border: 0; background: none; color: var(--text-secondary); font: inherit; font-variant-numeric: tabular-nums; border-radius: var(--radius-md); cursor: pointer; }
 .time-col button:hover { background: var(--bg-hover); color: var(--text-primary); }
 /* Pas wyboru stoi na środku na stałe: to, co w nim jest, wybierze się po zatrzymaniu (nie podświetlamy starej wartości). */
 .time-list::before {
-  content: ''; position: absolute; left: 4px; right: 4px; top: 94px; height: 30px; border-radius: var(--radius-md);
+  content: ''; position: absolute; left: 4px; right: 4px; top: calc((210px - var(--control-sm)) / 2); height: var(--control-sm); border-radius: var(--radius-md);
   background: var(--bg-active); pointer-events: none;
 }
 .time-col { position: relative; }
@@ -1296,7 +1296,7 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .inbox-dot { position: absolute; right: 12px; bottom: 12px; width: 0.6em; height: 0.6em; border-radius: 50%; background: var(--accent); }
 .inbox-icon { width: 24px; height: 24px; flex-shrink: 0; display: grid; place-items: center; border-radius: 50%; background: var(--bg-tertiary); color: var(--text-secondary); }
 .inbox-icon.warn { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning-text); }
-.inbox-x { position: absolute; top: 6px; right: 4px; width: 22px; height: 22px; opacity: 0; }
+.inbox-x { position: absolute; top: 6px; right: 4px; width: var(--control-sm); height: var(--control-sm); opacity: 0; }
 .inbox-item:hover .inbox-x, .inbox-x:focus-visible { opacity: 1; }
 @media (hover: none) { .inbox-x { opacity: 1; } }
 .inbox-empty { padding: 20px 14px; text-align: center; }
@@ -1326,3 +1326,6 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .tag-error { color: var(--danger-text); font-size: var(--text-sm); }
 /* Ustawienia › Tagi: awatary członków w wierszu i pole zmiany nazwy. */
 .tag-members { display: flex; align-items: center; gap: 4px; }
+.env-name { width: 140px; }
+.s-inline { display: inline-flex; align-items: center; gap: 6px; }
+.wiz-off { opacity: 0.5; cursor: not-allowed; }

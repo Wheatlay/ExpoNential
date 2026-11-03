@@ -44,10 +44,10 @@ beforeAll(async () => {
   [outsider] = await db.insert(schema.users).values({ login: 'outsider', name: 'Outsider' }).returning();
   await db.insert(schema.projectMembers).values([{ projectId: P.id, userId: alice.id }, { projectId: P.id, userId: bob.id }]);
   await db.insert(schema.agents).values([
-    { id: DEV_A1, userId: alice.id, name: 'ALICE-PC', repoKeys: ['AGT'], version: ag.agentScriptsVersion() },
-    { id: DEV_A2, userId: alice.id, name: 'ALICE-LAPTOP', repoKeys: ['AGT'], version: ag.agentScriptsVersion() },
-    { id: DEV_B1, userId: bob.id, name: 'BOB-PC', repoKeys: ['AGT'], version: ag.agentScriptsVersion() },
-    { id: DEV_O1, userId: outsider.id, name: 'OUT-PC', repoKeys: ['AGT'], version: ag.agentScriptsVersion() },
+    { id: DEV_A1, userId: alice.id, name: 'ALICE-PC', repoKeys: ['AGT'], version: ag.MIN_EXE_AGENT },
+    { id: DEV_A2, userId: alice.id, name: 'ALICE-LAPTOP', repoKeys: ['AGT'], version: ag.MIN_EXE_AGENT },
+    { id: DEV_B1, userId: bob.id, name: 'BOB-PC', repoKeys: ['AGT'], version: ag.MIN_EXE_AGENT },
+    { id: DEV_O1, userId: outsider.id, name: 'OUT-PC', repoKeys: ['AGT'], version: ag.MIN_EXE_AGENT },
   ]);
   // Każde urządzenie ma repo projektu (analizy trafiają tylko na komputery z mapowaniem).
   await db.insert(schema.agentRepos).values([DEV_A1, DEV_A2, DEV_B1, DEV_O1].map((agentId) => ({ agentId, projectId: P.id, path: 'C:/agt', source: 'manual' as const })));
@@ -131,7 +131,7 @@ describe('claimAnalysis', () => {
     const fresh = '55555555-5555-4555-8555-555555555555';
     // Nowe urządzenie nie ma jeszcze mapowania: wystarcza prawo klonowania.
     P = await (await import('../src/server/projects.ts')).updateProject(P.id, { agentsMayClone: true });
-    expect((await ag.claimAnalysis(P, alice, n, fresh, ag.agentScriptsVersion())).ok).toBe(true);
+    expect((await ag.claimAnalysis(P, alice, n, fresh, ag.MIN_EXE_AGENT)).ok).toBe(true);
     expect((await ag.myAgents(alice)).some((a) => a.id === fresh)).toBe(true);
     P = await (await import('../src/server/projects.ts')).updateProject(P.id, { agentsMayClone: false });
   });
@@ -146,7 +146,7 @@ describe('claim lifecycle', () => {
     const r = await row(n);
     expect(r.analysisFailedAt).not.toBeNull();
     expect(r.analysisError).toBe('Brak repo projektu AGT');
-    const agent = { id: DEV_A1, busy: false, repoKeys: ['AGT'], version: ag.agentScriptsVersion() };
+    const agent = { id: DEV_A1, busy: false, repoKeys: ['AGT'], version: ag.MIN_EXE_AGENT };
     expect((await ag.pendingWork(alice, agent)).some((j) => j.kind === 'analyze' && j.key === `AGT-${n}`)).toBe(false);
     expect(await code(ag.claimAnalysis(P, alice, n, DEV_A2))).toBe('conflict');
     await svc.requestAnalysis(P, alice, n);
@@ -213,6 +213,21 @@ describe('pendingWork', () => {
     await setTeamQueue(false);
   });
 
+  it('lists the owner own jobs first and honors skip (ids of analyze jobs)', async () => {
+    await clearAll();
+    await setTeamQueue(true);
+    const nb = await newIssue('bob first'); await svc.requestAnalysis(P, bob, nb);
+    await new Promise((r) => setTimeout(r, 20));
+    const na = await newIssue('alice later'); await svc.requestAnalysis(P, alice, na);
+    const jobs = await ag.pendingWork(alice, await agentOf(DEV_A1));
+    expect(keys(jobs)).toEqual([`AGT-${na}`, `AGT-${nb}`]);
+    const first = jobs[0] as { id: number };
+    expect(keys(await ag.pendingWork(alice, await agentOf(DEV_A1), { skip: [first.id] }))).toEqual([`AGT-${nb}`]);
+    expect(ag.parseSkip('1, 2,x,-3,2,99999999999')).toEqual([1, 2]);
+    expect(ag.parseSkip(Array.from({ length: 80 }, (_, i) => i + 1).join(','))).toHaveLength(50);
+    await setTeamQueue(false);
+  });
+
   it('a Codex agent (ownOnly) gets only its owner\'s requests, never the team queue, and cannot claim a teammate\'s', async () => {
     await clearAll();
     const n = await newIssue();
@@ -239,9 +254,9 @@ describe('pendingWork', () => {
     await clearAll();
     const n = await newIssue();
     await svc.requestAnalysis(P, alice, n);
-    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: ['OTHER'], version: ag.agentScriptsVersion() }))).toEqual([]);
-    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: [], version: ag.agentScriptsVersion() }))).toEqual([]);
-    expect(await ag.pendingWork(alice, { busy: true, repoKeys: ['AGT'], version: ag.agentScriptsVersion() })).toEqual([]);
+    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: ['OTHER'], version: ag.MIN_EXE_AGENT }))).toEqual([]);
+    expect(keys(await ag.pendingWork(alice, { busy: false, repoKeys: [], version: ag.MIN_EXE_AGENT }))).toEqual([]);
+    expect(await ag.pendingWork(alice, { busy: true, repoKeys: ['AGT'], version: ag.MIN_EXE_AGENT })).toEqual([]);
   });
 
   it('skips an issue that is already claimed (fresh) and offers it again once stale', async () => {
@@ -360,7 +375,7 @@ describe('repo mappings and routing', () => {
     await clearAll();
     const online = async (ids: string[]) => {
       await dbmod.sql`update agents set last_seen_at = now() - interval '10 minutes'`;
-      for (const id of ids) await dbmod.sql`update agents set last_seen_at = now(), version = ${ag.agentScriptsVersion()} where id = ${id}`;
+      for (const id of ids) await dbmod.sql`update agents set last_seen_at = now(), version = ${ag.MIN_EXE_AGENT} where id = ${id}`;
     };
     const n = await newIssue();
     await svc.requestAnalysis(P, alice, n);
@@ -373,7 +388,7 @@ describe('repo mappings and routing', () => {
     // Stary agent z mapowaniem się nie liczy.
     await dbmod.sql`update agents set version = 'old' where id = ${DEV_A1}`;
     expect((await det()).noCapablePc).toBe(true);
-    await dbmod.sql`update agents set version = ${ag.agentScriptsVersion()} where id = ${DEV_A1}`;
+    await dbmod.sql`update agents set version = ${ag.MIN_EXE_AGENT} where id = ${DEV_A1}`;
     // Urządzenie kolegi liczy się tylko przy kolejce zespołu.
     await online([DEV_B1]);
     expect((await det()).noCapablePc).toBe(true);
@@ -467,7 +482,7 @@ describe('script version', () => {
     const id = 'a1a1a1a1-0000-4000-8000-0000000000a1';
     await ag.heartbeat(bob, id, { name: 'OLD-PC', busy: false, repoKeys: [], version: 'old' });
     expect((await ag.myAgents(bob)).find((a) => a.id === id)?.outdated).toBe(true);
-    await ag.heartbeat(bob, id, { name: 'OLD-PC', busy: false, repoKeys: [], version: ag.agentScriptsVersion() });
+    await ag.heartbeat(bob, id, { name: 'OLD-PC', busy: false, repoKeys: [], version: ag.MIN_EXE_AGENT });
     expect((await ag.myAgents(bob)).find((a) => a.id === id)?.outdated).toBe(false);
   });
 
@@ -479,7 +494,7 @@ describe('script version', () => {
     expect(await ag.pendingWork(alice, a)).toEqual([]);
     expect(await code(ag.claimAnalysis(P, alice, n, id))).toBe('outdated');
     expect(await code(ag.claimAnalysis(P, alice, n, id, 'old'))).toBe('outdated');
-    expect((await ag.claimAnalysis(P, alice, n, id, ag.agentScriptsVersion())).ok).toBe(true);
+    expect((await ag.claimAnalysis(P, alice, n, id, ag.MIN_EXE_AGENT)).ok).toBe(true);
   });
 });
 

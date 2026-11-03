@@ -109,8 +109,11 @@ func takeOnce(key, requestedAt string) {
 
 // decideOther is the rule for one offered analysis. own = this account's id (0 = unknown).
 func decideOther(c Config, own int, rq requesterInfo, now time.Time, once, declined bool) decision {
-	if own == 0 || rq.ID == 0 || rq.ID == own {
-		return dYes // own request, or the requester is unknown
+	if own == 0 || rq.ID == 0 {
+		return dNo // identity unknown: do not auto-approve, skip for now
+	}
+	if rq.ID == own {
+		return dYes // own request
 	}
 	if _, muted := mutedUntilOf(c, now); muted {
 		return dNo

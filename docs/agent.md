@@ -20,6 +20,7 @@ Installed by double-clicking the file downloaded from Settings > AI (it carries 
   - `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ExponentialAgent` (Apps & features entry)
   - `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ExponentialAgent` (starts with Windows; not written when unchecked in the installer)
   - `HKCU\Software\Classes\AppUserModelId\Exponential agent` (name and icon of its notifications)
+  - `HKCU\Environment\Path` gets the program folder appended (no duplicates), so the plugin's Claude Code hooks can run `exponential-agent hook ...`; uninstall removes it
 - Hook state in `<temp>/claude-tracker/`.
 
 Details: [agent/README.md](../agent/README.md).
@@ -32,7 +33,7 @@ Details: [agent/README.md](../agent/README.md).
 | MCP (Codex) | `codex mcp remove tracker` |
 | Plugin | `claude plugin uninstall tracker@tracker` |
 | Agent | Windows Settings > Apps > Exponential agent > Uninstall (or `exponential-agent uninstall --yes`); also removes this computer and its sign-in from the server |
-| Server-side access | Settings > AI > Connected AI clients: Revoke |
+| Server-side access | Settings > My AI > Connected AI clients: Revoke |
 
 ## Legacy PowerShell installer
 
@@ -41,4 +42,4 @@ Older installs used `scripts/local-agent/install.ps1`, which created:
 - the `HKCU\...\Run` value `TrackerAgent`
 - the folder `%LOCALAPPDATA%\tracker-agent`
 
-`uninstall.ps1` removes all three (`irm <server>/agent/uninstall.ps1 | iex`, or `exponential-uninstall.cmd` from Settings). The new agent does not touch them.
+The server stopped serving these scripts on 03.11.2026 (Server 1.3.4); remove leftovers by hand. The new agent does not touch them.

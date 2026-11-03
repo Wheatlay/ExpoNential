@@ -11,16 +11,13 @@ import { copyText } from './toast.ts';
 import { t } from './i18n.ts';
 import { getProjectKey } from './project.ts';
 import { ImageBlock } from './ImageBlock.tsx';
+import { SKIP, TAG_TRAILING, USER_TRAILING, findByName, tagRe, userRe } from '../shared/mentions.ts';
 
-// Kod, istniejące linki i gołe adresy zostają nietknięte (nieparzyste kawałki po split).
-const SKIP = /(```[\s\S]*?```|`[^`\n]*`|\[[^\]\n]*\]\([^)\n]*\)|https?:\/\/\S+)/;
 // Znacznik w tytule linku: odróżnia wzmiankę od ręcznie wpisanego linku do zgłoszenia.
 const MENTION = 'issue-mention';
 const USER_MENTION = 'user-mention';
 const TAG_MENTION = 'tag-mention';
 // @login i #tag: wzmianka tylko wtedy, gdy login/tag istnieje w projekcie (inaczej e-mail czy #1 zostają tekstem).
-const USER_RE = /(?<![\w@/.])@([A-Za-z0-9][A-Za-z0-9._-]*)/g;
-const TAG_RE = /(?<![\w&/#])#([A-Za-z0-9][A-Za-z0-9_-]*)/g;
 
 /**
  * Wzorzec wzmianki: tylko klucze istniejących projektów (inaczej UTF-8 czy ISO-9001 stałyby się linkami),
@@ -38,19 +35,15 @@ function linkIssues(text: string, re: RegExp | null, meta?: Meta) {
   const users = new Map((meta?.users ?? []).map((u) => [u.login.toLowerCase(), u]));
   const tags = new Map((meta?.tags ?? []).map((x) => [x.name.toLowerCase(), x]));
   // Nazwa z końcówką interpunkcji ("@rafal." na końcu zdania): obcinamy ją i zostawiamy jako zwykły tekst.
-  const find = <T,>(map: Map<string, T>, name: string): [T, string] | null => {
-    for (let n = name; n; n = n.replace(/[.,_-]$/, '')) {
-      const hit = map.get(n.toLowerCase());
-      if (hit) return [hit, name.slice(n.length)];
-      if (!/[.,_-]$/.test(n)) break;
-    }
-    return null;
+  const find = <T,>(map: Map<string, T>, name: string, trailing: RegExp): [T, string] | null => {
+    const hit = findByName(map, name, trailing);
+    return hit ? [hit[0], name.slice(hit[1])] : null;
   };
   return text.split(SKIP).map((part, i) => {
     if (i % 2) return part;
     let out = re ? part.replace(re, (all, key: string, num: string) => `[${all}](/issue/${key.toUpperCase()}-${num} "${MENTION}")`) : part;
-    if (users.size) out = out.replace(USER_RE, (all, name: string) => { const h = find(users, name); return h ? `[@${name.slice(0, name.length - h[1].length)}](/people/${h[0].id} "${USER_MENTION}")${h[1]}` : all; });
-    if (tags.size) out = out.replace(TAG_RE, (all, name: string) => { const h = find(tags, name); return h ? `[#${name.slice(0, name.length - h[1].length)}](/tags/${h[0].id} "${TAG_MENTION}")${h[1]}` : all; });
+    if (users.size) out = out.replace(userRe(), (all, name: string) => { const h = find(users, name, USER_TRAILING); return h ? `[@${name.slice(0, name.length - h[1].length)}](/people/${h[0].id} "${USER_MENTION}")${h[1]}` : all; });
+    if (tags.size) out = out.replace(tagRe(), (all, name: string) => { const h = find(tags, name, TAG_TRAILING); return h ? `[#${name.slice(0, name.length - h[1].length)}](/tags/${h[0].id} "${TAG_MENTION}")${h[1]}` : all; });
     return out;
   }).join('');
 }

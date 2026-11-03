@@ -115,6 +115,32 @@ describe('POST /api/agent/mcp-key', () => {
     expect(rows).toHaveLength(1);
     expect((await post({ authorization: `Bearer ${exa}` }, { client: 'x'.repeat(41), device: 'PC' })).statusCode).toBe(400);
   });
+  it('rejects a dynamically registered client named "Exponential agent"', async () => {
+    const { cfg } = await download();
+    await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: cfg.pairing } });
+    const [fake] = await dbmod.db.insert(schema.oauthClients).values({ id: 'fake-agent-client', name: 'Exponential agent', redirectUris: ['http://127.0.0.1/cb'] }).returning();
+    const [u] = await dbmod.db.select().from(schema.users).where(eq(schema.users.login, 'pr'));
+    const { issueGrant } = await import('../src/server/oauth.ts');
+    const g = await issueGrant(fake.id, u.id, '');
+    expect((await post({ authorization: `Bearer ${g.access_token}` }, { client: 'Codex', device: 'PC' })).statusCode).toBe(403);
+  });
+  it('re-pairing clears the tombstone of that device; removeAgent revokes its grant and mcp key', async () => {
+    const ag = await import('../src/server/agents.ts');
+    const [u] = await dbmod.db.select().from(schema.users).where(eq(schema.users.login, 'pr'));
+    const dev = '99999999-9999-4999-8999-999999999999';
+    const { cfg } = await download();
+    const j = (await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: cfg.pairing, deviceId: dev } })).json();
+    await ag.heartbeat(u, dev, { name: 'PC', busy: false, repoKeys: [] });
+    const key = (await post({ authorization: `Bearer ${j.access_token}` }, { client: 'Claude Code', device: 'PC-DEL' })).json().token as string;
+    expect((await mcpInit(key)).statusCode).toBe(200);
+    await ag.removeAgent(u, dev);
+    expect((await mcpInit(j.access_token)).statusCode).toBe(401);
+    expect((await mcpInit(key)).statusCode).toBe(401);
+    await expect(ag.heartbeat(u, dev, { name: 'PC', busy: false, repoKeys: [] })).rejects.toMatchObject({ code: 'conflict' });
+    const again = (await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: (await download()).cfg.pairing, deviceId: dev } })).json();
+    expect(again.access_token).toMatch(/^exa_/);
+    await expect(ag.heartbeat(u, dev, { name: 'PC', busy: false, repoKeys: [] })).resolves.toBeTruthy();
+  });
   it('rejects a session cookie, a trk_ token and other OAuth clients', async () => {
     expect((await post({ cookie: sessionCookie }, { client: 'Claude Code', device: 'PC' })).statusCode).toBe(403);
     const trk = (await post({ authorization: `Bearer ${await agentToken()}` }, { client: 'Codex', device: 'PC' })).json().token as string;
