@@ -257,7 +257,8 @@ export function SetupWizardHost() {
   );
   const bodies: Record<Goal, ReactNode> = { 1: step1, 2: step2, 3: step3 };
 
-  const chips = needed.filter((n) => done[n] && n !== openStep);
+  // Wszystkie kroki celu poza otwartym: zrobione z ptaszkiem, czekające przerywane (da się do nich przejść bez kończenia poprzednich).
+  const chips = needed.filter((n) => n !== openStep);
   const chipText: Record<Goal, string> = { 1: ai?.clientName ?? t('Client'), 2: t('Work trace'), 3: t('Agent') };
   const level = (n: Goal) => ([1, 2, 3] as Goal[]).filter((x) => x <= n).every((x) => done[x]);
 
@@ -292,8 +293,9 @@ export function SetupWizardHost() {
                 <fieldset className="wiz-goals">
                   <legend className="wiz-label">{t('What do you want AI for?')}</legend>
                   {GOALS.map((g) => (
-                    <label key={g.n} className={`wiz-goal${goal === g.n ? ' on' : ''}`}>
-                      <input type="radio" name="wiz-goal" checked={goal === g.n} onChange={() => set({ ...snap, open: true, goal: g.n })} />
+                    <label key={g.n} className={`wiz-goal${g.n <= goal ? ' on' : ''}`}>
+                      {/* Poziomy są narastające: wyższy cel zawiera niższe; odznaczenie najwyższego cofa o jeden. */}
+                      <input type="checkbox" checked={g.n <= goal} onChange={() => set({ ...snap, open: true, goal: (g.n === goal && g.n > 1 ? g.n - 1 : g.n) as Goal })} />
                       <span className="grow"><span className="wiz-goal-title">{g.title()}</span><span className="hint">{g.sub()}</span></span>
                     </label>
                   ))}
@@ -302,8 +304,8 @@ export function SetupWizardHost() {
                   {chips.length > 0 && (
                     <div className="wiz-chips">
                       {chips.map((n) => (
-                        <button key={n} type="button" className="wiz-chip" title={doneText[n]} onClick={() => setStep(n)}>
-                          <span className="wiz-chip-check"><Icon.check size={12} /></span>{chipText[n]}
+                        <button key={n} type="button" className={`wiz-chip${done[n] ? '' : ' todo'}`} title={done[n] ? doneText[n] : stepTitle[n]} onClick={() => setStep(n)}>
+                          {done[n] ? <span className="wiz-chip-check"><Icon.check size={12} /></span> : <span className="wiz-chip-n">{n}</span>}{chipText[n]}
                         </button>
                       ))}
                     </div>

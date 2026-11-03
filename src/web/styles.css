@@ -1206,6 +1206,8 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .wiz-chip { display: inline-flex; align-items: center; gap: 6px; height: var(--control-sm); padding: 0 10px; border: 1px solid var(--border-secondary); border-radius: var(--radius-full); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--text-sm); cursor: pointer; }
 .wiz-chip:hover { background: var(--bg-hover); }
 .wiz-chip-check { color: var(--success-text); display: inline-flex; }
+.wiz-chip.todo { border-style: dashed; color: var(--text-tertiary); }
+.wiz-chip-n { font-size: var(--text-xs); color: var(--text-tertiary); }
 .wiz-block { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border-secondary); border-radius: var(--radius-lg); }
 .wiz-mark.cur { border-color: var(--accent); color: var(--text-primary); font-size: var(--text-xs); }
 .wiz-block-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
