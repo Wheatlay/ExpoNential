@@ -167,7 +167,7 @@ describe('time poll', () => {
 });
 
 describe('invited people', () => {
-  it('meeting for chosen people: no channel post, only invitees vote, others do not get it in .ics', async () => {
+  it('meeting for chosen people: still posted to the channel, only invitees vote, others do not get it in .ics', async () => {
     const c = await pr.addMember({ id: 0, isAdmin: true }, P.id, 'carol');
     const carol = { id: c.id, name: 'Carol' };
     discord.length = 0;
@@ -176,7 +176,8 @@ describe('invited people', () => {
       slots: [{ startsAt: at('2026-11-20T09:00:00Z'), endsAt: at('2026-11-20T10:00:00Z') }],
     });
     expect(m.attendeeIds?.sort()).toEqual([alice.id, pawel.id].sort());
-    expect(discord).toHaveLength(0);
+    // Na razie każde spotkanie idzie na kanał, także dla wybranych osób.
+    expect(discord).toHaveLength(1);
     const [listed] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === m.id);
     await mt.vote(P, pawel, listed.slots[0].id, 'yes');
     await expect(mt.vote(P, carol, listed.slots[0].id, 'yes')).rejects.toThrow(/invited/);

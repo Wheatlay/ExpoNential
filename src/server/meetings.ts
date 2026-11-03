@@ -77,9 +77,8 @@ async function recipients(p: Project, m: Invite) {
   return (await memberIds(p)).filter((id) => invited(m, id));
 }
 
-/** Na kanał idzie, chyba że organizator wyłączył u siebie Discorda (sprint review: zawsze). Spotkań dla wybranych osób nie ogłaszamy na kanale. */
+/** Na kanał idzie każde spotkanie (także dla wybranych osób), chyba że organizator wyłączył u siebie Discorda (sprint review: zawsze). */
 async function discordAllowed(m: Invite) {
-  if (m.attendeeIds) return false;
   return m.createdBy == null || (await getNotifySettings(m.createdBy)).discord;
 }
 
