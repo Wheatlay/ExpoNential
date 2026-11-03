@@ -38,6 +38,8 @@ import { Invite, Login, Reset } from './AuthScreens.tsx';
 
 /** Tytuł karty przeglądarki: nazwa projektu przed nazwą aplikacji (kilka projektów w kartach = widać który). */
 let baseTitle = 'Exponential';
+/** Lokalny serwer deweloperski (vite dev): "LOCAL" na początku tytułu, żeby karta nie myliła się z produkcją. */
+const LOCAL = import.meta.env.DEV ? 'LOCAL · ' : '';
 
 function App() {
   const me = useMe();
@@ -52,7 +54,7 @@ function App() {
   useEffect(() => {
     baseTitle = projectName ? `${projectName} · Exponential` : 'Exponential';
     // Strona zgłoszenia ustawia własny tytuł (IssueCrumb), z nazwą projektu na końcu.
-    if (!/^\/issue\//.test(location.pathname)) document.title = baseTitle;
+    if (!/^\/issue\//.test(location.pathname)) document.title = LOCAL + baseTitle;
   }, [projectName, path]);
 
   const issueMatch = /^\/issue\/([a-z]{2,6})-(\d+)/i.exec(path);
@@ -199,7 +201,7 @@ function Header({ page, number }: { page: string; number?: number }) {
 
 function IssueCrumb({ number }: { number: number }) {
   const issue = useIssue(number).data;
-  useEffect(() => { document.title = issue ? `${ident(number)} ${issue.title} · ${baseTitle}` : baseTitle; return () => { document.title = baseTitle; }; }, [issue, number]);
+  useEffect(() => { document.title = LOCAL + (issue ? `${ident(number)} ${issue.title} · ${baseTitle}` : baseTitle); return () => { document.title = LOCAL + baseTitle; }; }, [issue, number]);
   return <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ident(number)} {issue && <span style={{ color: 'var(--text-secondary)' }}><InlineCode text={issue.title} /></span>}</span>;
 }
 
