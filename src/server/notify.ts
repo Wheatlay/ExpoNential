@@ -82,6 +82,8 @@ export async function sendPush(userIds: number[], payload: PushPayload, log?: { 
 
 // ---------- Discord ----------
 
+const BASE_URL = (process.env.BASE_URL ?? '').replace(/\/$/, '');
+
 export type DiscordMessage = { title: string; description: string; url?: string; color?: number };
 
 /** Wiadomość na kanał projektu z @here. Brak webhooka = nic. Błąd Discorda nie psuje akcji. */
@@ -94,6 +96,9 @@ export async function sendDiscord(p: Project, m: DiscordMessage, log?: { warn: (
       body: JSON.stringify({
         // Powiadomienie systemowe pokazuje tylko content (bez embeda), więc tytuł na początku, @here (tylko dla pingu Discorda) na końcu.
         content: `**${m.title}** @here`,
+        // Nazwa i logo aplikacji zamiast domyślnych z webhooka. Logo Discord pobiera sam, więc tylko z publicznego https.
+        username: 'Exponential',
+        ...(BASE_URL.startsWith('https://') ? { avatar_url: `${BASE_URL}/icon-256.png` } : {}),
         allowed_mentions: { parse: ['everyone'] },
         embeds: [{ title: m.title, description: m.description, url: m.url, color: m.color ?? 0xa855f7 }],
       }),

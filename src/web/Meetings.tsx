@@ -57,11 +57,14 @@ export function whenLabel(m: Pick<Meeting, 'startsAt' | 'endsAt'>, now = new Dat
 export function bestSlot(slots: MeetingSlot[]) {
   let best: MeetingSlot | null = null;
   let bestScore = 0;
+  let tie = false;
   for (const s of slots) {
     const score = s.votes.reduce((n, v) => n + (v.vote === 'yes' ? 2 : v.vote === 'maybe' ? 1 : 0), 0);
-    if (score > bestScore) { best = s; bestScore = score; }
+    if (score > bestScore) { best = s; bestScore = score; tie = false; }
+    else if (score === bestScore && score > 0) tie = true;
   }
-  return best;
+  // Remis na górze: żaden termin nie jest "best" (inaczej wygrywał po prostu pierwszy).
+  return tie ? null : best;
 }
 
 export function useCanManageMeeting() {
