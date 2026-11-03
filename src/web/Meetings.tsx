@@ -17,8 +17,8 @@ import { locale, t, tn } from './i18n.ts';
 
 // Kolor = które spotkanie (stały, z id), obramowanie = rodzaj (pełne, przerywane opcje ankiety, podwójne review).
 export const meetingColor = (m: Pick<Meeting, 'id'>) => `var(--project-${(m.id % 7) + 1})`;
-const VOTE_COLOR: Record<Vote, string> = { yes: 'var(--success-text)', maybe: 'var(--progress-text)', no: 'var(--danger-text)' };
-const VOTE_LABEL: Record<Vote, string> = { yes: t('Yes'), maybe: t('Maybe'), no: t('No') };
+export const VOTE_COLOR: Record<Vote, string> = { yes: 'var(--success-text)', maybe: 'var(--progress-text)', no: 'var(--danger-text)' };
+export const VOTE_LABEL: Record<Vote, string> = { yes: t('Yes'), maybe: t('Maybe'), no: t('No') };
 
 export const fmtTime = (iso: string | Date) => new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
 /** "Mon 19" / "pon 19": bez przecinka i kropki z polskiego locale, żeby nagłówek kolumny się nie zawijał. */

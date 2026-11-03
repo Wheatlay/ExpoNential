@@ -6,7 +6,7 @@ import { Tooltip, openMenu } from './menu.tsx';
 import { linkProps } from './router.ts';
 import { toast } from './toast.ts';
 import {
-  fmtDay, meetingColor, fmtTime, joinLabel, openMeeting, openNewMeeting, sameDay, whenLabel,
+  fmtDay, meetingColor, fmtTime, joinLabel, openMeeting, openNewMeeting, sameDay, whenLabel, VOTE_COLOR, VOTE_LABEL,
 } from './Meetings.tsx';
 import { locale, t, tn } from './i18n.ts';
 
@@ -28,7 +28,7 @@ export function useNow(ms = 30_000) {
 
 const OTHER_COLOR = 'var(--text-quaternary)';
 
-type Item ={ key: string; meeting: Meeting; startsAt: Date; endsAt: Date; option: boolean };
+type Item = { key: string; meeting: Meeting; startsAt: Date; endsAt: Date; option: boolean; slotId?: number };
 
 /** Na dany dzień: zaplanowane spotkania i terminy z trwających ankiet ("option"). */
 const minuteOfDay = (d: Date) => d.getHours() * 60 + d.getMinutes();
@@ -41,7 +41,7 @@ function itemsOn(meetings: Meeting[], day: Date): Item[] {
     }
     if (m.status === 'polling') {
       for (const s of m.slots) {
-        if (sameDay(new Date(s.startsAt), day)) out.push({ key: `s${s.id}`, meeting: m, startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt), option: true });
+        if (sameDay(new Date(s.startsAt), day)) out.push({ key: `s${s.id}`, meeting: m, startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt), option: true, slotId: s.id });
       }
     }
   }
@@ -290,7 +290,7 @@ function MonthGrid({ month, meetings, now, onOpenWeek, meId }: { month: Date; me
                 style={{ '--kind': !isInvited(it.meeting, meId) ? OTHER_COLOR : meetingColor(it.meeting) } as React.CSSProperties}
                 title={`${fmtTime(it.startsAt)} ${it.meeting.title}${it.option ? ` ${t('(poll option)')}` : ''}${isInvited(it.meeting, meId) ? '' : ` · ${t('not invited')}`}`}
                 onClick={(e) => { e.stopPropagation(); openMeeting(it.meeting.id); }}>
-                <span className="dot" />{fmtTime(it.startsAt)} {it.meeting.title}{it.option ? ' ?' : ''}
+                <span className="dot" />{fmtTime(it.startsAt)} {it.meeting.title}{it.option ? ' ?' : ''}{it.option && isInvited(it.meeting, meId) && !it.meeting.slots.find((s) => s.id === it.slotId)?.votes.some((v) => v.userId === meId) && <span className="unvoted-dot" />}
               </button>
             ))}
             {items.length > 3 && <span className="hint cal-month-more">{t('+{n} more', { n: items.length - 3 })}</span>}
@@ -306,9 +306,14 @@ function CalendarCard({ item, users, meId }: { item: Item; users: { id: number; 
   // Cudze spotkanie (nie jestem zaproszony): szare, bez koloru rodzaju, z podpisem, żeby nie myliło się z moimi.
   const mine = isInvited(m, meId);
   const color = !mine ? OTHER_COLOR : meetingColor(m);
+  // Opcja ankiety: moja odpowiedź na ten termin albo kropka, że jeszcze nie odpowiedziałem (np. termin dodany po moim głosowaniu).
+  const myVote = item.option && mine && meId != null ? m.slots.find((s) => s.id === item.slotId)?.votes.find((v) => v.userId === meId)?.vote ?? null : undefined;
   return (
     <button className={`cal-card ${item.option ? 'option' : ''} ${m.kind === 'sprint_review' ? 'is-review' : ''} ${mine ? '' : 'other'}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
-      <div className="cal-card-time">{item.option ? `${fmtTime(item.startsAt)} · ${t('option')}` : `${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}{mine ? '' : ` · ${t('not invited')}`}</div>
+      <div className="cal-card-time">{item.option ? `${fmtTime(item.startsAt)} · ${t('option')}` : `${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}{mine ? '' : ` · ${t('not invited')}`}
+        {myVote === null && <span className="unvoted-dot" title={t('You have not answered this time yet')} />}
+        {myVote && <span className="cal-card-vote" style={{ color: VOTE_COLOR[myVote] }}>{VOTE_LABEL[myVote]}</span>}
+      </div>
       <div className="cal-card-title">{m.title}{item.option ? ' ?' : ''}</div>
       {!item.option && (
         <div className="cal-card-people">

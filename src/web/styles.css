@@ -912,6 +912,7 @@ a.sub-row > button { display: inline-flex; }
 .poll-row.mine { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 /* Termin bez mojej odpowiedzi (np. dodany po moim głosowaniu): przerywana obwódka w moim wierszu i kropka w nagłówku. */
 .poll-row.mine .poll-cell.unvoted { border-radius: var(--radius-md); background: color-mix(in srgb, var(--warning) 6%, transparent); outline: 1px dashed var(--warning); outline-offset: -4px; }
+.cal-card-vote { float: right; font-weight: 600; }
 .unvoted-dot { display: inline-block; width: 0.5em; height: 0.5em; border-radius: 50%; background: var(--warning); margin-left: 4px; vertical-align: middle; }
 .poll-cell { border-left: 1px solid var(--border-primary); height: 100%; display: flex; flex-direction: column; justify-content: center; }
 .poll-row.mine .poll-cell { flex-direction: row; align-items: center; }
