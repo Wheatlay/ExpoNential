@@ -290,7 +290,7 @@ function MonthGrid({ month, meetings, now, onOpenWeek, meId }: { month: Date; me
                 style={{ '--kind': !isInvited(it.meeting, meId) ? OTHER_COLOR : meetingColor(it.meeting) } as React.CSSProperties}
                 title={`${fmtTime(it.startsAt)} ${it.meeting.title}${it.option ? ` ${t('(poll option)')}` : ''}${isInvited(it.meeting, meId) ? '' : ` · ${t('not invited')}`}`}
                 onClick={(e) => { e.stopPropagation(); openMeeting(it.meeting.id); }}>
-                <span className="dot" />{fmtTime(it.startsAt)} {it.meeting.title}{it.option ? ' ?' : ''}
+                <span className="dot" />{fmtTime(it.startsAt)} {it.meeting.title}
               </button>
             ))}
             {items.length > 3 && <span className="hint cal-month-more">{t('+{n} more', { n: items.length - 3 })}</span>}
@@ -313,8 +313,8 @@ function CalendarCard({ item, users, meId }: { item: Item; users: { id: number; 
   const answered = item.option && answeredSlot(m, item.slotId, meId);
   return (
     <button className={`cal-card ${item.option ? 'option' : ''} ${answered ? 'answered' : ''} ${m.kind === 'sprint_review' ? 'is-review' : ''} ${mine ? '' : 'other'}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
-      <div className="cal-card-time">{item.option ? `${fmtTime(item.startsAt)} · ${t('option')}` : `${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}{mine ? '' : ` · ${t('not invited')}`}</div>
-      <div className="cal-card-title">{m.title}{item.option ? ' ?' : ''}</div>
+      <div className="cal-card-time">{`${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}{mine ? '' : ` · ${t('not invited')}`}</div>
+      <div className="cal-card-title">{m.title}</div>
       {!item.option && (
         <div className="cal-card-people">
           {users.filter((u) => u.active && isInvited(m, u.id)).slice(0, 6).map((u) => <Avatar key={u.id} user={u} size={18} />)}

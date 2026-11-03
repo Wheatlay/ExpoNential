@@ -538,7 +538,6 @@ export const pl: Record<string, string> = {
   'Open this week': 'Otwórz ten tydzień',
   '(poll option)': '(termin w ankiecie)',
   '+{n} more': '+{n} więcej',
-  'option': 'termin',
   'Time': 'Godzina',
   'Hour': 'Godzina',
   'Minute': 'Minuta',
