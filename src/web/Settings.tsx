@@ -208,7 +208,7 @@ const SEARCH: SearchEntry[] = [
   { label: t('Statuses'), to: 'labels', target: 'statuses', keywords: ['columns', 'kolumny', 'status', 'board', 'tablica', 'workflow'] },
   // Projekt › Integracje
   { label: t('GitHub repo'), to: 'integrations', target: 'github-repo', keywords: ['commit', 'repo', 'github', 'repozytorium'] },
-  { label: t('Deploys'), to: 'integrations', target: 'deploys', keywords: ['branch', 'wdrozenia', 'deploy', 'source', 'zrodlo', 'webhook', 'coolify', 'github deployments'] },
+  { label: t('Deploys'), to: 'integrations', target: 'deploys', keywords: ['wdrozenia', 'deploy', 'source', 'zrodlo', 'webhook', 'coolify', 'github deployments'] },
   { label: t('Environments'), to: 'integrations', target: 'deploy-envs', keywords: ['prod', 'stage', 'production', 'produkcja', 'staging', 'qa', 'coolify', 'deploy', 'srodowisko', 'środowisko'] },
   { label: 'Discord webhook', to: 'integrations', target: 'discord', keywords: ['channel', 'kanal', 'webhook', 'powiadomienia', 'notifications'] },
   { label: t('Meeting place'), to: 'integrations', target: 'meeting-place', keywords: ['teams', 'meet', 'link', 'spotkanie', 'meeting', 'miejsce'] },
@@ -461,7 +461,7 @@ type ProjectDetail = {
   id: number; key: string; name: string; color: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
-  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean;
+  githubRepo: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean;
   defaultModels: { analyze: string; deep: string };
   role: 'admin' | 'member'; canEdit: boolean;
   members: { id: number; login: string; name: string; avatarUrl: string | null; active: boolean; role: 'admin' | 'member' }[];
@@ -612,10 +612,6 @@ function ProjectIntegrations() {
       </div>
       <div id="deploys" className="s-row">
         <span className="s-label">{t('Deploys')}</span>
-        <Tooltip text={ro}>
-          <input className="input" style={{ width: 130 }} key={p.deployBranch} disabled={!!ro} placeholder={t('branch')} defaultValue={p.deployBranch} aria-label={t('Deploy branch')}
-            onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== p.deployBranch && void patch({ deployBranch: e.target.value.trim() })} />
-        </Tooltip>
         <Tooltip text={ro}>
           <select className="input" value={p.deploySource} disabled={!!ro} aria-label={t('Deploy status source')}
             onChange={(e) => void patch({ deploySource: e.target.value as ProjectDetail['deploySource'] })}>

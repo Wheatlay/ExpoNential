@@ -705,8 +705,6 @@ export const pl: Record<string, string> = {
   'GitHub repo': 'Repozytorium GitHub',
   'Analyze runs Claude in this repo, and only its commits are linked to {key} issues. After a change, reinstall local analysis.': 'Analiza uruchamia Claude w tym repo i tylko jego commity są łączone ze zgłoszeniami {key}. Po zmianie zainstaluj ponownie lokalną analizę.',
   'Deploys': 'Deploye',
-  'branch': 'gałąź',
-  'Deploy branch': 'Gałąź deployu',
   'Deploy status source': 'Źródło statusu deployu',
   'Webhook': 'Webhook',
   'GitHub Deployments': 'GitHub Deployments',

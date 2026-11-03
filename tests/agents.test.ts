@@ -316,7 +316,7 @@ describe('repo mappings and routing', () => {
 
   it('changing githubRepo clears the mappings (other fields do not)', async () => {
     await map(DEV_A1);
-    P = await (await projects()).updateProject(P.id, { deployBranch: 'main' });
+    P = await (await projects()).updateProject(P.id, { name: 'Agents renamed' });
     expect((await ag.repoState(alice, DEV_A1)).repos).toHaveLength(1);
     P = await (await projects()).updateProject(P.id, { githubRepo: 'acme/agt' });
     expect((await ag.repoState(alice, DEV_A1)).repos).toEqual([]);

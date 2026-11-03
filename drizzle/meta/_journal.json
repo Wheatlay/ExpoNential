@@ -141,6 +141,13 @@
       "when": 1793699424197,
       "tag": "0019_deploy_envs",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793700153195,
+      "tag": "0020_drop_deploy_branch",
+      "breakpoints": true
     }
   ]
 }

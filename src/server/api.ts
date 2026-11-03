@@ -174,7 +174,7 @@ export async function registerApi(app: FastifyInstance) {
       const askedBy = new Map(asked.map((a) => [a.projectId, a.n]));
       return (await pr.projectsOf(req.user!)).map(({ project, role, memberCount }) => ({
         id: project.id, key: project.key, name: project.name, color: project.color, role, memberCount, githubRepo: project.githubRepo,
-        deployBranch: project.deployBranch, agentsMayClone: project.agentsMayClone,
+        agentsMayClone: project.agentsMayClone,
         askedMe: askedBy.get(project.id) ?? 0,
       }));
     });
@@ -197,7 +197,7 @@ export async function registerApi(app: FastifyInstance) {
         name: z.string().optional(), color: z.string().optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).optional(),
         sprintLengthDays: z.number().int().optional(), reviewMeeting: z.boolean().optional(), reviewTime: z.string().optional(), reviewMinutes: z.number().int().optional(),
                 analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
-        githubRepo: z.string().max(200).optional(), deployBranch: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(),
+        githubRepo: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(),
         agentTeamQueue: z.boolean().optional(), agentsMayClone: z.boolean().optional(),
       }).parse(req.body);
       if (body.discordWebhookUrl === '') body.discordWebhookUrl = null;

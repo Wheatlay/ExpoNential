@@ -59,7 +59,6 @@ export const projects = pgTable('projects', {
   deepModel: text('deep_model').notNull().default(''),
   // Repo GitHub projektu ("owner/name"): lokalna analiza, commity z webhooka i deploye tylko z niego.
   githubRepo: text('github_repo').notNull().default(''),
-  deployBranch: text('deploy_branch').notNull().default('master'),
   // Skąd bierzemy deploye (oznaczane w zadaniach). Pusty = projekt bez śledzenia deployów.
   deploySource: text('deploy_source').$type<'' | 'webhook' | 'github' | 'coolify'>().notNull().default(''),
   // Domyślny widok boardu dla członków (Display + filtry), ustawia admin projektu. null = wartości z kodu.

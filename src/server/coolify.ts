@@ -26,6 +26,15 @@ async function authorOf(repo: string, sha: string | null) {
   return authors.get(sha) ?? null;
 }
 
+/** Gałąź, z której Coolify buduje aplikację (git_branch); każde środowisko ma swoją aplikację, więc i swoją gałąź. */
+async function appBranch(uuid: string) {
+  const res = await fetch(`${API}/api/v1/applications/${uuid}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+  if (!res.ok) throw new Error(`Coolify ${res.status}`);
+  const { git_branch: branch } = (await res.json()) as { git_branch?: string };
+  if (!branch) throw new Error('Coolify app has no git branch');
+  return branch;
+}
+
 async function pollProject(p: typeof projects.$inferSelect, env: DeployEnvRow, log: FastifyInstance['log']) {
   try {
     const res = await fetch(`${API}/api/v1/deployments/applications/${env.sourceRef}?skip=0&take=1`, { headers: { Authorization: `Bearer ${TOKEN}` } });
@@ -77,10 +86,10 @@ export async function registerCoolify(app: FastifyInstance) {
         if (env) { p = x; break; }
       }
       if (!p || !env) return { ignored: true };
-      // Coolify nie zawsze podaje SHA, więc bierzemy aktualny HEAD deployowanej gałęzi.
+      // Coolify nie zawsze podaje SHA: bierzemy HEAD gałęzi, z której buduje się aplikacja TEGO środowiska (prod i stage mają różne).
       const sha = typeof body.commit === 'string' && /^[0-9a-f]{7,40}$/.test(body.commit)
         ? body.commit
-        : ((await github(`/repos/${p.githubRepo}/commits/${p.deployBranch}`)) as { sha: string }).sha;
+        : ((await github(`/repos/${p.githubRepo}/commits/${encodeURIComponent(await appBranch(env.sourceRef))}`)) as { sha: string }).sha;
       const now = new Date().toISOString();
       await reportDeploy(p, { status: 'finished', startedAt: now, finishedAt: now, commit: sha, message: null, author: await authorOf(p.githubRepo, sha) }, app.log, env);
       return { sha };
