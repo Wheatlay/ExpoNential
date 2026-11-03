@@ -363,8 +363,9 @@ export function IssuePage({ number }: { number: number }) {
                 <Icon.commit size={14} />
                 <code style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{c.sha.slice(0, 7)}</code>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 400 }}>{c.message.split('\n')[0]}</span>
-                {c.stagedAt && !c.deployedAt && <span title={t('On stage {when}', { when: fullDate(c.stagedAt) })} style={{ color: 'var(--progress-text)', marginLeft: 'auto' }}><Icon.rocket size={13} /></span>}
-                {c.deployedAt && <span title={t('Deployed {when}', { when: fullDate(c.deployedAt) })} style={{ color: 'var(--success-text)', marginLeft: 'auto' }}><Icon.rocket size={13} /></span>}
+                {/* Stare deployed_at bez wpisów środowisk (np. dane demo) dalej pokazują jedną rakietę produkcji. */}
+                {c.envs.length === 0 && c.deployedAt && <span title={t('Deployed {when}', { when: fullDate(c.deployedAt) })} style={{ color: 'var(--success-text)', marginLeft: 'auto' }}><Icon.rocket size={13} /></span>}
+                {c.envs.map((e, i) => <span key={e.name} title={t('{env} {when}', { env: e.name, when: fullDate(e.at) })} style={{ color: e.isProduction ? 'var(--success-text)' : 'var(--progress-text)', marginLeft: i === 0 ? 'auto' : undefined }}><Icon.rocket size={13} /></span>)}
               </a>
             ))}
           </div>
@@ -474,7 +475,7 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
       const verb = { waits_on: t('waits on'), blocks: t('blocks'), related: t('is related to') }[p.relation];
       return <>{p.action === 'added' ? t('marked that this issue') : t('removed:')} {verb} <a {...linkProps(`/issue/${ident(p.other)}`)}><b>{ident(p.other)}</b></a></>;
     }
-    case 'deploy': return <>{t('changes were')} {p.env === 'stage' ? <b style={{ color: 'var(--progress-text)' }}>{t('deployed to stage')}</b> : <b style={{ color: 'var(--success-text)' }}>{t('deployed')}</b>} (<code>{p.sha.slice(0, 7)}</code>)</>;
+    case 'deploy': return <>{t('changes were')} {p.env ? <b style={{ color: p.prod ? 'var(--success-text)' : 'var(--progress-text)' }}>{t('deployed to {env}', { env: p.env })}</b> : <b style={{ color: 'var(--success-text)' }}>{t('deployed')}</b>} (<code>{p.sha.slice(0, 7)}</code>)</>;
     case 'worklog': return (
       <details className="worklog">
         <summary>{t('worked in Claude Code')}{p.repo ? <> {t('on')} <b>{p.repo}</b></> : ''}: {tn(p.files.length, '{n} file', '{n} files')}, {tn(p.commits.length, '{n} commit', '{n} commits')}</summary>
@@ -488,7 +489,7 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
 
 function eventIcon(p: IssueDetail['activity'][number]['payload']) {
   if (p.kind === 'commit') return <Icon.commit size={14} />;
-  if (p.kind === 'deploy') return <span style={{ color: p.env === 'stage' ? 'var(--progress-text)' : 'var(--success-text)' }}><Icon.rocket size={14} /></span>;
+  if (p.kind === 'deploy') return <span style={{ color: p.env && !p.prod ? 'var(--progress-text)' : 'var(--success-text)' }}><Icon.rocket size={14} /></span>;
   if (p.kind === 'analysis_requested' || p.kind === 'analysis_claimed') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
   if (p.kind === 'worklog') return <span style={{ color: 'var(--ai-text)' }}><Icon.cursor size={14} /></span>;
   return null;

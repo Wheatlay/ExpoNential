@@ -3,10 +3,10 @@ import { timingSafeEqual } from 'node:crypto';
 import type { projects } from '../db/schema.ts';
 import { github } from './hooks.ts';
 import { listAllProjects } from './projects.ts';
-import { reportDeploy, type DeployEnv, type DeployStatus } from './deploys.ts';
+import { reportDeploy, listDeployEnvs, type DeployEnvRow, type DeployStatus } from './deploys.ts';
 
 /**
- * Opcjonalne źródło deployów: Coolify (projekt z deploySource = 'coolify', uuid aplikacji w deploySourceRef).
+ * Opcjonalne źródło deployów: Coolify (projekt z deploySource = 'coolify', uuid aplikacji w sourceRef środowiska).
  * Coolify nie wysyła zdarzenia "deploy started", więc co kilkanaście sekund pytamy jego API. Token jest jeden na serwer.
  */
 const API = process.env.COOLIFY_API_URL;
@@ -26,9 +26,9 @@ async function authorOf(repo: string, sha: string | null) {
   return authors.get(sha) ?? null;
 }
 
-async function pollProject(p: typeof projects.$inferSelect, ref: string, env: DeployEnv, log: FastifyInstance['log']) {
+async function pollProject(p: typeof projects.$inferSelect, env: DeployEnvRow, log: FastifyInstance['log']) {
   try {
-    const res = await fetch(`${API}/api/v1/deployments/applications/${ref}?skip=0&take=1`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    const res = await fetch(`${API}/api/v1/deployments/applications/${env.sourceRef}?skip=0&take=1`, { headers: { Authorization: `Bearer ${TOKEN}` } });
     if (!res.ok) throw new Error(`Coolify ${res.status}`);
     const { deployments } = (await res.json()) as { deployments: { status: string; created_at: string; updated_at: string; commit: string | null; commit_message: string | null }[] };
     const d = deployments[0];
@@ -43,15 +43,14 @@ async function pollProject(p: typeof projects.$inferSelect, ref: string, env: De
       author: await authorOf(p.githubRepo, d.commit),
     }, log, env);
   } catch (e) {
-    log.warn({ err: (e as Error).message, project: p.key, env }, 'deploy status poll failed');
+    log.warn({ err: (e as Error).message, project: p.key, env: env.name }, 'deploy status poll failed');
   }
 }
 
 async function poll(log: FastifyInstance['log']) {
   for (const p of await listAllProjects()) {
     if (p.deploySource !== 'coolify') continue;
-    if (p.deploySourceRef) await pollProject(p, p.deploySourceRef, 'prod', log);
-    if (p.stageSourceRef) await pollProject(p, p.stageSourceRef, 'stage', log);
+    for (const env of await listDeployEnvs(p.id)) if (env.sourceRef) await pollProject(p, env, log);
   }
 }
 
@@ -70,10 +69,14 @@ export async function registerCoolify(app: FastifyInstance) {
       if (!/success/.test(String(body.event ?? body.type ?? text))) return { ignored: true };
       // Powiadomienia Coolify przychodzą dla wszystkich aplikacji na serwerze (też trackera i innych stron).
       // Projekt rozpoznajemy po uuid jego aplikacji; bez dopasowania nic nie oznaczamy.
-      const p = (await listAllProjects()).find((x) => x.deploySource === 'coolify' && x.githubRepo
-        && ((x.deploySourceRef && text.includes(x.deploySourceRef.toLowerCase())) || (x.stageSourceRef && text.includes(x.stageSourceRef.toLowerCase()))));
-      if (!p) return { ignored: true };
-      const env: DeployEnv = p.stageSourceRef && text.includes(p.stageSourceRef.toLowerCase()) ? 'stage' : 'prod';
+      let p: Awaited<ReturnType<typeof listAllProjects>>[number] | undefined;
+      let env: DeployEnvRow | undefined;
+      for (const x of await listAllProjects()) {
+        if (x.deploySource !== 'coolify' || !x.githubRepo) continue;
+        env = (await listDeployEnvs(x.id)).find((e) => e.sourceRef && text.includes(e.sourceRef.toLowerCase()));
+        if (env) { p = x; break; }
+      }
+      if (!p || !env) return { ignored: true };
       // Coolify nie zawsze podaje SHA, więc bierzemy aktualny HEAD deployowanej gałęzi.
       const sha = typeof body.commit === 'string' && /^[0-9a-f]{7,40}$/.test(body.commit)
         ? body.commit

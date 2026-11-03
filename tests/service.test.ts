@@ -451,39 +451,92 @@ describe('reportDeploy', () => {
     await projects.updateProject(web.id, { githubRepo: 'acme/dep', deploySource: 'webhook' });
     const p = (await projects.getProjectByKey('DEP'))!;
     expect(p.deploySource).toBe('webhook');
+    const [prod] = await deploys.saveDeployEnvs(p, [{ name: 'Prod', sourceRef: '', isProduction: true }]);
     const i = await svc.createIssue(p, null, { title: 'deployed' });
     const c = { id: 'dep0001', message: `fix DEP-${i.number}`, url: 'https://x', timestamp: new Date().toISOString(), author: { name: 'K' } };
     expect(await hooks.recordCommits([c], 'acme/dep')).toEqual([`DEP-${i.number}`]);
     const now = new Date().toISOString();
-    await deploys.reportDeploy(p, { status: 'finished', startedAt: now, finishedAt: now, commit: 'dep0001', message: null, author: null });
-    expect(deploys.deployStatusOf(p.id)?.status).toBe('finished');
+    await deploys.reportDeploy(p, { status: 'finished', startedAt: now, finishedAt: now, commit: 'dep0001', message: null, author: null }, undefined, prod);
+    expect(deploys.deployStatusOf(p.id, prod.id)?.status).toBe('finished');
     const [row] = await dbmod.db.select().from(issueCommits).where(eq(issueCommits.sha, 'dep0001'));
     expect(row.deployedAt).toBeInstanceOf(Date);
     expect((await svc.getIssueDetail(p, i.number)).activity.map((a) => a.payload.kind)).toContain('deploy');
   });
 
-  it('a stage deploy sets stagedAt only, prod later sets deployedAt', async () => {
+  it('a non-production deploy marks only its environment, production also sets deployedAt', async () => {
     const deploys = await import('../src/server/deploys.ts');
-    const { issueCommits } = await import('../src/db/schema.ts');
+    const { issueCommits, issueCommitDeploys } = await import('../src/db/schema.ts');
     const { eq } = await import('drizzle-orm');
     const web = await projects.createProject((await member('stager', 'Stager')).id, { key: 'DEPS', name: 'Deploy stage' });
     await projects.updateProject(web.id, { githubRepo: 'acme/deps', deploySource: 'webhook' });
     const p = (await projects.getProjectByKey('DEPS'))!;
+    const [prod, qa] = await deploys.saveDeployEnvs(p, [
+      { name: 'Prod', sourceRef: '', isProduction: true }, { name: 'QA', sourceRef: '', isProduction: false },
+    ]);
     const i = await svc.createIssue(p, null, { title: 'staged' });
     const c = { id: 'stg0001', message: `fix DEPS-${i.number}`, url: 'https://x', timestamp: new Date().toISOString(), author: { name: 'K' } };
     expect(await hooks.recordCommits([c], 'acme/deps')).toEqual([`DEPS-${i.number}`]);
-    const now = new Date().toISOString();
-    const finished = { status: 'finished' as const, startedAt: now, finishedAt: now, commit: 'stg0001', message: null, author: null };
-    await deploys.reportDeploy(p, finished, undefined, 'stage');
-    expect(deploys.deployStatusOf(p.id, 'stage')?.status).toBe('finished');
-    expect(deploys.deployStatusOf(p.id)).toBeNull();
+
+    // Webhook z env "qa" (wielkość liter bez znaczenia) trafia w QA.
+    const hook = { project: 'DEPS', sha: 'stg0001', status: 'finished' as const, env: 'qa' };
+    expect((await hooks.reportDeployHook(hook)).code).toBe(200);
+    expect(deploys.deployStatusOf(p.id, qa.id)?.status).toBe('finished');
+    expect(deploys.deployStatusOf(p.id, prod.id)).toBeNull();
     let [row] = await dbmod.db.select().from(issueCommits).where(eq(issueCommits.sha, 'stg0001'));
-    expect(row.stagedAt).toBeInstanceOf(Date);
     expect(row.deployedAt).toBeNull();
+    let marks = await dbmod.db.select().from(issueCommitDeploys).where(eq(issueCommitDeploys.sha, 'stg0001'));
+    expect(marks.map((m) => m.envId)).toEqual([qa.id]);
     const acts = (await svc.getIssueDetail(p, i.number)).activity.map((a) => a.payload);
-    expect(acts).toContainEqual({ kind: 'deploy', sha: 'stg0001', env: 'stage' });
-    await deploys.reportDeploy(p, finished);
+    expect(acts).toContainEqual({ kind: 'deploy', sha: 'stg0001', env: 'QA' });
+    expect(row.deployedAt).toBeNull();
+
+    // Nieznane środowisko to błąd, brak env to jedyna produkcja.
+    await expect(hooks.reportDeployHook({ ...hook, env: 'nope' })).rejects.toThrow('Unknown environment nope');
+    expect((await hooks.reportDeployHook({ project: 'DEPS', sha: 'stg0001', status: 'finished' })).code).toBe(200);
+    expect(deploys.deployStatusOf(p.id, prod.id)?.status).toBe('finished');
     [row] = await dbmod.db.select().from(issueCommits).where(eq(issueCommits.sha, 'stg0001'));
     expect(row.deployedAt).toBeInstanceOf(Date);
+    marks = await dbmod.db.select().from(issueCommitDeploys).where(eq(issueCommitDeploys.sha, 'stg0001'));
+    expect(marks.map((m) => m.envId).sort()).toEqual([prod.id, qa.id].sort());
+    expect((await svc.getIssueDetail(p, i.number)).commits[0].envs.map((e) => e.name)).toEqual(['Prod', 'QA']);
+  });
+
+  it('saveDeployEnvs validates names and the production marker, and replaces the list', async () => {
+    const deploys = await import('../src/server/deploys.ts');
+    const web = await projects.createProject((await member('envsaver', 'Envsaver')).id, { key: 'DEPV', name: 'Deploy validate' });
+    const p = (await projects.getProjectByKey('DEPV'))!;
+    const e = (name: string, isProduction = false) => ({ name, sourceRef: '', isProduction });
+    await expect(deploys.saveDeployEnvs(p, [e('Prod', true), e('prod')])).rejects.toThrow('Environment names must be unique');
+    await expect(deploys.saveDeployEnvs(p, [e('')])).rejects.toThrow('1-30');
+    expect((await deploys.saveDeployEnvs(p, [e('Prod', true), e('EU', true)])).length).toBe(2);
+    expect(await deploys.saveDeployEnvs(p, [])).toEqual([]);
+    expect(web.id).toBe(p.id);
+    const [prod, qa] = await deploys.saveDeployEnvs(p, [e('Prod', true), e('QA')]);
+    // Zamiana nazw i kolejności oraz usunięcie nieobecnych.
+    const next = await deploys.saveDeployEnvs(p, [{ id: qa.id, name: 'Prod', sourceRef: 'x', isProduction: true }, { id: prod.id, name: 'QA', sourceRef: '', isProduction: false }, e('Stage')]);
+    expect(next.map((x) => [x.id, x.name, x.position])).toEqual([[qa.id, 'Prod', 0], [prod.id, 'QA', 1], [next[2].id, 'Stage', 2]]);
+    expect((await deploys.saveDeployEnvs(p, [{ id: qa.id, name: 'Prod', sourceRef: 'x', isProduction: true }])).length).toBe(1);
+  });
+
+  it('with two production environments deployedAt is set by the first and kept; no env is ambiguous', async () => {
+    const deploys = await import('../src/server/deploys.ts');
+    const { issueCommits, issueCommitDeploys } = await import('../src/db/schema.ts');
+    const { eq } = await import('drizzle-orm');
+    await projects.createProject((await member('twoprod', 'Twoprod')).id, { key: 'DEPB', name: 'Two prod' });
+    await projects.updateProject((await projects.getProjectByKey('DEPB'))!.id, { githubRepo: 'acme/dep2', deploySource: 'webhook' });
+    const p = (await projects.getProjectByKey('DEPB'))!;
+    const [eu, us] = await deploys.saveDeployEnvs(p, [{ name: 'EU', sourceRef: '', isProduction: true }, { name: 'US', sourceRef: '', isProduction: true }]);
+    const i = await svc.createIssue(p, null, { title: 'two prods' });
+    await hooks.recordCommits([{ id: 'two0001', message: `fix DEPB-${i.number}`, url: 'https://x', timestamp: new Date().toISOString(), author: { name: 'K' } }], 'acme/dep2');
+    await expect(hooks.reportDeployHook({ project: 'DEPB', sha: 'two0001', status: 'finished' })).rejects.toThrow('Specify env: one of EU, US');
+    await hooks.reportDeployHook({ project: 'DEPB', sha: 'two0001', status: 'finished', env: 'eu' });
+    const [first] = await dbmod.db.select().from(issueCommits).where(eq(issueCommits.sha, 'two0001'));
+    expect(first.deployedAt).toBeInstanceOf(Date);
+    await new Promise((r) => setTimeout(r, 20));
+    await hooks.reportDeployHook({ project: 'DEPB', sha: 'two0001', status: 'finished', env: 'US' });
+    const [second] = await dbmod.db.select().from(issueCommits).where(eq(issueCommits.sha, 'two0001'));
+    expect(second.deployedAt).toEqual(first.deployedAt);
+    const marks = await dbmod.db.select().from(issueCommitDeploys).where(eq(issueCommitDeploys.sha, 'two0001'));
+    expect(marks.map((m) => m.envId).sort()).toEqual([eu.id, us.id].sort());
   });
 });

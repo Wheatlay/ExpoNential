@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql as dsql } from 'drizzle-orm';
 import { db, sql, type Tx } from '../db/index.ts';
 import {
-  activity, comments, inboxItems, issueCommits, issueLabels, issueViews, issues, labels, projectMembers, projects, sprints, statuses, userTagMembers, userTags, users,
+  activity, comments, deployEnvs, inboxItems, issueCommitDeploys, issueCommits, issueLabels, issueViews, issues, labels, projectMembers, projects, sprints, statuses, userTagMembers, userTags, users,
   type ActivityPayload,
 } from '../db/schema.ts';
 import { RuleError, identifier, isEmail, isNeedInfo, PRIORITIES } from './rules.ts';
@@ -120,6 +120,12 @@ export async function getIssueDetail(p: Project, number: number) {
       : Promise.resolve([]),
   ]);
   const relations = await relationsOf(issue.id);
+  // Gdzie każdy commit już działa: jedno środowisko = jedna rakieta, w kolejności środowisk projektu.
+  const envRows = await db.select({ sha: issueCommitDeploys.sha, name: deployEnvs.name, at: issueCommitDeploys.at, isProduction: deployEnvs.isProduction })
+    .from(issueCommitDeploys).innerJoin(deployEnvs, eq(deployEnvs.id, issueCommitDeploys.envId))
+    .where(eq(issueCommitDeploys.issueId, issue.id)).orderBy(asc(deployEnvs.position), asc(deployEnvs.id));
+  const envsByCommit = new Map<string, { name: string; at: Date; isProduction: boolean }[]>();
+  for (const r of envRows) envsByCommit.set(r.sha, [...(envsByCommit.get(r.sha) ?? []), { name: r.name, at: r.at, isProduction: r.isProduction }]);
   return {
     ...issue,
     identifier: identifier(p.key, issue.number),
@@ -129,7 +135,7 @@ export async function getIssueDetail(p: Project, number: number) {
     children,
     comments: cmts,
     activity: act,
-    commits,
+    commits: commits.map((c) => ({ ...c, envs: envsByCommit.get(c.sha) ?? [] })),
   };
 }
 

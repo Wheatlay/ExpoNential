@@ -69,15 +69,15 @@ type Deploy = { status: string; startedAt: string | null; finishedAt: string | n
 
 /** Status deployu aplikacji bieżącego projektu: trwa / udany / nieudany, odświeżany na żywo przez SSE. */
 export function DeployStatus() {
-  const q = useQuery({ queryKey: ['deploy'], queryFn: () => api<{ enabled: boolean; deploy: Deploy; stage: Deploy }>('/api/deploy-status'), refetchInterval: 60_000 });
+  const q = useQuery({ queryKey: ['deploy'], queryFn: () => api<{ enabled: boolean; envs: { id: number; name: string; isProduction: boolean; deploy: Deploy }[] }>('/api/deploy-status'), refetchInterval: 60_000 });
   const [, tick] = useState(0);
   useEffect(() => { const t = setInterval(() => tick((x) => x + 1), 15_000); return () => clearInterval(t); }, []);
-  const { deploy, stage } = q.data ?? {};
-  if (!q.data?.enabled || (!deploy && !stage)) return null;
+  const envs = q.data?.envs ?? [];
+  const shown = envs.filter((e) => e.deploy);
+  if (!q.data?.enabled || !shown.length) return null;
   return (
     <>
-      {stage && <DeployCard d={stage} env={t('Stage')} />}
-      {deploy && <DeployCard d={deploy} env={stage ? t('Prod') : null} />}
+      {shown.map((e) => <DeployCard key={e.id} d={e.deploy!} env={envs.length > 1 ? e.name : null} />)}
     </>
   );
 }

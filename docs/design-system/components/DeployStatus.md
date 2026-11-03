@@ -1,4 +1,4 @@
-Status ostatniego deployu projektu w pasku bocznym; stan wyrażony kolorem kropki i ramki, słowo w `title` i `aria-label`.
+Status ostatniego deployu każdego środowiska projektu w pasku bocznym (jedna karta na środowisko, kolejność jak w Ustawieniach; nazwa środowiska w karcie, gdy jest ich więcej niż jedno); stan wyrażony kolorem kropki i ramki, słowo w `title` i `aria-label`.
 
 - `finished` success, `in_progress`/`queued` progress (kropka pulsuje), `failed` danger z tłem.
 - Treść: czas względny · autor commita (pogrubiony), pod spodem wiadomość commita (maks. 2 linie).

@@ -1,13 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { activity, deploys, issueCommits, issues, projects } from '../db/schema.ts';
-import { extractIssueRefs, identifier } from './rules.ts';
+import { activity, deploys, issueCommitDeploys, issueCommits, issues, projects } from '../db/schema.ts';
+import { extractIssueRefs, identifier, RuleError } from './rules.ts';
 import { publish } from './service.ts';
 import { z } from 'zod';
 import { getProjectByKey, listAllProjects, type Project } from './projects.ts';
-import { reportDeploy, type DeployEnv, type DeployStatus } from './deploys.ts';
+import { reportDeploy, listDeployEnvs, findDeployEnv, type DeployEnvRow, type DeployStatus } from './deploys.ts';
 
 type GhCommit = { id: string; message: string; url: string; timestamp: string; author: { name: string; username?: string } };
 
@@ -62,13 +62,13 @@ export async function github(path: string) {
 }
 
 /**
- * Udany deploy: commity od poprzedniego deployu dostają deployed_at (stage: staged_at), a ich zadania wpis "Deployed".
- * Prod i stage mają osobną historię deployów.
+ * Udany deploy: commity od poprzedniego deployu dostają wpis w issue_commit_deploys (na produkcji też deployed_at), a ich zadania wpis "Deployed".
+ * Każde środowisko ma osobną historię deployów.
  * Status zadania się nie zmienia (decyzja zespołu).
  */
-export async function recordDeploy(p: Project, sha: string, env: DeployEnv = 'prod') {
+export async function recordDeploy(p: Project, sha: string, env: DeployEnvRow) {
   if (!p.githubRepo) return [];
-  const [prev] = await db.select().from(deploys).where(and(eq(deploys.projectId, p.id), eq(deploys.env, env))).orderBy(desc(deploys.at)).limit(1);
+  const [prev] = await db.select().from(deploys).where(and(eq(deploys.projectId, p.id), eq(deploys.envId, env.id))).orderBy(desc(deploys.at)).limit(1);
   if (prev?.sha === sha) return [];
   let shas: string[] = [sha];
   if (prev) {
@@ -80,19 +80,22 @@ export async function recordDeploy(p: Project, sha: string, env: DeployEnv = 'pr
       // Poprzedni SHA zniknął (force-push): zapisujemy deploy mimo to, inaczej każdy kolejny też by padł.
     }
   }
-  await db.insert(deploys).values({ projectId: p.id, sha, env });
+  await db.insert(deploys).values({ projectId: p.id, sha, envId: env.id });
   if (!shas.length) return [];
 
   const now = new Date();
-  const col = env === 'stage' ? issueCommits.stagedAt : issueCommits.deployedAt;
-  const rows = await db.update(issueCommits).set(env === 'stage' ? { stagedAt: now } : { deployedAt: now })
-    .where(and(inArray(issueCommits.sha, shas), isNull(col),
-      inArray(issueCommits.issueId, db.select({ id: issues.id }).from(issues).where(eq(issues.projectId, p.id)))))
-    .returning({ issueId: issueCommits.issueId });
+  const inProject = inArray(issueCommits.issueId, db.select({ id: issues.id }).from(issues).where(eq(issues.projectId, p.id)));
+  // Znacznik środowiska: powtórny deploy tego samego commita niczego nie dubluje (klucz główny).
+  const rows = await db.insert(issueCommitDeploys)
+    .select(db.select({ issueId: issueCommits.issueId, sha: issueCommits.sha, envId: dsql<number>`${env.id}::int`.as('env_id'), at: dsql<Date>`${now.toISOString()}::timestamptz`.as('at') })
+      .from(issueCommits).where(and(inArray(issueCommits.sha, shas), inProject)))
+    .onConflictDoNothing().returning({ issueId: issueCommitDeploys.issueId });
+  // deployed_at znaczy "pierwszy raz na którejkolwiek produkcji" (bramka Done itd.); kolejna produkcja go nie nadpisuje.
+  if (env.isProduction) await db.update(issueCommits).set({ deployedAt: now }).where(and(inArray(issueCommits.sha, shas), isNull(issueCommits.deployedAt), inProject));
   const issueIds = [...new Set(rows.map((r) => r.issueId))];
   const touched: string[] = [];
   for (const issueId of issueIds) {
-    await db.insert(activity).values({ issueId, actorId: null, createdAt: now, payload: env === 'stage' ? { kind: 'deploy', sha, env: 'stage' } : { kind: 'deploy', sha } });
+    await db.insert(activity).values({ issueId, actorId: null, createdAt: now, payload: { kind: 'deploy', sha, env: env.name, ...(env.isProduction ? { prod: true as const } : {}) } });
     const [i] = await db.select({ number: issues.number, projectKey: projects.key }).from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId)).where(eq(issues.id, issueId));
     touched.push(identifier(i.projectKey, i.number));
@@ -105,7 +108,8 @@ export const deployHookBody = z.object({
   project: z.string().min(1), sha: z.string().min(1).max(100),
   status: z.enum(['queued', 'in_progress', 'finished', 'failed']).default('finished'),
   message: z.string().max(500).optional(), author: z.string().max(200).optional(),
-  env: z.enum(['prod', 'stage']).default('prod'),
+  // Nazwa środowiska (bez względu na wielkość liter); brak = produkcyjne.
+  env: z.string().optional(),
 });
 
 type Log = { warn: (o: unknown, m: string) => void };
@@ -115,9 +119,14 @@ export async function reportDeployHook(body: z.infer<typeof deployHookBody>, log
   const p = await getProjectByKey(body.project);
   if (!p) return { code: 404, body: { error: 'Project not found' } };
   if (p.deploySource !== 'webhook') return { code: 409, body: { error: 'Project deploy source is not webhook' } };
+  const env = await findDeployEnv(p.id, body.env);
+  if (!env) {
+    if (body.env) throw new RuleError(`Unknown environment ${body.env}`, 'invalid');
+    return { code: 200, body: { ignored: true } };
+  }
   const now = new Date().toISOString();
   const done = body.status === 'finished' || body.status === 'failed';
-  await reportDeploy(p, { status: body.status, startedAt: now, finishedAt: done ? now : null, commit: body.sha, message: body.message ?? null, author: body.author ?? null }, log, body.env);
+  await reportDeploy(p, { status: body.status, startedAt: now, finishedAt: done ? now : null, commit: body.sha, message: body.message ?? null, author: body.author ?? null }, log, env);
   return { code: 200, body: { ok: true } };
 }
 
@@ -138,8 +147,9 @@ export async function reportGithubDeployment(
   for (const p of await listAllProjects()) {
     if (p.deploySource !== 'github' || p.githubRepo.toLowerCase() !== repo) continue;
     const environment = body.deployment?.environment;
-    const env: DeployEnv | null = p.stageSourceRef && p.stageSourceRef === environment ? 'stage'
-      : (!p.deploySourceRef || p.deploySourceRef === environment) ? 'prod' : null;
+    const envs = await listDeployEnvs(p.id);
+    const env = envs.find((e) => e.sourceRef && environment && e.sourceRef.toLowerCase() === environment.toLowerCase())
+      ?? (envs.filter((e) => e.isProduction && !e.sourceRef).length === 1 ? envs.find((e) => e.isProduction && !e.sourceRef) : undefined);
     if (!env) continue;
     const now = new Date().toISOString();
     const done = status === 'finished' || status === 'failed';
@@ -175,7 +185,7 @@ export async function registerHooks(app: FastifyInstance) {
       if (!secret || !safeEqual(given, secret)) return reply.code(401).send({ error: 'Bad secret' });
       const parsed = deployHookBody.safeParse(JSON.parse((req.body as Buffer).toString('utf8') || '{}'));
       if (!parsed.success) return reply.code(400).send({ error: 'Invalid body' });
-      const res = await reportDeployHook(parsed.data, req.log);
+      const res = await reportDeployHook(parsed.data, req.log).catch((e) => { if (e instanceof RuleError) return { code: 400, body: { error: e.message } }; throw e; });
       return reply.code(res.code).send(res.body);
     });
   });

@@ -428,6 +428,11 @@ textarea.md-edit {
 .settings .settings-title { font-size: var(--text-xl); margin: 4px 0 14px; }
 .settings-lead { margin: -6px 0 14px; }
 .s-label { width: 140px; flex-shrink: 0; }
+/* Lista pod nagłówkiem (np. środowiska deployu): wiersze w kolumnie pól, bez kresek, jedna kreska po ostatnim. */
+.s-row.s-group-head { border-bottom: 0; }
+.s-row.s-sub { border-bottom: 0; padding-top: 0; min-height: 0; padding-left: calc(14px + 140px + 10px); }
+.s-row.s-sub.last { border-bottom: 1px solid var(--border-primary); padding-bottom: 12px; }
+@media (max-width: 760px) { .s-row.s-sub { padding-left: 28px; } }
 .s-hint { flex-basis: 100%; }
 /* Nagłówek karty ustawień: inne tło niż wiersze, żeby nie wyglądał jak kolejna pozycja listy. */
 .s-row-head { min-height: 40px; background: var(--bg-tertiary); }

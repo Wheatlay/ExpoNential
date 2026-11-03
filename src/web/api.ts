@@ -57,7 +57,7 @@ export type ActivityPayload =
   | { kind: 'sprint'; to: string | null }
   | { kind: 'parent'; to: number | null }
   | { kind: 'commit'; sha: string; message: string; url: string; author: string }
-  | { kind: 'deploy'; sha: string; env?: 'stage' }
+  | { kind: 'deploy'; sha: string; env?: string; prod?: true }
   | { kind: 'worklog'; session: string; repo: string; files: string[]; commits: { sha: string; message: string }[]; prompts: string[]; updatedAt: string }
   | { kind: 'question'; to: string; question: string }
   | { kind: 'answered'; by: string; backTo: string | null }
@@ -90,7 +90,7 @@ export type IssueDetail = {
   activity: { id: number; actorId: number | null; viaAi: boolean; payload: ActivityPayload; createdAt: string }[];
   relations: { waitingOn: RelatedIssue[]; blocking: RelatedIssue[]; related: RelatedIssue[] };
   lastSeenAt: string | null;
-  commits: { sha: string; message: string; url: string; author: string; committedAt: string; deployedAt: string | null; stagedAt: string | null }[];
+  commits: { sha: string; message: string; url: string; author: string; committedAt: string; deployedAt: string | null; envs: { name: string; at: string; isProduction: boolean }[] }[];
 };
 
 export type IssuePatch = Partial<{

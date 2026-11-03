@@ -137,7 +137,7 @@ function goToSetting(h: Hint) {
   if (!h.target) return;
   // Po przełączeniu sekcji karta jest w DOM w następnej klatce.
   setTimeout(() => {
-    // Wiersz bywa niewyrenderowany (np. Prod bez źródła deployów): wtedy podświetlamy pierwszą kartę sekcji.
+    // Wiersz bywa niewyrenderowany (np. Środowiska bez źródła deployów): wtedy podświetlamy pierwszą kartę sekcji.
     const el = document.getElementById(h.target!) ?? document.querySelector<HTMLElement>('.settings-inner .s-card');
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -209,8 +209,7 @@ const SEARCH: SearchEntry[] = [
   // Projekt › Integracje
   { label: t('GitHub repo'), to: 'integrations', target: 'github-repo', keywords: ['commit', 'repo', 'github', 'repozytorium'] },
   { label: t('Deploys'), to: 'integrations', target: 'deploys', keywords: ['branch', 'wdrozenia', 'deploy', 'source', 'zrodlo', 'webhook', 'coolify', 'github deployments'] },
-  { label: t('Prod'), to: 'integrations', target: 'deploy-prod', keywords: ['production', 'produkcja', 'coolify', 'app', 'deploy', 'uuid', 'environment'] },
-  { label: t('Stage'), to: 'integrations', target: 'deploy-stage', keywords: ['staging', 'test', 'coolify', 'app', 'deploy', 'uuid', 'environment'] },
+  { label: t('Environments'), to: 'integrations', target: 'deploy-envs', keywords: ['prod', 'stage', 'production', 'produkcja', 'staging', 'qa', 'coolify', 'deploy', 'srodowisko', 'środowisko'] },
   { label: 'Discord webhook', to: 'integrations', target: 'discord', keywords: ['channel', 'kanal', 'webhook', 'powiadomienia', 'notifications'] },
   { label: t('Meeting place'), to: 'integrations', target: 'meeting-place', keywords: ['teams', 'meet', 'link', 'spotkanie', 'meeting', 'miejsce'] },
   // Projekt › Agent AI
@@ -462,7 +461,7 @@ type ProjectDetail = {
   id: number; key: string; name: string; color: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
-  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; deploySourceRef: string; stageSourceRef: string; agentTeamQueue: boolean;
+  githubRepo: string; deployBranch: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean;
   defaultModels: { analyze: string; deep: string };
   role: 'admin' | 'member'; canEdit: boolean;
   members: { id: number; login: string; name: string; avatarUrl: string | null; active: boolean; role: 'admin' | 'member' }[];
@@ -543,6 +542,58 @@ function ProjectGeneral() {
   );
 }
 
+type DeployEnvRow = { id?: number; name: string; sourceRef: string; isProduction: boolean };
+
+/** Środowiska deployu: każda zmiana wysyła całą listę (PUT), kolejność wierszy = kolejność w pasku bocznym. */
+function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deploySource']; projectKey: string; ro: string | null }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['deploy-envs', projectKey], queryFn: () => api<DeployEnvRow[]>('/api/deploy-envs') });
+  const envs = q.data ?? [];
+  const save = (next: DeployEnvRow[]) => api<DeployEnvRow[]>('/api/deploy-envs', { method: 'PUT', body: { envs: next } })
+    .then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['deploy-envs', projectKey] }); void qc.invalidateQueries({ queryKey: ['deploy'] }); })
+    // Odrzucony zapis: pola wracają do wartości z serwera (nowy key = świeże defaultValue).
+    .catch((e: Error) => { toast(e.message, 'err'); setRev((r) => r + 1); void qc.invalidateQueries({ queryKey: ['deploy-envs', projectKey] }); });
+  const [rev, setRev] = useState(0);
+  const edit = (i: number, part: Partial<DeployEnvRow>) => save(envs.map((e, j) => (j === i ? { ...e, ...part } : e)));
+  const add = () => {
+    const name = envs.some((e) => e.name.toLowerCase() === 'stage') ? t('Env {n}', { n: envs.length + 1 }) : t('Stage');
+    return save([...envs, { name, sourceRef: '', isProduction: false }]);
+  };
+  const ph = source === 'coolify' ? t('Coolify app UUID') : t('GitHub environment');
+  return (
+    <>
+      <div id="deploy-envs" className={`s-row ${envs.length ? 's-group-head' : ''}`}>
+        <Tooltip text={t('Each environment shows its own box in the sidebar and its own rocket on commits.')}><span className="s-label">{t('Environments')}</span></Tooltip>
+        {source === 'webhook'
+          ? <code className="hint grow">{`curl -X POST ${location.origin}/hooks/deploy -H "X-Webhook-Secret: …" -d '{"project":"${projectKey}","sha":"…","env":"${envs[0]?.name ?? 'Prod'}"}'`}</code>
+          : <span className="grow" />}
+        <Tooltip text={ro}><button className="btn sm" disabled={!!ro} onClick={() => void add()}><Icon.plus size={13} /> {t('Add environment')}</button></Tooltip>
+      </div>
+      {/* Środowiska wcięte pod nagłówkiem (kolumna pól), bez kresek między nimi: widać, że to jedna lista. */}
+      {envs.map((e, i) => (
+        <div key={e.id} className={`s-row s-sub ${i === envs.length - 1 ? 'last' : ''}`}>
+          <input className="input" style={{ width: 140 }} key={`${e.name}-${rev}`} disabled={!!ro} maxLength={30} defaultValue={e.name} aria-label={t('Environment name')}
+            onBlur={(ev) => ev.target.value.trim() && ev.target.value.trim() !== e.name && void edit(i, { name: ev.target.value.trim() })} />
+          {source !== 'webhook' ? (
+            <input className="input grow" key={`${e.sourceRef}-${rev}`} disabled={!!ro} placeholder={ph} defaultValue={e.sourceRef} aria-label={ph}
+              onBlur={(ev) => ev.target.value.trim() !== e.sourceRef && void edit(i, { sourceRef: ev.target.value.trim() })} />
+          ) : <span className="grow" />}
+          <Tooltip text={ro}>
+            <span className="hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button className={`switch ${e.isProduction ? 'on' : ''}`} role="switch" aria-checked={e.isProduction} aria-label={t('Production')} disabled={!!ro}
+                onClick={() => void edit(i, { isProduction: !e.isProduction })} />
+              {t('Production')}
+            </span>
+          </Tooltip>
+          <button className="icon-btn" disabled={!!ro} aria-label={t('Remove')} title={ro ?? t('Remove')} onClick={() => void askConfirm({
+            title: t('Remove {name}?', { name: e.name }), body: t('Its deploy history stays, commits lose this marker.'), action: t('Remove'), danger: true,
+          }).then((ok) => { if (ok) void save(envs.filter((_, j) => j !== i)); })}><Icon.trash size={14} /></button>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function ProjectIntegrations() {
   const c = useProject();
   const demo = !!useMe().data?.demo;
@@ -567,7 +618,7 @@ function ProjectIntegrations() {
         </Tooltip>
         <Tooltip text={ro}>
           <select className="input" value={p.deploySource} disabled={!!ro} aria-label={t('Deploy status source')}
-            onChange={(e) => void patch({ deploySource: e.target.value as ProjectDetail['deploySource'], deploySourceRef: '', stageSourceRef: '' })}>
+            onChange={(e) => void patch({ deploySource: e.target.value as ProjectDetail['deploySource'] })}>
             <option value="">{t('None')}</option>
             <option value="webhook">{t('Webhook')}</option>
             <option value="github">{t('GitHub Deployments')}</option>
@@ -581,24 +632,7 @@ function ProjectIntegrations() {
             : t('Pick where deploys are reported from. None: no deploy tracking.')}
         </span>
       </div>
-      {p.deploySource && (['prod', 'stage'] as const).map((env) => {
-        const field = env === 'prod' ? 'deploySourceRef' : 'stageSourceRef';
-        const ph = p.deploySource === 'coolify' ? t('Coolify application UUID') : env === 'prod' ? t('Environment (optional)') : t('Environment');
-        return (
-          <div key={env} id={env === 'prod' ? 'deploy-prod' : 'deploy-stage'} className="s-row">
-            <span className="s-label">{env === 'prod' ? t('Prod') : t('Stage')}</span>
-            {p.deploySource === 'webhook'
-              ? <code className="hint">{`curl -X POST ${location.origin}/hooks/deploy -H "X-Webhook-Secret: …" -d '{"project":"${p.key}","sha":"…"${env === 'stage' ? ',"env":"stage"' : ''}}'`}</code>
-              : (
-                <Tooltip text={ro}>
-                  <input className="input grow" key={p[field]} disabled={!!ro} placeholder={ph} defaultValue={p[field]} aria-label={`${env === 'prod' ? t('Prod') : t('Stage')}: ${ph}`}
-                    onBlur={(e) => e.target.value.trim() !== p[field] && void patch({ [field]: e.target.value.trim() })} />
-                </Tooltip>
-              )}
-            {env === 'stage' && p.deploySource !== 'webhook' && <span className="hint s-hint">{t('Empty: no stage.')}</span>}
-          </div>
-        );
-      })}
+      {p.deploySource && <DeployEnvs source={p.deploySource} projectKey={p.key} ro={ro} />}
       <div className="s-row" id="discord">
         <span className="s-label">Discord webhook</span>
         <Tooltip text={ro}>

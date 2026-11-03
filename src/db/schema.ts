@@ -62,10 +62,6 @@ export const projects = pgTable('projects', {
   deployBranch: text('deploy_branch').notNull().default('master'),
   // Skąd bierzemy deploye (oznaczane w zadaniach). Pusty = projekt bez śledzenia deployów.
   deploySource: text('deploy_source').$type<'' | 'webhook' | 'github' | 'coolify'>().notNull().default(''),
-  // Odnośnik źródła: github = środowisko (opcjonalne), coolify = uuid aplikacji.
-  deploySourceRef: text('deploy_source_ref').notNull().default(''),
-  // Odnośnik źródła dla stage (github = środowisko, coolify = uuid aplikacji stage). Pusty = bez stage; webhook podaje env w body.
-  stageSourceRef: text('stage_source_ref').notNull().default(''),
   // Domyślny widok boardu dla członków (Display + filtry), ustawia admin projektu. null = wartości z kodu.
   defaultView: jsonb('default_view').$type<Record<string, unknown>>(),
   // Ostatnio nadany numer zgłoszenia: numer usuniętego zgłoszenia nie wraca do obiegu.
@@ -230,7 +226,7 @@ export type ActivityPayload =
   | { kind: 'sprint'; to: string | null }
   | { kind: 'parent'; to: number | null }
   | { kind: 'commit'; sha: string; message: string; url: string; author: string }
-  | { kind: 'deploy'; sha: string; env?: 'stage' }
+  | { kind: 'deploy'; sha: string; env?: string; prod?: true }
   | { kind: 'worklog'; session: string; repo: string; files: string[]; commits: { sha: string; message: string }[]; prompts: string[]; updatedAt: string }
   | { kind: 'question'; to: string; question: string }
   | { kind: 'answered'; by: string; backTo: string | null }
@@ -253,16 +249,35 @@ export const issueCommits = pgTable('issue_commits', {
   author: text('author').notNull(),
   committedAt: timestamp('committed_at', { withTimezone: true }).notNull(),
   deployedAt: timestamp('deployed_at', { withTimezone: true }),
-  stagedAt: timestamp('staged_at', { withTimezone: true }),
 }, (t) => [primaryKey({ columns: [t.issueId, t.sha] }), index('issue_commits_sha_idx').on(t.sha)]);
 
 export const deploys = pgTable('deploys', {
   id: serial('id').primaryKey(),
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
   sha: text('sha').notNull(),
-  env: text('env').$type<'prod' | 'stage'>().notNull().default('prod'),
+  // Skasowane środowisko zostawia historię deployów bez envId.
+  envId: integer('env_id').references(() => deployEnvs.id, { onDelete: 'set null' }),
   at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Środowiska deployu projektu (Prod, Stage, QA...), w kolejności position; dokładnie jedno produkcyjne. */
+export const deployEnvs = pgTable('deploy_envs', {
+  id: serial('id').primaryKey(),
+  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  // Odnośnik źródła: github = środowisko, coolify = uuid aplikacji, webhook = nazwa w body (env).
+  sourceRef: text('source_ref').notNull().default(''),
+  position: integer('position').notNull().default(0),
+  isProduction: boolean('is_production').notNull().default(false),
+}, (t) => [uniqueIndex('deploy_envs_project_name_idx').on(t.projectId, sql`lower(${t.name})`)]);
+
+/** Które commity trafiły na które środowisko (deployed_at w issue_commits znaczy: na produkcji). */
+export const issueCommitDeploys = pgTable('issue_commit_deploys', {
+  issueId: integer('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
+  sha: text('sha').notNull(),
+  envId: integer('env_id').notNull().references(() => deployEnvs.id, { onDelete: 'cascade' }),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.issueId, t.sha, t.envId] })]);
 
 export const sessions = pgTable('sessions', {
   id: text('id').primaryKey(),
