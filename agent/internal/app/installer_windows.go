@@ -53,8 +53,9 @@ func centerWindow(hwnd uintptr) {
 }
 
 // runInstallerWindow shows the branded installer window and blocks until it closes.
+// mode: "" = install / connected; "uninstall" = ask first; "uninstall-run" = uninstall right away.
 // It returns false when the window could not be created (WebView2 runtime missing), so the caller falls back.
-func runInstallerWindow() (shown bool) {
+func runInstallerWindow(mode string) (shown bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			logf("installer window: %v", r)
@@ -94,6 +95,13 @@ func runInstallerWindow() (shown bool) {
 
 	_ = w.Bind("info", func() installInfo {
 		go func() {
+			if mode != "" {
+				cfg := loadConfig()
+				info := installInfo{Lang: uiLang(), State: mode, User: cfg.UserName, Host: hostOf(cfg.URL)}
+				b, _ := json.Marshal(info)
+				push("setInfo(" + string(b) + ")")
+				return
+			}
 			info, c := prepareInstall()
 			mu.Lock()
 			ctx = c

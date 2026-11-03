@@ -465,6 +465,13 @@ export const pushSubscriptions = pgTable('push_subscriptions', {
 });
 
 /** Komputer z agentem (tracker-agent.ps1): id to deviceId (GUID) z config.json na tym PC. */
+/** Ślad po usuniętym komputerze: przez godzinę odpytanie z tym id nie odtwarza wpisu (agent zatrzymywany przy odinstalowaniu jeszcze odpytuje). */
+export const agentTombstones = pgTable('agent_tombstones', {
+  id: text('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const agents = pgTable('agents', {
   id: text('id').primaryKey(),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

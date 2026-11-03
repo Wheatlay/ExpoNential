@@ -21,7 +21,10 @@ const DEFAULT_EXE_URL = 'https://github.com/Wheatlay/ExpoNential/releases/latest
 type Fetcher = (url: string, init?: { headers?: Record<string, string> }) => Promise<Response>;
 let fetcher: Fetcher = (url, init) => fetch(url, { redirect: 'follow', ...init });
 let exeUrl = process.env.AGENT_EXE_URL || DEFAULT_EXE_URL;
-let cache: { bytes: Buffer; etag: string | null; at: number } | null = null;
+let cache: { bytes: Buffer; etag: string | null; at: number; version: string } | null = null;
+
+/** Wersja z adresu, pod który przekierowuje GitHub (…/download/agent-v0.4.0/…): trafia do nazwy pobieranego pliku. */
+export const versionFromUrl = (u: string) => /agent-v(\d+\.\d+\.\d+)/.exec(u)?.[1] ?? '';
 
 /** Tylko dla testów: podmiana pobierania z GitHuba. */
 export function setAgentExeSource(opts: { fetcher?: Fetcher; url?: string } | null) {
@@ -35,7 +38,7 @@ async function agentExe(): Promise<Buffer> {
   const res = await fetcher(exeUrl, cache?.etag ? { headers: { 'If-None-Match': cache.etag } } : undefined);
   if (res.status === 304 && cache) { cache.at = Date.now(); return cache.bytes; }
   if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
-  cache = { bytes: Buffer.from(await res.arrayBuffer()), etag: res.headers.get('etag'), at: Date.now() };
+  cache = { bytes: Buffer.from(await res.arrayBuffer()), etag: res.headers.get('etag'), at: Date.now(), version: versionFromUrl(res.url ?? '') };
   return cache.bytes;
 }
 
@@ -73,7 +76,7 @@ export async function registerPairing(app: FastifyInstance) {
     }
     const token = `pair_${randomBytes(24).toString('base64url')}`;
     await db.insert(agentPairings).values({ hash: sha256(token), userId: req.user.id, expiresAt: new Date(Date.now() + PAIR_MS) });
-    return reply.type('application/octet-stream').header('Content-Disposition', 'attachment; filename="exponential-agent.exe"')
+    return reply.type('application/octet-stream').header('Content-Disposition', `attachment; filename="exponential-agent${cache?.version ? '-' + cache.version : ''}.exe"`)
       .header('Cache-Control', 'no-store').send(Buffer.concat([exe, pairingTrailer({ url: BASE_URL, pairing: token, engine, goal })]));
   });
 

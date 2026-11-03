@@ -202,8 +202,7 @@ func machineID() string {
 
 func uninstallAll() (bool, error) {
 	target := installedPath()
-	forgot := forgetOnServer()
-	stopAgent(target)
+	forgot := stopAndForget(target) // stop first: a running agent would re-create the device with its next poll
 	autostartOff()
 	_ = registry.DeleteKey(registry.CURRENT_USER, uninstallKey)
 	_ = registry.DeleteKey(registry.CURRENT_USER, `Software\Classes\AppUserModelId\Exponential agent`)

@@ -152,9 +152,13 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 	}
 	_ = os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o644)
 	claimed, failMsg, requeue := false, "", false
+	forName, recorded := "", false // requester name when the run is for someone else; the run is in runs.json
 	cleanup := func() {}
 	defer func() {
 		cleanup()
+		if claimed && failMsg != "" && !recorded {
+			appendRun(runRecord{Key: key, For: forName, Result: runFail, Reason: cut(failMsg, 160)})
+		}
 		_ = os.Remove(lock)
 		// Release only after an error. After code 0 NOT: if the engine ran but saved nothing, the job should go to
 		// Stalled, not back to the queue forever (every run is paid usage).
@@ -204,6 +208,7 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 	claimed = true
 	if claim.Requester != nil {
 		if own := ownUserID(a); own != 0 && claim.Requester.ID != own && claim.Requester.Name != "" {
+			forName = claim.Requester.Name
 			setAnalyzing(key, claim.Requester.Name)
 			notifyOther(key, claim.Requester.Name)
 		}
@@ -313,6 +318,19 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 		code, usage, f := runEngine(runOpts{engine: engine, bin: bin, prompt: res.Prompt, model: model, untrusted: entry.Source == "clone", cwd: dir, base: a.Base, auth: a.Auth, activeAccount: acct})
 		logf("end %s (code %d)", key, code)
 		reportRun(a, deviceID, key, "analyze", engine, model, started, code, usage)
+		rec := runRecord{Key: key, For: forName, Engine: engine, Model: model, Duration: time.Since(started).Milliseconds(), Tokens: usageTokens(usage), Result: runOK}
+		if engine == "claude" {
+			rec.Account = accountName(acct)
+		}
+		if code != 0 {
+			if engine == "claude" && f.Limit {
+				rec.Result = runLimit
+			} else {
+				rec.Result, rec.Reason = runFail, cut(failMessage(engine, code, f), 160)
+			}
+		}
+		appendRun(rec)
+		recorded = true
 		if code == 0 {
 			return
 		}
@@ -389,6 +407,13 @@ func startJob(a *Auth, id int, deviceID string) error {
 	logf("start work %s", claim.Key)
 	openURLRaw(link)
 	reportRun(a, deviceID, claim.Key, "start", "claude", "", started, 0, nil)
+	rec := runRecord{Key: claim.Key, Engine: "claude", Duration: time.Since(started).Milliseconds(), Result: runOK}
+	if claim.Requester != nil && claim.Requester.ID != 0 {
+		if own := ownUserID(a); own != 0 && claim.Requester.ID != own {
+			rec.For = claim.Requester.Name
+		}
+	}
+	appendRun(rec)
 	return nil
 }
 
@@ -414,6 +439,7 @@ func cmdStart() {
 	runWithTray(func() {
 		go updateLoop()
 		go cleanupOldExe()
+		go showUpdatedCard()
 		go refreshAppVersion()
 		pollLoop()
 	})

@@ -65,6 +65,7 @@ func runWithTray(loop func()) {
 				it.Uncheck()
 			}
 		}
+		dotShown := false
 		// sync brings every item in line with config and live state (called after any change, also from the settings window).
 		sync := func() {
 			c := loadConfig()
@@ -87,6 +88,18 @@ func runWithTray(loop func()) {
 				upd.Show()
 			} else {
 				upd.Hide()
+			}
+			// the accent dot on the tray icon while a newer release exists
+			if want := uv != ""; want != dotShown {
+				if want {
+					if d := iconDotICO(); len(d) > 0 {
+						systray.SetIcon(d)
+						dotShown = true
+					}
+				} else if len(IconICO) > 0 {
+					systray.SetIcon(IconICO)
+					dotShown = false
+				}
 			}
 		}
 		trayMu.Lock()

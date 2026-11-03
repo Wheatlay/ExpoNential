@@ -200,6 +200,7 @@ func httpStatus(err error) int {
 
 type Project struct {
 	Key        string  `json:"key"`
+	Name       string  `json:"name"`
 	GithubRepo *string `json:"githubRepo"`
 }
 

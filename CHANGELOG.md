@@ -2,6 +2,14 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.1], Agent [0.4.0] - 03.11.2026
+
+- The tray window has tabs: General (as before, plus Show log / Copy log with tokens removed), Repo (projects with folder, source and state; "Choose folder" opens the Windows folder picker), Analyses (last 20 runs: time, issue, for whom, tokens, result with the reason).
+- Updates without opening a window: a dot on the tray icon and a toast "Version X available" → Update → download progress → restart → "Updated to X".
+- Uninstall, install errors and "link expired" are shown in the Exponential window; system message boxes only when WebView2 is missing.
+- Uninstalling removes the computer for good: the agent is stopped before it is unregistered, and the server does not re-create a computer removed within the last hour.
+- The downloaded file carries the agent version in its name (`exponential-agent-0.4.0.exe`).
+
 ## Agent [0.3.1] - 03.11.2026
 
 - "Uninstall…" in the tray and the settings window works again: it opens the window with Disconnect in its own process, and asks Yes/No when that window cannot open. Each agent window uses its own WebView2 data folder per process, so a running agent no longer blocks a second window.

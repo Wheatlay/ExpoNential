@@ -214,6 +214,7 @@ func resolvePrompt(key, action string, now time.Time) {
 	default:
 		logf("%s: declined for %s", p.Key, p.Name)
 		markDeclined(p.Key, p.RequestedAt)
+		appendRun(runRecord{Key: p.Key, For: p.Name, Result: runDeclined})
 	}
 	cardsChanged()
 }
@@ -222,7 +223,11 @@ func issueURL(base, key string) string { return strings.TrimRight(base, "/") + "
 
 func toastLabels(lang string) map[string]string {
 	if lang == "pl" {
-		return map[string]string{"want": "chce uruchomić analizę na tym komputerze", "allow": "Zgoda na 24 h", "once": "Tylko teraz", "mute": "Wycisz 24 h", "decline": "Odmów", "waiting": "czeka", "info": "%N · analiza %K"}
+		return map[string]string{"want": "chce uruchomić analizę na tym komputerze", "allow": "Zgoda na 24 h", "once": "Tylko teraz", "mute": "Wycisz 24 h", "decline": "Odmów", "waiting": "czeka", "info": "%N · analiza %K",
+			"updAvail": "Dostępna wersja %V", "updBtn": "Zaktualizuj", "updDismiss": "Pomiń tę wersję", "updDownloading": "Pobieram… %P%", "updInstalling": "Instaluję…",
+			"updDone": "Zaktualizowano do %V", "updFail": "Aktualizacja nie powiodła się", "updRetry": "Spróbuj ponownie"}
 	}
-	return map[string]string{"want": "wants to run an analysis on this computer", "allow": "Allow for 24 h", "once": "Just this once", "mute": "Mute 24 h", "decline": "Decline", "waiting": "is waiting", "info": "%N · analysis %K"}
+	return map[string]string{"want": "wants to run an analysis on this computer", "allow": "Allow for 24 h", "once": "Just this once", "mute": "Mute 24 h", "decline": "Decline", "waiting": "is waiting", "info": "%N · analysis %K",
+		"updAvail": "Version %V available", "updBtn": "Update", "updDismiss": "Skip this version", "updDownloading": "Downloading… %P%", "updInstalling": "Installing…",
+		"updDone": "Updated to %V", "updFail": "Update failed", "updRetry": "Try again"}
 }

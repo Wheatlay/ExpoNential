@@ -36,6 +36,10 @@ func setMuted(on bool) {
 		}
 	})
 	if on {
+		pending, _ := cards.Snapshot()
+		for _, pc := range pending {
+			appendRun(runRecord{Key: pc.Key, For: pc.Name, Result: runMuted})
+		}
 		cards.ClearPrompts()
 		cardsChanged()
 	}

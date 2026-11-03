@@ -238,6 +238,9 @@ func Main(args []string) {
 			fmt.Printf("This removes autostart and deletes %s (config, token, logs, clones). Re-run with --yes.\n", dataDir())
 			break
 		}
+		if !hadConsole && runInstallerWindow("uninstall-run") {
+			break // Apps & features: the window did the removal and showed the result
+		}
 		var forgot bool
 		if forgot, err = uninstallAll(); err == nil {
 			msg := "Exponential agent was removed."
@@ -261,10 +264,10 @@ func Main(args []string) {
 	}
 }
 
-// askUninstall: from the tray. The installer window shows this computer with Disconnect; when the window cannot open,
-// a Yes/No question does the same, so uninstalling never depends on WebView2.
+// askUninstall: from the tray. The branded window asks "Odinstalować agenta?", shows the progress and the result;
+// when the window cannot open, a Yes/No question does the same, so uninstalling never depends on WebView2.
 func askUninstall() {
-	if runInstallerWindow() {
+	if runInstallerWindow("uninstall") {
 		return
 	}
 	pl := uiLang() == "pl"

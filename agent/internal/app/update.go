@@ -129,6 +129,7 @@ func updateLoop() {
 			}
 			trayMu.Unlock()
 			notifyStatus()
+			offerUpdateCard(u)
 		}()
 		time.Sleep(24 * time.Hour)
 	}
@@ -154,7 +155,8 @@ func cleanupOldExe() {
 var updating atomic.Bool
 
 // downloadUpdate fetches the exe next to the running one and verifies it against SHA256SUMS. Returns the temp path.
-func downloadUpdate(u *updateInfo, dir string) (string, error) {
+// progress gets the percentage (0-100, -1 = size unknown) whenever it changes; may be nil.
+func downloadUpdate(u *updateInfo, dir string, progress func(pct int)) (string, error) {
 	sres, err := ghGet(u.SumsURL, 30*time.Second)
 	if err != nil {
 		return "", fmt.Errorf("SHA256SUMS: %w", err)
@@ -178,7 +180,11 @@ func downloadUpdate(u *updateInfo, dir string) (string, error) {
 		return "", err
 	}
 	h := sha256.New()
-	_, err = io.Copy(io.MultiWriter(f, h), io.LimitReader(res.Body, 200<<20))
+	pw := &progressWriter{total: res.ContentLength, fn: progress}
+	if progress != nil && res.ContentLength <= 0 {
+		progress(-1)
+	}
+	_, err = io.Copy(io.MultiWriter(f, h, pw), io.LimitReader(res.Body, 200<<20))
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -191,6 +197,28 @@ func downloadUpdate(u *updateInfo, dir string) (string, error) {
 		return "", errors.New("SHA256 mismatch")
 	}
 	return f.Name(), nil
+}
+
+// progressWriter reports the share of total written so far, once per percent.
+type progressWriter struct {
+	total, n int64
+	last     int
+	fn       func(pct int)
+}
+
+func (p *progressWriter) Write(b []byte) (int, error) {
+	p.n += int64(len(b))
+	if p.fn != nil && p.total > 0 {
+		pct := int(p.n * 100 / p.total)
+		if pct > 100 {
+			pct = 100
+		}
+		if pct != p.last {
+			p.last = pct
+			p.fn(pct)
+		}
+	}
+	return len(b), nil
 }
 
 // swapExe: running exe -> exponential-agent.old.exe, new file -> exe. Undone when the second rename fails.
@@ -208,7 +236,8 @@ func swapExe(exe, newFile string) error {
 }
 
 // doUpdate downloads, verifies, swaps and restarts. On success it does not return (the process quits).
-func doUpdate() error {
+// onProgress and onInstalling may be nil.
+func doUpdate(onProgress func(pct int), onInstalling func()) error {
 	u := pendingUpdate.Load()
 	if u == nil {
 		return errors.New("no update")
@@ -224,15 +253,87 @@ func doUpdate() error {
 	if err != nil {
 		return err
 	}
-	tmp, err := downloadUpdate(u, filepath.Dir(exe))
+	tmp, err := downloadUpdate(u, filepath.Dir(exe), onProgress)
 	if err != nil {
 		return err
+	}
+	if onInstalling != nil {
+		onInstalling()
 	}
 	if err := swapExe(exe, tmp); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
-	return restartAfterUpdate(exe)
+	updateConfig(func(c *Config) { c.UpdatedTo = u.Version }) // the new process shows "updated" once
+	if err := restartAfterUpdate(exe); err != nil {
+		updateConfig(func(c *Config) { c.UpdatedTo = "" })
+		return err
+	}
+	return nil
 }
 
 var skipLockRemove atomic.Bool
+
+// offerUpdateCard shows the update card for a found release (nil = none), unless it was dismissed for that version.
+func offerUpdateCard(u *updateInfo) {
+	if u == nil {
+		if updCard.NoUpdate() {
+			cardsChanged()
+		}
+		return
+	}
+	if loadConfig().UpdateDismissed == u.Version || !promptSupported() {
+		return
+	}
+	if !showPromptWindow() {
+		return
+	}
+	if updCard.Available(u.Version) {
+		cardsChanged()
+	}
+}
+
+// showUpdatedCard: the new process after a self-update shows "updated to X" once.
+func showUpdatedCard() {
+	to := loadConfig().UpdatedTo
+	if to == "" {
+		return
+	}
+	updateConfig(func(c *Config) { c.UpdatedTo = "" })
+	if to != Version || !promptSupported() || !showPromptWindow() {
+		return
+	}
+	updCard.Done(to)
+	cardsChanged()
+}
+
+// startUpdate runs the update with the card showing the progress; the failure turns the card into "try again".
+func startUpdate() {
+	u := pendingUpdate.Load()
+	if u == nil {
+		return
+	}
+	if promptSupported() {
+		showPromptWindow()
+	}
+	if !updCard.Start(u.Version) {
+		return
+	}
+	cardsChanged()
+	go func() {
+		err := doUpdate(func(pct int) {
+			if updCard.Progress(pct) {
+				cardsChanged()
+			}
+		}, func() {
+			if updCard.Installing() {
+				cardsChanged()
+			}
+		})
+		if err != nil {
+			logf("update failed: %s", err)
+			updCard.Fail()
+			cardsChanged()
+		}
+	}()
+}

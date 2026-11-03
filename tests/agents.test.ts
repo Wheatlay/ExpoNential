@@ -464,7 +464,7 @@ describe('rename', () => {
 
 describe('script version', () => {
   it('an agent reporting an old version is outdated, the current one is not', async () => {
-    const id = '66666666-6666-4666-8666-666666666666';
+    const id = 'a1a1a1a1-0000-4000-8000-0000000000a1';
     await ag.heartbeat(bob, id, { name: 'OLD-PC', busy: false, repoKeys: [], version: 'old' });
     expect((await ag.myAgents(bob)).find((a) => a.id === id)?.outdated).toBe(true);
     await ag.heartbeat(bob, id, { name: 'OLD-PC', busy: false, repoKeys: [], version: ag.agentScriptsVersion() });
@@ -566,5 +566,15 @@ describe('agent errors in Settings', () => {
     const mine = await ag.myAgents(alice);
     expect(mine.find((a) => a.id === healed)!.lastError).toBe('');
     expect(mine.find((a) => a.id === broken)!.lastError).toContain('exited');
+  });
+});
+
+describe('removed computers', () => {
+  it('a removed computer is not re-created by its next poll or claim for an hour', async () => {
+    const id = 'a1a1a1a1-0000-4000-8000-0000000000de';
+    await ag.heartbeat(alice, id, { name: 'GONE-PC', busy: false, repoKeys: [] });
+    await ag.removeAgent(alice, id);
+    await expect(ag.heartbeat(alice, id, { name: 'GONE-PC', busy: false, repoKeys: [] })).rejects.toThrow(/removed/);
+    expect((await ag.myAgents(alice)).some((a) => a.id === id)).toBe(false);
   });
 });

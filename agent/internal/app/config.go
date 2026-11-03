@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set by main (ldflags -X main.version).
-var Version = "0.3.1"
+var Version = "0.4.0"
 
 type RepoEntry struct {
 	Path   string `json:"path"`
@@ -28,29 +28,31 @@ type OAuth struct {
 
 // Config is config.json. Unknown keys are kept on write.
 type Config struct {
-	URL          string               `json:"url,omitempty"`
-	Token        string               `json:"token,omitempty"`
-	OAuth        *OAuth               `json:"oauth,omitempty"`
-	DeviceID     string               `json:"deviceId,omitempty"`
-	Engine       string               `json:"engine,omitempty"`
-	Repos        map[string]RepoEntry `json:"repos"`
-	Version      string               `json:"version,omitempty"`
-	LastPairing  string               `json:"lastPairing,omitempty"`  // pairing id of the last install (Go agent)
-	UserName     string               `json:"userName,omitempty"`     // account name shown in dialogs (Go agent)
-	UserID       int                  `json:"userId,omitempty"`       // own account id (to tell own analyses from others)
-	NotifyOthers *bool                `json:"notifyOthers,omitempty"` // toast when an analysis runs for someone else (default on)
-	AskOthers    *bool                `json:"askOthers,omitempty"`    // legacy, migrated to teamMode
-	AllowUntil   map[string]float64   `json:"allowUntil,omitempty"`   // requester id -> ms until which analyses for them are allowed
-	Declined     map[string]float64   `json:"declined,omitempty"`     // "KEY|requestedAt" -> ms of the decline
-	Goal         int                  `json:"goal,omitempty"`         // installer goal 1-3 (Go agent)
-	MutedUntil   float64              `json:"mutedUntil,omitempty"`   // ms until which the agent is muted (no prompts, others' jobs skipped)
-	TeamMode     string               `json:"teamMode,omitempty"`     // ask | auto | off (source of truth: the server)
-	Theme        string               `json:"theme,omitempty"`        // system | dark | light
+	URL             string               `json:"url,omitempty"`
+	Token           string               `json:"token,omitempty"`
+	OAuth           *OAuth               `json:"oauth,omitempty"`
+	DeviceID        string               `json:"deviceId,omitempty"`
+	Engine          string               `json:"engine,omitempty"`
+	Repos           map[string]RepoEntry `json:"repos"`
+	Version         string               `json:"version,omitempty"`
+	LastPairing     string               `json:"lastPairing,omitempty"`     // pairing id of the last install (Go agent)
+	UserName        string               `json:"userName,omitempty"`        // account name shown in dialogs (Go agent)
+	UserID          int                  `json:"userId,omitempty"`          // own account id (to tell own analyses from others)
+	NotifyOthers    *bool                `json:"notifyOthers,omitempty"`    // toast when an analysis runs for someone else (default on)
+	AskOthers       *bool                `json:"askOthers,omitempty"`       // legacy, migrated to teamMode
+	AllowUntil      map[string]float64   `json:"allowUntil,omitempty"`      // requester id -> ms until which analyses for them are allowed
+	Declined        map[string]float64   `json:"declined,omitempty"`        // "KEY|requestedAt" -> ms of the decline
+	Goal            int                  `json:"goal,omitempty"`            // installer goal 1-3 (Go agent)
+	MutedUntil      float64              `json:"mutedUntil,omitempty"`      // ms until which the agent is muted (no prompts, others' jobs skipped)
+	TeamMode        string               `json:"teamMode,omitempty"`        // ask | auto | off (source of truth: the server)
+	Theme           string               `json:"theme,omitempty"`           // system | dark | light
+	UpdateDismissed string               `json:"updateDismissed,omitempty"` // agent version whose update card was dismissed
+	UpdatedTo       string               `json:"updatedTo,omitempty"`       // version a self-update was started for (the new process shows "updated" once)
 
 	raw map[string]json.RawMessage
 }
 
-var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers", "askOthers", "allowUntil", "declined", "goal", "mutedUntil", "teamMode", "theme"}
+var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers", "askOthers", "allowUntil", "declined", "goal", "mutedUntil", "teamMode", "theme", "updateDismissed", "updatedTo"}
 
 func dataDir() string {
 	base := os.Getenv("LOCALAPPDATA")
@@ -161,8 +163,20 @@ func forgetOnServer() bool {
 	ok := true
 	if cfg.DeviceID != "" {
 		ok = false
-		if a, err := getAuth(); err == nil && a != nil {
-			ok = request(a, "DELETE", "/api/agents/"+cfg.DeviceID, nil, 5*time.Second, nil) == nil
+		if a, aerr := getAuth(); aerr == nil && a != nil { // getAuth refreshes an expired access token
+			var err error
+			err = request(a, "DELETE", "/api/agents/"+cfg.DeviceID, nil, 5*time.Second, nil)
+			if httpStatus(err) == 401 && cfg.OAuth != nil { // access token expired: force a refresh and retry once
+				updateConfig(func(c *Config) {
+					if c.OAuth != nil {
+						c.OAuth.ExpiresAt = 0
+					}
+				})
+				if a2, e2 := getAuth(); e2 == nil && a2 != nil {
+					err = request(a2, "DELETE", "/api/agents/"+cfg.DeviceID, nil, 5*time.Second, nil)
+				}
+			}
+			ok = err == nil
 		}
 	}
 	// The sign-in itself goes too, so it does not stay in Settings as a connection.

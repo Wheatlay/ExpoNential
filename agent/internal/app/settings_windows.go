@@ -4,6 +4,8 @@ package app
 
 import (
 	_ "embed"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,8 +22,8 @@ import (
 var settingsHTML string
 
 const (
-	settingsW = 380
-	settingsH = 460
+	settingsW = 400
+	settingsH = 520
 )
 
 var (
@@ -43,6 +45,7 @@ type settingsState struct {
 	Autostart    bool              `json:"autostart"`
 	Muted        bool              `json:"muted"`
 	MuteLabel    string            `json:"muteLabel"`
+	Runs         []runRecord       `json:"runs"`
 }
 
 func settingsLabels(lang string) map[string]string {
@@ -51,13 +54,23 @@ func settingsLabels(lang string) map[string]string {
 			"tipAsk": "Pytaj o zgodę przed analizą cudzego zlecenia", "tipAuto": "Uruchamiaj cudze zlecenia bez pytania", "tipOff": "Nie biorę cudzych zleceń",
 			"notify": "Powiadomienia o analizach dla innych", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
 			"sys": "Systemowy", "dark": "Ciemny", "light": "Jasny", "open": "Otwórz Exponential", "ai": "Ustawienia AI", "uninstall": "Odinstaluj…",
-			"version": "agent %V", "update": "Zaktualizuj do %V"}
+			"version": "agent %V", "update": "Zaktualizuj do %V",
+			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Analizy", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
+			"loading": "Wczytuję…", "logEmpty": "Log jest pusty", "repoErr": "Brak połączenia z serwerem", "noProjects": "Brak projektów", "noRepo": "brak repo w projekcie", "unmapped": "brak mapowania",
+			"ok": "ok", "pick": "Wybierz folder", "remove": "Usuń", "srcAuto": "auto", "srcManual": "ręcznie", "srcClone": "klon", "srcHook": "hook",
+			"nofolder": "brak folderu", "notclone": "to nie klon repo", "norepo": "brak repo w projekcie", "noRuns": "Brak analiz",
+			"resOk": "ok", "resFail": "błąd", "resLimit": "limit Claude", "resDeclined": "odmowa", "resMuted": "wyciszone"}
 	}
 	return map[string]string{"team": "Team jobs", "ask": "Ask", "auto": "Don't ask", "off": "Don't take",
 		"tipAsk": "Ask before running someone else's analysis", "tipAuto": "Run others' analyses without asking", "tipOff": "Never take others' analyses",
 		"notify": "Notifications for analyses for others", "autostart": "Start with Windows", "theme": "Theme",
 		"sys": "System", "dark": "Dark", "light": "Light", "open": "Open Exponential", "ai": "AI settings", "uninstall": "Uninstall…",
-		"version": "agent %V", "update": "Update to %V"}
+		"version": "agent %V", "update": "Update to %V",
+		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Analyses", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
+		"loading": "Loading…", "logEmpty": "The log is empty", "repoErr": "Cannot reach the server", "noProjects": "No projects", "noRepo": "no repo in the project", "unmapped": "not mapped",
+		"ok": "ok", "pick": "Choose folder", "remove": "Remove", "srcAuto": "auto", "srcManual": "manual", "srcClone": "clone", "srcHook": "hook",
+		"nofolder": "folder missing", "notclone": "not a clone of the repo", "norepo": "no repo in the project", "noRuns": "No analyses yet",
+		"resOk": "ok", "resFail": "error", "resLimit": "Claude limit", "resDeclined": "declined", "resMuted": "muted"}
 }
 
 func buildSettingsState() settingsState {
@@ -77,7 +90,7 @@ func buildSettingsState() settingsState {
 		Who:   strings.TrimSpace(cfg.UserName + " · " + hostOf(cfg.URL)),
 		State: text, Kind: kind, Version: Version, UpdateTo: upd,
 		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
-		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted),
+		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted), Runs: loadRuns(),
 	}
 }
 
@@ -118,14 +131,8 @@ func launchUninstall() {
 	}
 }
 
-func runUpdate() {
-	go func() {
-		if err := doUpdate(); err != nil {
-			logf("update failed: %s", err)
-			notifyText(map[bool]string{true: "Aktualizacja nie powiodła się", false: "Update failed"}[uiLang() == "pl"])
-		}
-	}()
-}
+// runUpdate starts the update; the update card of the toast window shows the progress.
+func runUpdate() { go startUpdate() }
 
 func toggleMute() { setMuted(!isMuted()) }
 
@@ -184,8 +191,71 @@ func openSettings() {
 		_ = w.Bind("openAI", func() { openAISettings() })
 		_ = w.Bind("uninstall", func() { launchUninstall() })
 		_ = w.Bind("update", func() { runUpdate() })
+		_ = w.Bind("getLog", func() string { return logTail() })
+		_ = w.Bind("copyLog", func() bool {
+			if err := setClipboard(logTail()); err != nil {
+				logf("copy log: %v", err)
+				return false
+			}
+			return true
+		})
+		_ = w.Bind("openIssue", func(key string) {
+			if u := loadConfig().URL; u != "" && keyRe.MatchString(key) {
+				openURL(issueURL(u, key))
+			}
+		})
+		push := func(js string) { w.Dispatch(func() { w.Eval(js) }) }
+		// The repo list asks the server and runs git: off the window thread, the answer is pushed to the page.
+		_ = w.Bind("loadRepos", func() {
+			go func() {
+				defer func() { _ = recover() }()
+				res := map[string]any{"rows": []repoRow{}}
+				a, err := getAuth()
+				if err == nil && a == nil {
+					err = errors.New("not logged in")
+				}
+				if err == nil {
+					var rows []repoRow
+					if rows, err = buildRepoRows(a); err == nil {
+						res["rows"] = rows
+					}
+				}
+				if err != nil {
+					logf("repo list: %s", shortErr(err))
+					res["err"] = shortErr(err)
+				}
+				b, _ := json.Marshal(res)
+				push("onRepos(" + string(b) + ")")
+			}()
+		})
+		_ = w.Bind("pickFolder", func(key string) string {
+			title := "Exponential · " + key
+			p, err := pickFolder(hwnd, title)
+			if err != nil {
+				logf("folder picker: %v", err)
+				return ""
+			}
+			return p
+		})
+		_ = w.Bind("saveRepo", func(key, path string) {
+			go func() {
+				defer func() { _ = recover() }()
+				code, detail, err := saveManualRepo(key, path)
+				if err != nil {
+					code, detail = "notclone", err.Error()
+				}
+				k, c, d := mustJSON(key), mustJSON(code), mustJSON(detail)
+				push("onRepoSaved(" + k + "," + c + "," + d + ")")
+			}()
+		})
+		_ = w.Bind("removeRepo", func(key string) { removeRepo(key) })
 		_ = w.Bind("close", func() { w.Dispatch(func() { w.Terminate() }) })
 		w.SetHtml(applyUI(settingsHTML, currentTheme()))
 		w.Run()
 	}()
+}
+
+func mustJSON(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }

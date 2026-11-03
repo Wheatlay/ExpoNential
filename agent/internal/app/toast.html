@@ -36,6 +36,22 @@ html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-se
 .timer { height: 2px; background: color-mix(in srgb, var(--info) 18%, transparent); }
 .timer i { display: block; height: 100%; width: 100%; background: var(--info); }
 .toast.small .tt { padding-top: 7px; padding-bottom: 7px; }
+/* update card: accent edge and header strip; failed = danger */
+.toast.upd::before { background: var(--accent); }
+.toast.upd .tt { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.toast.upd.fail::before { background: var(--danger); }
+.toast.upd.fail .tt { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.toast.upd .tx { cursor: default; }
+.ug { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--bg-secondary); border: 1px solid var(--border-secondary); }
+.ug svg { width: 16px; height: 16px; }
+.btn.go { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.go:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.retry { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger-text); }
+.bar { height: 4px; margin: 0 12px 12px 15px; border-radius: 9999px; background: color-mix(in srgb, var(--accent) 18%, transparent); overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.bar.ind i { width: 40%; animation: ind 1.2s ease-in-out infinite alternate; }
+@keyframes ind { from { transform: translateX(0); } to { transform: translateX(150%); } }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } .bar.ind i { animation: none; width: 100%; opacity: .5; } }
 .toast.small .av { width: 28px; height: 28px; font-size: 12px; }
 .toast.small .av .mk { display: none; }
 .toast.small .tx { cursor: default; }
@@ -57,6 +73,8 @@ html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-se
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function avatar(name) { return '<span class="av" style="background:' + color(name) + '">' + esc(initial(name)) + '<span class="mk">' + MARK + '</span></span>'; }
 
+  function updDownTitle(pct) { return pct >= 0 ? L.updDownloading.replace("%P", pct) : L.updDownloading.replace(" %P%", "").replace("%P%", ""); }
+
   function build(item) {
     var el = document.createElement("div");
     var h = "";
@@ -65,6 +83,26 @@ html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-se
         '<span class="x" data-a="decline" role="button" tabindex="0" title="' + esc(L.decline) + '" aria-label="' + esc(L.decline) + '">&#10005;</span></div>' +
         '<div class="acts"><button class="btn allow" data-a="allow">' + esc(L.allow) + '</button><button class="btn once" data-a="once">' + esc(L.once) + '</button>' +
         '<button class="btn mute" data-a="mute">' + esc(L.mute) + '</button></div><div class="timer"><i></i></div>';
+    } else if (item.kind.indexOf("upd-") === 0) {
+      var ph = item.kind.slice(4), v = item.ver || "", title = "", acts = "", bar = "", x = "";
+      if (ph === "available") {
+        title = L.updAvail.replace("%V", v);
+        acts = '<div class="acts"><button class="btn go" data-a="update">' + esc(L.updBtn) + '</button></div>';
+        x = '<span class="x" data-a="dismiss" role="button" tabindex="0" title="' + esc(L.updDismiss) + '" aria-label="' + esc(L.updDismiss) + '">&#10005;</span>';
+      } else if (ph === "downloading") {
+        title = updDownTitle(item.pct);
+        bar = '<div class="bar' + (item.pct < 0 ? " ind" : "") + '"><i style="width:' + Math.max(0, item.pct) + '%"></i></div>';
+      } else if (ph === "installing") {
+        title = L.updInstalling;
+        bar = '<div class="bar"><i style="width:100%"></i></div>';
+      } else if (ph === "failed") {
+        title = L.updFail;
+        acts = '<div class="acts"><button class="btn retry" data-a="retry">' + esc(L.updRetry) + '</button></div>';
+        x = '<span class="x" data-a="dismiss" role="button" tabindex="0" title="' + esc(L.updDismiss) + '" aria-label="' + esc(L.updDismiss) + '">&#10005;</span>';
+      } else {
+        title = L.updDone.replace("%V", v);
+      }
+      h = '<div class="tt"><span class="ug">' + MARK + '</span><div class="tx"><b>' + esc(title) + '</b></div>' + x + '</div>' + acts + bar;
     } else if (item.kind === "wait") {
       h = '<div class="tt">' + avatar(item.name) + '<div class="tx"><b>' + esc(item.name) + ' · ' + esc(item.key) + ' ' + esc(L.waiting) + '</b></div></div>';
     } else {
@@ -106,6 +144,7 @@ html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-se
       if (idx === 0) active.push(it); else items.push(it);
     });
     items = items.concat(active); // waiting cards above, the active one at the bottom
+    if (s.update && s.update.phase) items.unshift({ id: "u", kind: "upd-" + s.update.phase, key: "__update", name: "", ver: s.update.version, pct: s.update.pct });
     var seen = {};
     items.forEach(function (it, idx) {
       var id = it.id, ex = els[id], again = false;
@@ -113,11 +152,19 @@ html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-se
       if (ex && ex.kind !== it.kind) { ex.el.remove(); ex = null; again = true; }
       if (!ex) {
         var el = build(it);
-        el.className = "toast" + (it.kind === "active" ? "" : " small") + (again ? " noanim" : "");
+        var upd = it.kind.indexOf("upd-") === 0;
+        el.className = "toast" + (upd ? " upd" + (it.kind === "upd-failed" ? " fail" : "") : it.kind === "active" ? "" : " small") + (again ? " noanim" : "");
         el.dataset.key = it.key;
         ex = els[id] = { el: el, kind: it.kind, iid: it.iid };
         if (it.kind === "info") infoEnd[id] = Date.now() + INFO;
+        if (it.kind === "upd-done") { ex.iid = "__update"; ex.doneAct = "update-done"; infoEnd[id] = Date.now() + INFO; }
         if (it.kind !== "info" && rem[it.key] == null) rem[it.key] = TOTAL;
+      }
+      if (it.kind === "upd-downloading") { // patch the bar and the title in place, so the card does not blink
+        var bi = ex.el.querySelector(".bar i"), tb = ex.el.querySelector(".tx b"), bw = ex.el.querySelector(".bar");
+        if (bi) bi.style.width = Math.max(0, it.pct) + "%";
+        if (bw) bw.classList.toggle("ind", it.pct < 0);
+        if (tb) tb.textContent = updDownTitle(it.pct);
       }
       var cur = stack.children[idx];
       if (cur !== ex.el) stack.insertBefore(ex.el, cur || null);
@@ -140,9 +187,9 @@ html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-se
       }
       Object.keys(infoEnd).forEach(function (id) {
         if (els[id] && Date.now() > infoEnd[id]) {
-          var iid = els[id].iid;
+          var iid = els[id].iid, act = els[id].doneAct || "info-done";
           els[id].el.remove(); delete els[id]; delete infoEnd[id]; changed = true;
-          window.act(String(iid), "info-done");
+          window.act(String(iid), act);
         }
       });
     } else {

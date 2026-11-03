@@ -7,22 +7,24 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(--text-primary); overflow: hidden; user-select: none; -webkit-user-select: none; cursor: default;
   font: 13px/1.4 Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
-.wrap { height: 100%; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.wrap { height: 100%; padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 12px; }
 .head { display: flex; gap: 12px; align-items: center; }
 .tile { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--bg-secondary); border: 1px solid var(--border-secondary); }
 .tile svg { width: 24px; height: 24px; }
 .who { min-width: 0; flex: 1; }
 .who b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ver { display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 12px; }
-.pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 9999px; font-size: 12px; font-weight: 500; border: 1px solid; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 9999px; font-size: 12px; font-weight: 500; border: 1px solid; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
 .pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 .pill.ok { color: var(--success-text); background: color-mix(in srgb, var(--success) 12%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
 .pill.ai { color: var(--ai-text); background: color-mix(in srgb, var(--ai) 12%, transparent); border-color: color-mix(in srgb, var(--ai) 45%, transparent); }
 .pill.warn { color: var(--warning-text); background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
 .pill.danger { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.pill.sm { height: 20px; padding: 0 8px; font-size: 11px; }
+.pill.res { max-width: 150px; }
 .sec { display: flex; flex-direction: column; gap: 6px; }
 .lbl { font-size: 12px; color: var(--text-tertiary); font-weight: 500; }
-.seg { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); }
+.seg { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); flex: none; }
 .seg button { flex: 1; height: 28px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text-tertiary); font: 500 13px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; cursor: pointer; }
 .seg button:hover { background: var(--bg-hover); color: var(--text-primary); }
 .seg button.on { color: var(--text-primary); }
@@ -36,74 +38,246 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .row.on .sw { background: var(--accent); border-color: var(--accent); }
 .row.on .sw::after { transform: translateX(14px); background: #fff; }
 @media (prefers-reduced-motion: reduce) { .sw, .sw::after { transition: none; } }
-.btn { height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border-secondary); background: none; color: var(--text-primary); font: 500 13px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+.btn { height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border-secondary); background: none; color: var(--text-primary); font: 500 13px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; cursor: pointer; white-space: nowrap; }
 .btn:hover { background: var(--bg-hover); }
+.btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
 .btn.mute { background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning-text); }
 .btn.mute:hover { background: color-mix(in srgb, var(--warning) 22%, transparent); }
 .btn.upd { height: 22px; padding: 0 8px; font-size: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-text); }
+.btn.ok { background: color-mix(in srgb, var(--success) 14%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); }
 .btn.link { border-color: transparent; color: var(--text-secondary); padding: 0 8px; }
 .btn.danger { border-color: transparent; color: var(--danger-text); }
 .btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
-.btn:focus-visible, .seg button:focus-visible, .row:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 1px; }
-.foot { margin-top: auto; display: flex; gap: 2px; border-top: 1px solid var(--border-primary); padding-top: 10px; }
+.btn:focus-visible, .seg button:focus-visible, .row:focus-visible, .lk:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 1px; }
+.btns { display: flex; gap: 8px; }
+.btns .btn { flex: 1; }
+.foot { margin-top: auto; display: flex; gap: 2px; border-top: 1px solid var(--border-primary); padding-top: 10px; flex: none; }
 .foot .danger { margin-left: auto; }
-hr { border: 0; border-top: 1px solid var(--border-primary); margin: 0; }
+.tabs { flex: none; }
+.panel { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin: 0 -6px; padding: 0 6px; }
+.panel::-webkit-scrollbar { width: 6px; }
+.panel::-webkit-scrollbar-thumb { background: var(--border-tertiary); border-radius: 9999px; }
+.mut { color: var(--text-tertiary); }
+.empty { color: var(--text-tertiary); padding: 24px 0; text-align: center; }
+.list { display: flex; flex-direction: column; }
+.item { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-top: 1px solid var(--border-primary); }
+.item:first-child { border-top: 0; padding-top: 2px; }
+.l1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.l1 b { font-weight: 600; flex: none; }
+.nm { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
+.badge { flex: none; height: 18px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border-secondary); color: var(--text-tertiary); font-size: 11px; display: inline-flex; align-items: center; }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+.path { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
+.l3 { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+.st { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.st.ok { color: var(--success-text); }
+.st.bad { color: var(--danger-text); }
+.st.mut { color: var(--text-tertiary); }
+.lk { cursor: pointer; font-weight: 600; flex: none; }
+.lk:hover { color: var(--accent-text); }
+.tok { margin-left: auto; flex: none; color: var(--text-tertiary); font-size: 12px; }
+.sub { color: var(--text-tertiary); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sub.err { color: var(--danger-text); }
+.logbar { display: flex; align-items: center; gap: 8px; flex: none; }
+.logbar b { flex: 1; font-weight: 600; }
+.logbox { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); color: var(--text-secondary);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11px; line-height: 1.45; white-space: pre; user-select: text; -webkit-user-select: text; cursor: text; }
 </style>
 </head>
 <body>
-<div class="wrap" id="app"></div>
+<div class="wrap">
+  <div class="head" id="head"></div>
+  <div class="seg tabs" id="tabs"></div>
+  <div class="panel" id="panel"></div>
+</div>
 <script>
 (function () {
   var MARK = '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3 L22 22 Z" fill="#5e6ad2"/><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3" fill="none" stroke="#7180ff" stroke-width="1.6"/></svg>';
-  var app = document.getElementById("app"), last = "", busy = false;
+  var $ = function (id) { return document.getElementById(id); };
+  var headEl = $("head"), tabsEl = $("tabs"), panelEl = $("panel");
+  var S = null, tab = "general", view = "", repos = null, repoMsg = {}, logText = null, copied = false, picking = false, busy = false;
+  var sigs = { head: "", tabs: "", panel: "" };
+
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function seg(id, items, cur) {
     return '<div class="seg" id="' + id + '">' + items.map(function (i) {
       return '<button data-v="' + i[0] + '" class="' + (cur === i[0] ? "on " + (i[2] || "neutral") : "") + '" title="' + esc(i[3] || "") + '">' + esc(i[1]) + '</button>';
     }).join("") + '</div>';
   }
-  function draw(s) {
-    var L = s.L;
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  function fmtTime(ms) { var d = new Date(ms); return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear() + ", " + pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function fmtTok(n) { if (!n) return ""; if (n < 1000) return String(n); if (n < 1e6) return (n < 1e4 ? (n / 1e3).toFixed(1) : Math.round(n / 1e3)) + "k"; return (n / 1e6).toFixed(1) + "M"; }
+  function fmtDur(ms) { if (!ms) return ""; var s = Math.round(ms / 1000); return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + pad(s % 60) + "s"; }
+
+  // Run a binding, then refresh the state shortly after.
+  function call(fn) { return function () { fn(); setTimeout(refresh, 80); }; }
+
+  function drawHead() {
+    var s = S, L = s.L;
+    var sig = JSON.stringify([s.who, s.version, s.updateTo, s.state, s.kind, s.theme]);
+    if (sig === sigs.head) return;
+    sigs.head = sig;
     document.documentElement.setAttribute("data-theme", s.theme);
-    app.innerHTML =
-      '<div class="head"><span class="tile">' + MARK + '</span><div class="who"><b>' + esc(s.who) + '</b>' +
+    headEl.innerHTML = '<span class="tile">' + MARK + '</span><div class="who"><b>' + esc(s.who) + '</b>' +
       '<div class="ver"><span>' + esc(L.version.replace("%V", s.version)) + '</span>' +
-      (s.updateTo ? '<button class="btn upd" id="upd">' + esc(L.update.replace("%V", s.updateTo)) + '</button>' : "") + '</div></div></div>' +
-      '<div><span class="pill ' + esc(s.kind) + '"><i></i>' + esc(s.state) + '</span></div>' +
-      '<div class="sec"><span class="lbl">' + esc(L.team) + '</span>' +
+      (s.updateTo ? '<button class="btn upd" id="upd">' + esc(L.update.replace("%V", s.updateTo)) + '</button>' : "") + '</div></div>' +
+      '<span class="pill ' + esc(s.kind) + '" title="' + esc(s.state) + '"><i></i>' + esc(s.state) + '</span>';
+    if ($("upd")) $("upd").onclick = call(window.update);
+  }
+
+  function drawTabs() {
+    var L = S.L, sig = tab + "|" + L.tabGeneral;
+    if (sig === sigs.tabs) return;
+    sigs.tabs = sig;
+    tabsEl.innerHTML = [["general", L.tabGeneral], ["repos", L.tabRepos], ["runs", L.tabRuns]].map(function (t) {
+      return '<button data-v="' + t[0] + '" class="' + (tab === t[0] ? "on accent" : "") + '">' + esc(t[1]) + '</button>';
+    }).join("");
+    Array.prototype.forEach.call(tabsEl.children, function (b) { b.onclick = function () { go(b.dataset.v); }; });
+  }
+
+  function go(t) {
+    if (t === tab && !view) return;
+    tab = t; view = "";
+    if (t === "repos") loadRepos();
+    drawTabs(); drawPanel();
+  }
+
+  // ---- panels ----
+  function generalHtml(s) {
+    var L = s.L;
+    return '<div class="sec"><span class="lbl">' + esc(L.team) + '</span>' +
       seg("team", [["ask", L.ask, "accent", L.tipAsk], ["auto", L.auto, "success", L.tipAuto], ["off", L.off, "neutral", L.tipOff]], s.teamMode) + '</div>' +
       '<div class="sec"><div class="row' + (s.notify ? " on" : "") + '" id="notify" role="switch" tabindex="0" aria-checked="' + s.notify + '"><span>' + esc(L.notify) + '</span><i class="sw"></i></div>' +
       '<div class="row' + (s.autostart ? " on" : "") + '" id="autostart" role="switch" tabindex="0" aria-checked="' + s.autostart + '"><span>' + esc(L.autostart) + '</span><i class="sw"></i></div></div>' +
       '<button class="btn mute" id="mute">' + esc(s.muteLabel) + '</button>' +
       '<div class="sec"><span class="lbl">' + esc(L.theme) + '</span>' +
       seg("theme", [["system", L.sys, "accent"], ["dark", L.dark, "accent"], ["light", L.light, "accent"]], s.themeSetting) + '</div>' +
+      '<div class="btns"><button class="btn" id="showlog">' + esc(L.showLog) + '</button><button class="btn' + (copied ? " ok" : "") + '" id="copylog">' + esc(copied ? L.copied : L.copyLog) + '</button></div>' +
       '<div class="foot"><button class="btn link" id="open">' + esc(L.open) + '</button><button class="btn link" id="ai">' + esc(L.ai) + '</button>' +
       '<button class="btn danger" id="uninstall">' + esc(L.uninstall) + '</button></div>';
-    bind();
   }
-  function call(fn) { return function () { fn(); setTimeout(refresh, 80); }; }
-  function bind() {
-    function $(id) { return document.getElementById(id); }
+  function bindGeneral() {
     function toggle(id, f) { var el = $(id); el.onclick = call(function () { f(!el.classList.contains("on")); }); el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } }; }
     toggle("notify", window.setNotify); toggle("autostart", window.setAutostart);
     $("mute").onclick = call(window.toggleMute);
     $("open").onclick = call(window.openApp); $("ai").onclick = call(window.openAI); $("uninstall").onclick = call(window.uninstall);
-    if ($("upd")) $("upd").onclick = call(window.update);
+    $("showlog").onclick = function () { view = "log"; logText = null; window.getLog().then(function (t) { logText = t; drawPanel(true); }); drawPanel(); };
+    $("copylog").onclick = doCopy;
     [["team", window.setTeamMode], ["theme", window.setTheme]].forEach(function (p) {
       Array.prototype.forEach.call($(p[0]).children, function (b) { b.onclick = call(function () { p[1](b.dataset.v); }); });
     });
   }
+  function doCopy() {
+    window.copyLog().then(function (ok) {
+      if (!ok) return;
+      copied = true; drawPanel();
+      setTimeout(function () { copied = false; drawPanel(); }, 1800);
+    });
+  }
+
+  function logHtml(L) {
+    return '<div class="logbar"><button class="btn sm" id="back">' + esc(L.back) + '</button><b>Log</b><button class="btn sm' + (copied ? " ok" : "") + '" id="copylog">' + esc(copied ? L.copied : L.copyLog) + '</button></div>' +
+      '<pre class="logbox" id="logbox">' + (logText == null ? esc(L.loading) : logText ? esc(logText) : '<span class="mut">' + esc(L.logEmpty) + '</span>') + '</pre>';
+  }
+  function bindLog(scroll) {
+    $("back").onclick = function () { view = ""; drawPanel(); };
+    $("copylog").onclick = doCopy;
+    if (scroll) { var b = $("logbox"); b.scrollTop = b.scrollHeight; }
+  }
+
+  var SRC = { auto: "srcAuto", manual: "srcManual", clone: "srcClone", hook: "srcHook" };
+  function reposHtml(L) {
+    if (!repos) return '<div class="empty">' + esc(L.loading) + '</div>';
+    if (repos.err) return '<div class="empty">' + esc(L.repoErr) + '</div>';
+    if (!repos.rows.length) return '<div class="empty">' + esc(L.noProjects) + '</div>';
+    return '<div class="list">' + repos.rows.map(function (r) {
+      var l3, mapped = !!r.path;
+      if (!r.repo) l3 = '<span class="st mut">' + esc(L.noRepo) + '</span>';
+      else {
+        var msg = repoMsg[r.key];
+        var st = msg ? '<span class="st bad" title="' + esc(msg.detail) + '">' + esc(L[msg.code] || msg.code) + '</span>' :
+          !mapped ? '<span class="st mut">' + esc(L.unmapped) + '</span>' :
+          r.ok ? '<span class="st ok">&#10003; ' + esc(L.ok) + '</span>' :
+          '<span class="st bad" title="' + esc(r.detail) + '">' + esc(L[r.problem] || r.problem) + '</span>';
+        l3 = st + '<button class="btn sm" data-a="pick" data-k="' + esc(r.key) + '">' + esc(L.pick) + '</button>' +
+          (mapped ? '<button class="btn sm danger" data-a="del" data-k="' + esc(r.key) + '">' + esc(L.remove) + '</button>' : "");
+      }
+      return '<div class="item"><div class="l1"><b>' + esc(r.key) + '</b><span class="nm" title="' + esc(r.name) + '">' + esc(r.name) + '</span>' +
+        (mapped ? '<span class="badge">' + esc(L[SRC[r.source]] || r.source) + '</span>' : "") + '</div>' +
+        (mapped ? '<div class="path mono" title="' + esc(r.path) + '">' + esc(r.path) + '</div>' : "") +
+        '<div class="l3">' + l3 + '</div></div>';
+    }).join("") + '</div>';
+  }
+  function bindRepos() {
+    Array.prototype.forEach.call(panelEl.querySelectorAll("[data-a]"), function (b) {
+      b.onclick = function () {
+        var k = b.dataset.k;
+        if (b.dataset.a === "del") { window.removeRepo(k).then(loadRepos); return; }
+        picking = true;
+        window.pickFolder(k).then(function (p) {
+          picking = false; born = Date.now();
+          if (p) window.saveRepo(k, p);
+        }, function () { picking = false; born = Date.now(); });
+      };
+    });
+  }
+  function loadRepos() { window.loadRepos(); }
+  window.onRepos = function (d) { repos = d; repoMsg = {}; drawPanel(); };
+  window.onRepoSaved = function (key, code, detail) {
+    if (code) { repoMsg[key] = { code: code, detail: detail }; drawPanel(); } else { delete repoMsg[key]; loadRepos(); }
+  };
+
+  var RES = { ok: ["ok", "resOk"], fail: ["danger", "resFail"], limit: ["warn", "resLimit"], declined: ["warn", "resDeclined"], muted: ["warn", "resMuted"] };
+  function runsHtml(s) {
+    var L = s.L, runs = (s.runs || []).slice().reverse();
+    if (!runs.length) return '<div class="empty">' + esc(L.noRuns) + '</div>';
+    return '<div class="list">' + runs.map(function (r) {
+      var rs = RES[r.result] || RES.fail, txt = L[rs[1]];
+      var sub = [r.engine, r.model, fmtDur(r.durationMs), r.account].filter(Boolean).join(" · ");
+      return '<div class="item"><div class="l1"><span class="mut mono">' + esc(fmtTime(r.time)) + '</span>' +
+        '<span class="lk" role="link" tabindex="0" data-k="' + esc(r.key) + '">' + esc(r.key) + '</span>' +
+        (r.for ? '<span class="nm">· ' + esc(r.for) + '</span>' : '<span class="nm"></span>') +
+        '<span class="tok">' + esc(fmtTok(r.tokens)) + '</span>' +
+        '<span class="pill sm res ' + rs[0] + '" title="' + esc(r.reason || txt) + '">' + esc(txt) + '</span></div>' +
+        (sub ? '<div class="sub">' + esc(sub) + '</div>' : "") +
+        (r.result === "fail" && r.reason ? '<div class="sub err" title="' + esc(r.reason) + '">' + esc(r.reason) + '</div>' : "") + '</div>';
+    }).join("") + '</div>';
+  }
+  function bindRuns() {
+    Array.prototype.forEach.call(panelEl.querySelectorAll(".lk"), function (a) {
+      a.onclick = function () { window.openIssue(a.dataset.k); };
+      a.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); a.click(); } };
+    });
+  }
+
+  function drawPanel(scrollLog) {
+    if (!S) return;
+    var L = S.L, html, sig;
+    if (tab === "general" && view === "log") { sig = JSON.stringify(["log", logText, copied, L.back]); html = logHtml(L); }
+    else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.teamMode, S.notify, S.autostart, S.muteLabel, S.themeSetting, copied]); html = generalHtml(S); }
+    else if (tab === "repos") { sig = JSON.stringify(["r", repos, repoMsg, L.pick]); html = reposHtml(L); }
+    else { sig = JSON.stringify(["u", S.runs, L.noRuns]); html = runsHtml(S); }
+    if (sig === sigs.panel && !scrollLog) return;
+    var keep = sigs.panel.charAt(2) === sig.charAt(2) ? panelEl.scrollTop : 0;
+    sigs.panel = sig;
+    panelEl.innerHTML = html;
+    panelEl.scrollTop = keep;
+    if (tab === "general" && view === "log") bindLog(scrollLog);
+    else if (tab === "general") bindGeneral();
+    else if (tab === "repos") bindRepos();
+    else bindRuns();
+  }
+
   function refresh() {
     if (busy) return; busy = true;
     window.getState().then(function (s) {
-      busy = false;
-      var j = JSON.stringify(s);
-      if (j !== last) { last = j; draw(s); }
+      busy = false; S = s;
+      drawHead(); drawTabs(); drawPanel();
     }, function () { busy = false; });
   }
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") window.close(); });
   var born = Date.now();
-  window.addEventListener("blur", function () { if (Date.now() - born > 1200) window.close(); });
+  window.addEventListener("blur", function () { if (!picking && Date.now() - born > 1200) window.close(); });
   document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   setInterval(refresh, 1000);
   refresh();

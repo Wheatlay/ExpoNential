@@ -46,6 +46,8 @@ button { height: 38px; padding: 0 22px; border-radius: 8px; border: 1px solid va
 button:hover { background: var(--sec); }
 button.p { background: var(--acc); border-color: var(--acc); color: #fff; }
 button.p:hover { background: var(--acc-h); border-color: var(--acc-h); }
+button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+button.danger:hover { filter: brightness(1.1); }
 button:focus-visible { outline: 2px solid var(--acc-h); outline-offset: 2px; }
 .mut { color: var(--mut); font-size: 13px; max-width: 400px; word-break: break-word; }
 .mut.warn { color: var(--warn); }
@@ -86,6 +88,7 @@ var S = {
     onlyClaude: "tylko Claude Code",
     nf: "nie znaleziono na tym komputerze", term: "Terminal",
     close: "Zamknij", open: "Otwórz Exponential", on: "● działa", off: "○ nie działa", disconnect: "Odłącz",
+    uninstallQ: "Odinstalować agenta?", uninstallGo: "Odinstaluj", uninstalling: "Odinstalowuję…",
     removeWarn: "Nie udało się wyrejestrować komputera z serwera. Usuń go w Ustawieniach > AI.", removed: "Odłączono", removedLine: "Agent został usunięty z tego komputera.", account: "twoje konto",
     err: {
       expired: ["Link wygasł", "Pobierz agenta jeszcze raz w Exponential."],
@@ -102,6 +105,7 @@ var S = {
     onlyClaude: "Claude Code only",
     nf: "not found on this computer", term: "Terminal",
     close: "Close", open: "Open Exponential", on: "● running", off: "○ not running", disconnect: "Disconnect",
+    uninstallQ: "Uninstall the agent?", uninstallGo: "Uninstall", uninstalling: "Uninstalling…",
     removeWarn: "Could not unregister this computer from the server. Remove it in Settings > AI.", removed: "Disconnected", removedLine: "The agent was removed from this computer.", account: "your account",
     err: {
       expired: ["Link expired", "Download the agent again in Exponential."],
@@ -213,11 +217,21 @@ function viewConnected() {
   document.getElementById("b2").onclick = function () { window.close(); };
   document.getElementById("b2").focus();
 }
+function viewUninstall() {
+  render(pair("") + '<p class="h">' + esc(T.uninstallQ) + '</p>' + who("") +
+    '<div class="actions"><button id="b1">' + esc(T.cancel) + '</button><button class="danger" id="b2">' + esc(T.uninstallGo) + '</button></div>');
+  document.getElementById("b1").onclick = function () { window.close(); };
+  document.getElementById("b2").onclick = function () { viewRemoving(); window.disconnect(); };
+  document.getElementById("b1").focus();
+}
+function viewRemoving() { render(pair("run") + '<p class="h">' + esc(T.uninstalling) + '</p>'); }
 function removed(failed) { viewDone(T.removed, T.removedLine, failed ? T.removeWarn : ""); }
 function setInfo(i) {
   cur = i; T = S[i.lang] || S.en;
   if (i.state === "start") viewStart();
   else if (i.state === "connected") viewConnected();
+  else if (i.state === "uninstall") viewUninstall();
+  else if (i.state === "uninstall-run") { viewRemoving(); window.disconnect(); }
   else if (i.state === "error") showError(i);
   else viewLoading();
 }

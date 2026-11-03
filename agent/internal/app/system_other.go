@@ -46,7 +46,6 @@ func machineID() string {
 }
 
 func uninstallAll() (bool, error) {
-	forgot := forgetOnServer()
-	stopAgent("")
+	forgot := stopAndForget("")
 	return forgot, os.RemoveAll(dataDir())
 }

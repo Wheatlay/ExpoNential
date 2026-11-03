@@ -184,7 +184,7 @@ func errText(code, detail, host string) string {
 
 // runInstall is the double-click flow (no arguments): the branded window, or message boxes when WebView2 is missing.
 func runInstall() {
-	if runInstallerWindow() {
+	if runInstallerWindow("") {
 		return
 	}
 	info, ctx := prepareInstall()

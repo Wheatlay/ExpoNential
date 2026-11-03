@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { and, asc, eq, gt, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { activity, agentJobs, agentRepos, agentRuns, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, userDismissals, users } from '../db/schema.ts';
+import { activity, agentJobs, agentRepos, agentRuns, agentTombstones, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, userDismissals, users } from '../db/schema.ts';
 import { NOT_AGENT_CLIENT } from './oauth.ts';
 import { RuleError, identifier, parseIdentifier } from './rules.ts';
 import { analysisModel } from './prompts.ts';
@@ -78,6 +78,8 @@ const LIMIT_MSG = 'Daily token limit for others reached on this PC';
 export async function claimAnalysis(p: Project, user: User & { name: string }, number: number, deviceId: string, version?: string, ownOnly = false) {
   // Kliknięcie w przeglądarce może odpalić handler, zanim agent w tle zdąży się pierwszy raz zgłosić: wtedy rejestrujemy
   // urządzenie tutaj (należy do właściciela tokenu), zamiast wywracać analizę na "Unknown device".
+  if (await recentlyRemoved(deviceId)) throw new RuleError('This computer was removed', 'conflict');
+  if (await recentlyRemoved(deviceId)) throw new RuleError('This computer was removed', 'conflict');
   await db.insert(agents).values({ id: deviceId, userId: user.id }).onConflictDoNothing();
   const agent = await requireOwnAgent(user, deviceId);
   // Handler podaje swoją wersję: świeżo zaktualizowany PC nie czeka na pierwszy sygnał agenta.
@@ -171,8 +173,16 @@ export type RepoReport = { path?: string; source?: string; status?: string; erro
 /** ownOnly: agent z Codexem. Codex czyta cały dysk, więc nie dostaje zleceń innych osób z kolejki zespołu (prompt injection). */
 type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean };
 
+/** Komputer usunięty w ciągu ostatniej godziny nie wraca z odpytania (agent kończący pracę przy odinstalowaniu). */
+async function recentlyRemoved(deviceId: string) {
+  const [t] = await db.select({ id: agentTombstones.id }).from(agentTombstones)
+    .where(and(eq(agentTombstones.id, deviceId), dsql`${agentTombstones.deletedAt} > now() - interval '1 hour'`));
+  return !!t;
+}
+
 export async function heartbeat(user: User, deviceId: string, info: HeartbeatInfo) {
   const [existing] = await db.select({ userId: agents.userId }).from(agents).where(eq(agents.id, deviceId));
+  if (!existing && await recentlyRemoved(deviceId)) throw new RuleError('This computer was removed', 'conflict');
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
   // Bez podanej wersji zostaje zapisana (wersję podaje tracker-agent.ps1 z config.json).
@@ -436,7 +446,8 @@ export async function setAgentLimit(user: User, id: string, max: number | null) 
 }
 
 export async function removeAgent(user: User, id: string) {
-  await db.delete(agents).where(and(eq(agents.id, id), eq(agents.userId, user.id)));
+  const gone = await db.delete(agents).where(and(eq(agents.id, id), eq(agents.userId, user.id))).returning({ id: agents.id });
+  if (gone.length) await db.insert(agentTombstones).values({ id, userId: user.id }).onConflictDoUpdate({ target: agentTombstones.id, set: { deletedAt: new Date() } });
   return { ok: true };
 }
 

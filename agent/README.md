@@ -18,7 +18,7 @@ Go 1.27 (`winget install GoLang.Go`).
 
 ```
 cd agent
-./build.ps1 [-Version 0.3.0]    # plugin copy, icon (tools/mkicon, only if assets/exponential.ico is missing), go-winres (icon + version info, winres/winres.template.json), builds dist/exponential-agent.exe
+./build.ps1 [-Version 0.4.0]    # plugin copy, icon (tools/mkicon, only if assets/exponential.ico is missing), go-winres (icon + version info, winres/winres.template.json), builds dist/exponential-agent.exe
 go vet ./...
 go test ./...
 ```
@@ -88,3 +88,13 @@ The poll response may carry `repos` (project to folder map set in the tracker) a
 - **Team mode** (`teamMode`: `ask` | `auto` | `off`, default `ask`; replaces the old `askOthers` checkbox, `askOthers=false` is migrated once to `auto`). The server is the source of truth: the poll answer carries `teamMode`; a change made in the agent is sent as `PATCH /api/agents/<deviceId> {"teamMode": ...}` with the agent token (a 4xx is only logged). `auto` = no question, `off` = never take others' jobs.
 - **Mini settings window** (left click on the tray icon, or "Ustawienia…" in the right-click menu; `settings.html`, `settings_windows.go`): account and state line, version (+ update button), team mode, notification and autostart toggles, mute, theme, "Otwórz Exponential", "Ustawienia AI", "Odinstaluj…". Closes on Esc and when it loses focus.
 - **Theme** (`theme`: `system` | `dark` | `light`; system follows `AppsUseLightTheme`): applies to the installer, toast and mini settings windows. The colour block shared by all pages is `uiCSS` in `agentui.go` and mirrors the theme blocks of `src/web/styles.css`.
+
+## 0.4.0: tabbed window, repo picker, runs, update card, log
+
+- **One settings window, three tabs** (left click on the tray icon, or "Ustawienia…" in the menu, always opens on "Ogólne"; 400x520, closes on Esc or focus loss): "Ogólne" (what the mini window had, plus "Pokaż log" / "Kopiuj log"), "Repo", "Analizy".
+- **Repo tab**: the projects of the account (`GET /api/projects`) with the mapped folder, source badge (auto / ręcznie / klon / hook) and the check result. "Wybierz folder" opens the native Windows folder picker (IFileOpenDialog, fallback SHBrowseForFolder), validates the folder against the project's GitHub repo and stores it as source `manual`; the next poll sends the mapping to the server. "Usuń" deletes the local mapping. Projects without a GitHub repo show "brak repo w projekcie".
+- **Analizy tab**: the last 20 runs, kept in `<data dir>\runs.json` (time, key, requester when for someone else, engine, model, duration, input+output tokens, result ok / error reason / "limit Claude" / "odmowa" / "wyciszone", Claude account folder name). Click on the key opens `<url>/issue/KEY`.
+- **Log**: "Pokaż log" shows the last 200 lines of `log.txt` inside the window, "Kopiuj log" copies them to the clipboard. Bearer values and `exa_` / `trk_` tokens are replaced with `***`.
+- **No system dialogs**: uninstall ("Odinstalować agenta?" then progress and result), expired link, install errors and "already connected" are views of the branded window; message boxes remain only when WebView2 cannot be created. `uninstall` stops the agent first and only then unregisters the computer (a running agent would re-create it); an expired access token is refreshed (and the DELETE retried once on 401).
+- **Updates**: a newer release puts an accent dot on the tray icon (drawn at runtime into the .ico frames) and shows one card in the toast window: "Dostępna wersja X" / "Zaktualizuj" / ✕ (skip this version, `updateDismissed` in `config.json`). The click turns it into "Pobieram… 42%" (Content-Length), "Instaluję…", then the agent restarts and the new process shows "Zaktualizowano do X" for 6 s (`updatedTo` flag in `config.json`). Failure shows "Aktualizacja nie powiodła się" with "Spróbuj ponownie". The tray menu item stays.
+- Data folder additions: `runs.json`. No new registry keys or outside traces.

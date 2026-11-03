@@ -161,3 +161,11 @@ describe('pairing', () => {
     pairing.setAgentExeSource({ fetcher: async () => new Response(EXE, { status: 200 }) });
   });
 });
+
+describe('download file name', () => {
+  it('reads the agent version from the GitHub release URL', async () => {
+    const { versionFromUrl } = await import('../src/server/pairing.ts');
+    expect(versionFromUrl('https://github.com/Wheatlay/ExpoNential/releases/download/agent-v0.4.0/exponential-agent.exe')).toBe('0.4.0');
+    expect(versionFromUrl('http://127.0.0.1:9123/x.exe')).toBe('');
+  });
+});

@@ -117,7 +117,27 @@ func toastThread() {
 	done()
 }
 
+// updateAct handles the buttons of the update card.
+func updateAct(action string) {
+	switch action {
+	case "update", "retry":
+		runUpdate()
+		return
+	case "dismiss":
+		if v := updCard.Dismiss(); v != "" {
+			updateConfig(func(c *Config) { c.UpdateDismissed = v })
+		}
+	case "update-done":
+		updCard.Clear()
+	}
+	cardsChanged()
+}
+
 func toastAct(key, action string) {
+	if key == "__update" {
+		updateAct(action)
+		return
+	}
 	switch action {
 	case "open":
 		if u := loadConfig().URL; u != "" {
@@ -179,7 +199,11 @@ func toastPush() {
 		L       map[string]string `json:"L"`
 		Prompts []pc              `json:"prompts"`
 		Infos   []ic              `json:"infos"`
+		Update  *updateSnap       `json:"update"`
 	}{Theme: currentTheme(), L: toastLabels(uiLang()), Prompts: []pc{}, Infos: []ic{}}
+	if u := updCard.Snapshot(); u.Phase != updNone {
+		st.Update = &u
+	}
 	for _, p := range prompts {
 		st.Prompts = append(st.Prompts, pc{p.Key, p.Name})
 	}
