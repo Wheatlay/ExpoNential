@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { and, asc, desc, eq, sql as dsql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, notInArray, sql as dsql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.ts';
-import { apiTokens, issues, projects, userViews, users } from '../db/schema.ts';
+import { TAG_COLORS, apiTokens, inboxItems, issues, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
 import { createApiToken, requireAdmin, requireUser } from './auth.ts';
 import * as inv from './invites.ts';
 import { hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
@@ -12,6 +13,7 @@ import * as pr from './projects.ts';
 import * as ag from './agents.ts';
 import { addRelation, removeRelation } from './relations.ts';
 import { RuleError, parseIdentifier } from './rules.ts';
+import { validTagName } from './mentions.ts';
 import { DEFAULT_MODELS, DEFAULT_PROMPTS, MODELS, PROMPT_KINDS, analysisModel, renderPrompt } from './prompts.ts';
 
 export const issueInputSchema = z.object({
@@ -248,6 +250,87 @@ export async function registerApi(app: FastifyInstance) {
     });
 
     r.get('/api/meta', async (req) => svc.getMeta((await ctx(req)).project));
+    // Tagi osób (#tag): każdy członek projektu może je zakładać i zmieniać; pusty tag znika.
+    const tagName = z.string().transform((v) => v.trim().toLowerCase()).refine(validTagName, 'Tag names use letters, digits, - and _ (max 30) and need a letter');
+    const tagInput = z.object({ name: tagName, color: z.enum(TAG_COLORS) });
+    const tagTaken = async (projectId: number, name: string, exceptId?: number) => {
+      const [t] = await db.select({ id: userTags.id }).from(userTags).where(and(eq(userTags.projectId, projectId), eq(userTags.name, name)));
+      if (t && t.id !== exceptId) throw new RuleError('That tag already exists', 'invalid');
+    };
+    const parseTag = <T extends z.ZodType>(schema: T, body: unknown): z.infer<T> => {
+      const res = schema.safeParse(body);
+      if (!res.success) throw new RuleError(res.error.issues[0]?.message ?? 'Invalid tag', 'invalid');
+      return res.data;
+    };
+    r.post('/api/tags', async (req) => {
+      const { project } = await ctx(req);
+      const b = parseTag(tagInput, req.body);
+      await tagTaken(project.id, b.name);
+      const tag = await db.transaction(async (tx) => {
+        const [t] = await tx.insert(userTags).values({ projectId: project.id, name: b.name, color: b.color, createdBy: req.user!.id }).returning();
+        await tx.insert(userTagMembers).values({ tagId: t.id, userId: req.user!.id });
+        return t;
+      });
+      await svc.publish({ type: 'meta', projectKey: project.key });
+      return tag;
+    });
+    r.patch<{ Params: { id: string } }>('/api/tags/:id', async (req) => {
+      const { project } = await ctx(req);
+      const id = intParam(req.params.id);
+      const b = parseTag(tagInput.partial(), req.body);
+      if (b.name !== undefined) await tagTaken(project.id, b.name, id);
+      const [t] = Object.keys(b).length
+        ? await db.update(userTags).set(b).where(and(eq(userTags.id, id), eq(userTags.projectId, project.id))).returning()
+        : await db.select().from(userTags).where(and(eq(userTags.id, id), eq(userTags.projectId, project.id)));
+      if (!t) throw new RuleError('Tag not found', 'not_found');
+      await svc.publish({ type: 'meta', projectKey: project.key });
+      return t;
+    });
+    // Moje tagi w bieżącym projekcie: lista zastępuje dotychczasową, tag bez członków znika.
+    r.put('/api/me/tags', async (req) => {
+      const { project } = await ctx(req);
+      const { tagIds } = z.object({ tagIds: z.array(z.number().int()).max(200) }).parse(req.body);
+      const userId = req.user!.id;
+      await db.transaction(async (tx) => {
+        const own = (await tx.select({ id: userTags.id }).from(userTags).where(eq(userTags.projectId, project.id))).map((t) => t.id);
+        const want = [...new Set(tagIds)].filter((id) => own.includes(id));
+        if (own.length) await tx.delete(userTagMembers).where(and(eq(userTagMembers.userId, userId), inArray(userTagMembers.tagId, own), ...(want.length ? [notInArray(userTagMembers.tagId, want)] : [])));
+        if (want.length) await tx.insert(userTagMembers).values(want.map((tagId) => ({ tagId, userId }))).onConflictDoNothing();
+        await tx.delete(userTags).where(and(eq(userTags.projectId, project.id), dsql`not exists (select 1 from user_tag_members m where m.tag_id = ${userTags.id})`));
+      });
+      await svc.publish({ type: 'meta', projectKey: project.key });
+      return { ok: true };
+    });
+
+    // Skrzynka: wzmianki i pytania do mnie ze wszystkich moich projektów.
+    r.get('/api/inbox', async (req) => {
+      const actor = alias(users, 'actor');
+      return db.select({
+        id: inboxItems.id, kind: inboxItems.kind, projectKey: projects.key, issueNumber: issues.number, issueTitle: issues.title,
+        actorId: inboxItems.actorId, actorName: actor.name, tagName: inboxItems.tagName, excerpt: inboxItems.excerpt,
+        createdAt: inboxItems.createdAt, readAt: inboxItems.readAt,
+      }).from(inboxItems)
+        .innerJoin(projects, eq(projects.id, inboxItems.projectId))
+        .innerJoin(issues, eq(issues.id, inboxItems.issueId))
+        .leftJoin(actor, eq(actor.id, inboxItems.actorId))
+        .where(eq(inboxItems.userId, req.user!.id))
+        .orderBy(desc(inboxItems.createdAt), desc(inboxItems.id)).limit(50);
+    });
+    r.post('/api/inbox/read', async (req) => {
+      const { ids } = z.object({ ids: z.array(z.number().int()).max(500).optional() }).parse(req.body ?? {});
+      const userId = req.user!.id;
+      await db.update(inboxItems).set({ readAt: new Date() })
+        .where(and(eq(inboxItems.userId, userId), isNull(inboxItems.readAt), ...(ids ? [inArray(inboxItems.id, ids.length ? ids : [-1])] : [])));
+      await svc.publish({ type: 'inbox', userIds: [userId] });
+      return { ok: true };
+    });
+    r.delete<{ Params: { id: string } }>('/api/inbox/:id', async (req) => {
+      const userId = req.user!.id;
+      await db.delete(inboxItems).where(and(eq(inboxItems.id, intParam(req.params.id)), eq(inboxItems.userId, userId)));
+      await svc.publish({ type: 'inbox', userIds: [userId] });
+      return { ok: true };
+    });
+
     r.get('/api/issues', async (req) => svc.listIssues((await ctx(req)).project, { viewerId: req.user!.id }));
     // Widok boardu: domyślny projektu + mój (nadpisuje). Treść widoku to dane aplikacji, serwer jej nie interpretuje.
     const viewBody = z.object({ view: z.record(z.string(), z.unknown()) }).refine((b) => JSON.stringify(b.view).length < 20_000, 'View too large');

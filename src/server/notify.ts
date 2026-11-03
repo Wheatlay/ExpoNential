@@ -10,12 +10,12 @@ import { RuleError } from './rules.ts';
  * zamkniętej karcie) i Discord (webhook projektu, z @here). Kanały wybiera osoba w Settings.
  */
 
-export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; notifyPromptShown: boolean };
-const DEFAULTS: NotifySettings = { inApp: true, push: true, discord: true, notifyPromptShown: false };
+export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; notifyPromptShown: boolean; onlyImportant: boolean };
+const DEFAULTS: NotifySettings = { inApp: true, push: true, discord: true, notifyPromptShown: false, onlyImportant: false };
 
 export async function getNotifySettings(userId: number): Promise<NotifySettings> {
   const [row] = await db.select().from(userNotificationSettings).where(eq(userNotificationSettings.userId, userId));
-  return row ? { inApp: row.inApp, push: row.push, discord: row.discord, notifyPromptShown: row.notifyPromptShown } : { ...DEFAULTS };
+  return row ? { inApp: row.inApp, push: row.push, discord: row.discord, notifyPromptShown: row.notifyPromptShown, onlyImportant: row.onlyImportant } : { ...DEFAULTS };
 }
 
 export async function saveNotifySettings(userId: number, patch: Partial<NotifySettings>) {
@@ -55,11 +55,14 @@ export async function deletePushSubscription(userId: number, endpoint: string) {
 
 export type PushPayload = { title: string; body: string; url: string; tag?: string };
 
-/** Push do osób, które mają włączony ten kanał. Wygasłe subskrypcje (404/410) usuwamy. */
-export async function sendPush(userIds: number[], payload: PushPayload, log?: { warn: (o: object, m: string) => void }) {
+/**
+ * Push do osób, które mają włączony ten kanał. Wygasłe subskrypcje (404/410) usuwamy.
+ * important: wzmianki i pytania; "tylko ważne" wycina resztę (np. spotkania).
+ */
+export async function sendPush(userIds: number[], payload: PushPayload, log?: { warn: (o: object, m: string) => void }, opts?: { important?: boolean }) {
   if (!pushEnabled || !userIds.length) return 0;
   const settings = await db.select().from(userNotificationSettings).where(inArray(userNotificationSettings.userId, userIds));
-  const off = new Set(settings.filter((s) => !s.push).map((s) => s.userId));
+  const off = new Set(settings.filter((s) => !s.push || (!opts?.important && s.onlyImportant)).map((s) => s.userId));
   const targets = userIds.filter((id) => !off.has(id));
   if (!targets.length) return 0;
   const subs = await db.select().from(pushSubscriptions).where(inArray(pushSubscriptions.userId, targets));

@@ -76,7 +76,7 @@ export async function registerMeetings(app: FastifyInstance) {
     // powiadomienia: ustawienia osoby, Web Push
     r.get('/api/notify-settings', async (req) => ({ ...(await nt.getNotifySettings(req.user!.id)), pushKey: nt.pushPublicKey() }));
     r.put('/api/notify-settings', async (req) => {
-      const b = z.object({ inApp: z.boolean(), push: z.boolean(), discord: z.boolean(), notifyPromptShown: z.boolean() }).partial().parse(req.body);
+      const b = z.object({ inApp: z.boolean(), push: z.boolean(), discord: z.boolean(), notifyPromptShown: z.boolean(), onlyImportant: z.boolean() }).partial().parse(req.body);
       return nt.saveNotifySettings(req.user!.id, b);
     });
     r.post('/api/push/subscription', async (req) => {

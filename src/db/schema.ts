@@ -180,6 +180,39 @@ export const comments = pgTable('comments', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('comments_issue_idx').on(t.issueId)]);
 
+export const TAG_COLORS = ['green', 'teal', 'sky', 'violet', 'pink', 'amber', 'blue', 'slate'] as const;
+export type TagColor = (typeof TAG_COLORS)[number];
+
+/** Tag osób w projekcie (#frontend): wzmianka tagu powiadamia wszystkich jego członków. */
+export const userTags = pgTable('user_tags', {
+  id: serial('id').primaryKey(),
+  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  color: text('color').notNull(),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex('user_tags_project_name').on(t.projectId, t.name)]);
+
+export const userTagMembers = pgTable('user_tag_members', {
+  tagId: integer('tag_id').notNull().references(() => userTags.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+}, (t) => [primaryKey({ columns: [t.tagId, t.userId] })]);
+
+/** Skrzynka osoby: wzmianki (@login, #tag) i pytania do niej, w każdym projekcie. */
+export const inboxItems = pgTable('inbox_items', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  kind: text('kind').$type<'mention' | 'tag' | 'question'>().notNull(),
+  issueId: integer('issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
+  commentId: integer('comment_id').references(() => comments.id, { onDelete: 'cascade' }),
+  actorId: integer('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  tagName: text('tag_name'),
+  excerpt: text('excerpt').notNull().default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  readAt: timestamp('read_at', { withTimezone: true }),
+}, (t) => [index('inbox_user_idx').on(t.userId, t.createdAt)]);
+
 export type ActivityPayload =
   | { kind: 'created' }
   | { kind: 'status'; from: string | null; to: string }
@@ -384,6 +417,8 @@ export const userNotificationSettings = pgTable('user_notification_settings', {
   discord: boolean('discord').notNull().default(true),
   // Okno z prośbą o zgodę pokazujemy tylko raz.
   notifyPromptShown: boolean('notify_prompt_shown').notNull().default(false),
+  // Tylko ważne: push tylko dla wzmianek i pytań, bez powiadomień o spotkaniach.
+  onlyImportant: boolean('only_important').notNull().default(false),
 });
 
 export const pushSubscriptions = pgTable('push_subscriptions', {

@@ -1,11 +1,12 @@
 import { and, asc, desc, eq, inArray, isNotNull, isNull, sql as dsql } from 'drizzle-orm';
 import { db, sql, type Tx } from '../db/index.ts';
 import {
-  activity, comments, issueCommits, issueLabels, issueViews, issues, labels, projectMembers, projects, sprints, statuses, users,
+  activity, comments, inboxItems, issueCommits, issueLabels, issueViews, issues, labels, projectMembers, projects, sprints, statuses, userTagMembers, userTags, users,
   type ActivityPayload,
 } from '../db/schema.ts';
 import { RuleError, identifier, isEmail, isNeedInfo, PRIORITIES } from './rules.ts';
 import { relationsOf } from './relations.ts';
+import { notifyMentions } from './mentions.ts';
 import { listAllProjects, seedProjectStatuses, type Project } from './projects.ts';
 import { TYPE_LABEL_COLORS, TYPE_LABEL_NAMES, chosenText, fromInput, parseData, render, type AnalysisData, type AnalysisInput } from './analysis.ts';
 
@@ -32,15 +33,20 @@ export async function seedDefaults() {
 // ---------- odczyt ----------
 
 export async function getMeta(p: Project) {
-  const [st, lb, us] = await Promise.all([
+  const [st, lb, us, tg, tgm] = await Promise.all([
     db.select().from(statuses).where(eq(statuses.projectId, p.id)).orderBy(asc(statuses.position)),
     db.select().from(labels).where(eq(labels.projectId, p.id)).orderBy(asc(labels.name)),
     // Ludzie projektu (do przypisywania, pytań, awatarów).
     db.select({ id: users.id, login: users.login, name: users.name, avatarUrl: users.avatarUrl, isAdmin: users.isAdmin, active: users.active, role: projectMembers.role })
       .from(projectMembers).innerJoin(users, eq(users.id, projectMembers.userId))
       .where(eq(projectMembers.projectId, p.id)).orderBy(asc(users.name)),
+    // Tagi osób (#tag) i ich członkowie: dwa zapytania zamiast jednego na tag.
+    db.select({ id: userTags.id, name: userTags.name, color: userTags.color }).from(userTags).where(eq(userTags.projectId, p.id)).orderBy(asc(userTags.name)),
+    db.select({ tagId: userTagMembers.tagId, userId: userTagMembers.userId }).from(userTagMembers)
+      .innerJoin(userTags, eq(userTags.id, userTagMembers.tagId)).where(eq(userTags.projectId, p.id)),
   ]);
-  return { statuses: st, labels: lb, users: us, priorities: PRIORITIES };
+  const tags = tg.map((t) => ({ ...t, memberIds: tgm.filter((m) => m.tagId === t.id).map((m) => m.userId) }));
+  return { statuses: st, labels: lb, users: us.map((u) => ({ ...u, tagIds: tags.filter((t) => t.memberIds.includes(u.id)).map((t) => t.id) })), tags, priorities: PRIORITIES };
 }
 
 /** Lekka lista do boardu: bez opisów i pól tekstowych. */
@@ -70,11 +76,15 @@ export async function listIssues(p: Project, filter: {
     wasTested: dsql<boolean>`exists (select 1 from activity a where a.issue_id = "issues"."id" and a.payload->>'kind' = 'status' and a.payload->>'to' in (select s.name from statuses s where s.project_id = "issues"."project_id" and s.role = 'testing'))`,
     // Niezamknięte zadania, na które to zadanie czeka (relacja blocks).
     infoFromId: issues.infoFromId, infoQuestion: issues.infoQuestion, infoById: issues.infoById,
-    // Komentarze innych od ostatniego otwarcia zadania (bez wizyty: od założenia konta).
-    unreadComments: filter.viewerId ? dsql<number>`(select count(*)::int from comments c where c.issue_id = "issues"."id"
+    // Komentarze innych od ostatniego otwarcia zadania (bez wizyty: od założenia konta), tylko w "moich" zadaniach:
+    // przypisanych do mnie, założonych przeze mnie, skomentowanych przeze mnie albo z wzmianką do mnie w skrzynce.
+    unreadComments: filter.viewerId ? dsql<number>`(select case when ("issues"."assignee_id" = ${filter.viewerId} or "issues"."creator_id" = ${filter.viewerId}
+      or exists (select 1 from comments mc where mc.issue_id = "issues"."id" and mc.author_id = ${filter.viewerId})
+      or exists (select 1 from inbox_items ii where ii.issue_id = "issues"."id" and ii.user_id = ${filter.viewerId}))
+      then (select count(*)::int from comments c where c.issue_id = "issues"."id"
       and c.author_id is distinct from ${filter.viewerId}
       and c.created_at > coalesce((select v.seen_at from issue_views v where v.user_id = ${filter.viewerId} and v.issue_id = "issues"."id"),
-        (select u.created_at from users u where u.id = ${filter.viewerId})))` : dsql<number>`0`,
+        (select u.created_at from users u where u.id = ${filter.viewerId}))) else 0 end)` : dsql<number>`0`,
     waitingOn: dsql<number[]>`coalesce((select array_agg(b.number order by b.number) from issue_relations r join issues b on b.id = r.from_issue_id join statuses bs on bs.id = b.status_id where r.kind = 'blocks' and r.to_issue_id = "issues"."id" and bs.type in ('backlog','unstarted','started')), '{}')`,
     subDone: dsql<number>`(select count(*)::int from issues c join statuses s on s.id = c.status_id where c.parent_id = "issues"."id" and s.type in ('completed','canceled','duplicate'))`,
   }).from(issues)
@@ -222,10 +232,13 @@ export async function createIssue(p: Project, actor: Actor, input: IssueInput & 
     return row;
   });
   await publish({ type: 'issue', projectKey: p.key, number: result.number });
+  if (result.description) await notifyMentions(p, actor, result, { body: result.description });
   return result;
 }
 
 export async function updateIssue(p: Project, actor: Actor, number: number, patch: IssueInput) {
+  // Do powiadomień o wzmiankach po zapisie: stary opis i komentarz z pytaniem.
+  const after: { prevDescription: string | null; asked: { id: number; body: string; to: number | null } | null } = { prevDescription: null, asked: null };
   const result = await db.transaction(async (tx) => {
     const cur = await requireIssue(p, number, tx);
     const set: Partial<typeof issues.$inferInsert> = {};
@@ -246,6 +259,7 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
       const v = patch[key];
       if (v !== undefined && v !== cur[key]) {
         set[key] = v;
+        if (key === 'description') after.prevDescription = cur.description;
         await log(tx, cur.id, actor, { kind: 'field', field });
       }
     }
@@ -316,14 +330,17 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
       if (patch.infoFromId) await checkMember(tx, p, patch.infoFromId);
       const who = patch.infoFromId ? await userName(patch.infoFromId) : 'anyone';
       if (!who) throw new RuleError('Unknown user', 'invalid');
+      // W treści komentarza @login, żeby pytanie było wzmianką (login jest unikalny, imię nie).
+      const [asker] = patch.infoFromId ? await tx.select({ login: users.login }).from(users).where(eq(users.id, patch.infoFromId)) : [];
       set.infoFromId = patch.infoFromId ?? null;
       set.infoById = actor?.id ?? null;
       // Status sprzed Need Info: po odpowiedzi zadanie do niego wróci.
       set.infoPrevStatusId = set.statusId !== undefined && set.statusId !== cur.statusId ? cur.statusId : (cur.infoPrevStatusId ?? null);
       set.infoQuestion = patch.infoQuestion!.trim();
       await log(tx, cur.id, actor, { kind: 'question', to: who, question: set.infoQuestion });
-      const [q] = await tx.insert(comments).values({ issueId: cur.id, authorId: actor?.id ?? null, body: `**Question for ${who}:** ${set.infoQuestion}` }).returning();
+      const [q] = await tx.insert(comments).values({ issueId: cur.id, authorId: actor?.id ?? null, body: `**Question for ${asker ? `@${asker.login}` : 'anyone'}:** ${set.infoQuestion}` }).returning();
       set.infoCommentId = q.id;
+      after.asked = { id: q.id, body: q.body, to: patch.infoFromId ?? null };
     }
 
     if (patch.labelIds !== undefined) {
@@ -347,6 +364,8 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
     return { ...cur, ...set };
   });
   await publish({ type: 'issue', projectKey: p.key, number });
+  if (after.prevDescription !== null) await notifyMentions(p, actor, result, { body: result.description, previousBody: after.prevDescription });
+  if (after.asked) await notifyMentions(p, actor, result, { body: after.asked.body, commentId: after.asked.id, questionFor: after.asked.to });
   return result;
 }
 
@@ -473,6 +492,7 @@ export async function addComment(p: Project, actor: Actor, number: number, body:
   });
   if (actor) await markSeen(actor.id, cur.id);
   await publish({ type: 'issue', projectKey: p.key, number });
+  await notifyMentions(p, actor, cur, { body, commentId: row.id });
   return row;
 }
 
@@ -520,6 +540,10 @@ export async function markSeenMany(p: Project, userId: number, numbers?: number[
 export async function markSeen(userId: number, issueId: number) {
   await db.insert(issueViews).values({ userId, issueId, seenAt: new Date() })
     .onConflictDoUpdate({ target: [issueViews.userId, issueViews.issueId], set: { seenAt: new Date() } });
+  // Otwarcie zadania czyta też jego wzmianki w skrzynce.
+  const read = await db.update(inboxItems).set({ readAt: new Date() })
+    .where(and(eq(inboxItems.userId, userId), eq(inboxItems.issueId, issueId), isNull(inboxItems.readAt))).returning({ id: inboxItems.id });
+  if (read.length) await publish({ type: 'inbox', userIds: [userId] });
 }
 
 /** Komentarz z numerem zadania, tylko jeśli należy do projektu (id komentarzy są globalne). */
@@ -536,6 +560,8 @@ export async function updateComment(p: Project, actor: Actor, id: number, body: 
   if (actor && c.comment.authorId !== actor.id) throw new RuleError('You can only edit your own comments', 'forbidden');
   await db.update(comments).set({ body, updatedAt: new Date() }).where(eq(comments.id, id));
   await publish({ type: 'issue', projectKey: p.key, number: c.number });
+  const [iss] = await db.select({ id: issues.id, number: issues.number, title: issues.title }).from(issues).where(eq(issues.id, c.comment.issueId));
+  if (iss) await notifyMentions(p, actor, iss, { body, previousBody: c.comment.body, commentId: id });
 }
 
 export async function deleteComment(p: Project, actor: Actor, id: number) {

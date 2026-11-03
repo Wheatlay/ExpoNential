@@ -179,7 +179,7 @@ describe('need info question', () => {
     await svc.updateIssue(P, null, i.number, { statusId: await statusId('Need Info'), infoFromId: u.id, infoQuestion: 'Który numer?' });
     const d = await svc.getIssueDetail(P, i.number);
     expect(d.infoFromId).toBe(u.id);
-    expect(d.comments.at(-1)?.body).toBe('**Question for Paweł:** Który numer?');
+    expect(d.comments.at(-1)?.body).toBe('**Question for @pawel-test:** Który numer?');
     await svc.updateIssue(P, null, i.number, { statusId: await statusId('In Progress') });
     const d2 = await svc.getIssueDetail(P, i.number);
     expect([d2.infoFromId, d2.infoQuestion]).toEqual([null, '']);
@@ -209,7 +209,7 @@ describe('answering a question', () => {
     const { users } = await import('../src/db/schema.ts');
     const a = await member('reader', 'Reader');
     const b = await member('writer', 'Writer');
-    const i = await svc.createIssue(P, null, { title: 'Unread' });
+    const i = await svc.createIssue(P, null, { title: 'Unread', assigneeId: a.id });
     const unread = async () => (await svc.listIssues(P, { viewerId: a.id })).find((x) => x.number === i.number)!.unreadComments;
     await svc.addComment(P, { id: b.id, name: b.name }, i.number, 'hej');
     expect(await unread()).toBe(1);
