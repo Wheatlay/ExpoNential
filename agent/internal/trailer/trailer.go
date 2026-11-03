@@ -18,6 +18,15 @@ type Config struct {
 	URL     string `json:"url"`
 	Pairing string `json:"pairing"`
 	Engine  string `json:"engine,omitempty"` // claude | codex, chosen in the web wizard
+	Goal    int    `json:"goal,omitempty"`   // 1 issue access, 2 + work trace, 3 + background agent (missing = 3)
+}
+
+// GoalLevel is the chosen goal 1-3; a missing or invalid value means 3 (everything).
+func (c Config) GoalLevel() int {
+	if c.Goal < 1 || c.Goal > 3 {
+		return 3
+	}
+	return c.Goal
 }
 
 // Parse returns the trailer and its total size in bytes (JSON + 4 + 8), or an error when there is none.

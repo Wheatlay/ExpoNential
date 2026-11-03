@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set by main (ldflags -X main.version).
-var Version = "0.2.4"
+var Version = "0.3.0"
 
 type RepoEntry struct {
 	Path   string `json:"path"`
@@ -39,11 +39,18 @@ type Config struct {
 	UserName     string               `json:"userName,omitempty"`     // account name shown in dialogs (Go agent)
 	UserID       int                  `json:"userId,omitempty"`       // own account id (to tell own analyses from others)
 	NotifyOthers *bool                `json:"notifyOthers,omitempty"` // toast when an analysis runs for someone else (default on)
+	AskOthers    *bool                `json:"askOthers,omitempty"`    // legacy, migrated to teamMode
+	AllowUntil   map[string]float64   `json:"allowUntil,omitempty"`   // requester id -> ms until which analyses for them are allowed
+	Declined     map[string]float64   `json:"declined,omitempty"`     // "KEY|requestedAt" -> ms of the decline
+	Goal         int                  `json:"goal,omitempty"`         // installer goal 1-3 (Go agent)
+	MutedUntil   float64              `json:"mutedUntil,omitempty"`   // ms until which the agent is muted (no prompts, others' jobs skipped)
+	TeamMode     string               `json:"teamMode,omitempty"`     // ask | auto | off (source of truth: the server)
+	Theme        string               `json:"theme,omitempty"`        // system | dark | light
 
 	raw map[string]json.RawMessage
 }
 
-var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers"}
+var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers", "askOthers", "allowUntil", "declined", "goal", "mutedUntil", "teamMode", "theme"}
 
 func dataDir() string {
 	base := os.Getenv("LOCALAPPDATA")

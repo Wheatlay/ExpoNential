@@ -480,7 +480,11 @@ export const agents = pgTable('agents', {
   lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   // Limit zleceń dla innych osób na dobę (null = bez limitu). Własne zlecenia właściciela nigdy nie są limitowane.
-  maxForOthersPerDay: integer('max_for_others_per_day'),
+  maxForOthersPerDay: integer('max_for_others_per_day'), // przestarzałe (limit liczby zleceń), nieużywane od limitu w tokenach
+  // Limit tokenów (wejście + wyjście + zapis cache) na dobę dla zleceń innych osób; null = bez limitu.
+  maxOthersTokensPerDay: bigint('max_others_tokens_per_day', { mode: 'number' }),
+  // Zlecenia zespołu na tym komputerze: 'ask' (agent pyta właściciela), 'auto' (bez pytania), 'off' (tylko własne).
+  teamMode: text('team_mode').notNull().default('ask'),
   // Kto zlecił to, co agent przejął jako ostatnie (claim analizy / Start). Analiza kasuje claim na zgłoszeniu, więc zapisujemy tu.
   currentRequesterId: integer('current_requester_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

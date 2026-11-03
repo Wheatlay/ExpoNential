@@ -13,6 +13,7 @@ var (
 	trayFails int    // consecutive failed polls
 	onStatus  func() // set by the tray; called after every change
 	IconICO   []byte // set by main (embedded exponential.ico)
+	updateVer string // newer agent version found on GitHub ("" = none)
 )
 
 func notifyStatus() {
@@ -51,29 +52,40 @@ func setPollFail() {
 	}
 }
 
-// statusText is the tray tooltip.
-func statusText(lang string) string {
+// statusParts is the state line (without the "Exponential · " prefix) and its meaning for colouring:
+// ok | ai | warn | danger.
+func statusParts(lang string) (text, kind string) {
 	trayMu.Lock()
 	key, forName, fails := trayKey, trayFor, trayFails
 	trayMu.Unlock()
 	pl := lang == "pl"
-	switch {
-	case fails >= 3 && pl:
-		return "Exponential · brak połączenia"
-	case fails >= 3:
-		return "Exponential · no connection"
-	case key != "" && forName != "" && pl:
-		return "Exponential · analiza " + key + " dla " + forName
-	case key != "" && forName != "":
-		return "Exponential · analyzing " + key + " for " + forName
-	case key != "" && pl:
-		return "Exponential · analiza " + key + "…"
-	case key != "":
-		return "Exponential · analyzing " + key + "…"
-	case pl:
-		return "Exponential · gotowy"
+	tx := func(p, e string) string {
+		if pl {
+			return p
+		}
+		return e
 	}
-	return "Exponential · ready"
+	until, paused := pausedUntil()
+	mutedTill, muted := mutedUntilOf(loadConfig(), time.Now())
+	switch {
+	case fails >= 3:
+		return tx("brak połączenia", "no connection"), "danger"
+	case paused:
+		return limitText(lang, until), "warn"
+	case key != "" && forName != "":
+		return tx("analiza "+key+" · "+forName, "analyzing "+key+" · "+forName), "ai"
+	case key != "":
+		return tx("analiza "+key+"…", "analyzing "+key+"…"), "ai"
+	case muted:
+		return mutedText(lang, mutedTill), "warn"
+	}
+	return tx("gotowy", "ready"), "ok"
+}
+
+// statusText is the tray tooltip.
+func statusText(lang string) string {
+	t, _ := statusParts(lang)
+	return "Exponential · " + t
 }
 
 // ownUserID returns the account id of this agent (cached in config.json; asked from /api/me once).
@@ -89,4 +101,18 @@ func ownUserID(a *Auth) int {
 	}
 	updateConfig(func(c *Config) { c.UserID = me.ID })
 	return me.ID
+}
+
+// updateSuffix is appended to the tray state line when a newer agent version exists.
+func updateSuffix(lang string) string {
+	trayMu.Lock()
+	v := updateVer
+	trayMu.Unlock()
+	if v == "" {
+		return ""
+	}
+	if lang == "pl" {
+		return " · dostępna " + v
+	}
+	return " · " + v + " available"
 }

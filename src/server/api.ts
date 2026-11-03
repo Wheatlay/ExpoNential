@@ -180,14 +180,19 @@ export async function registerApi(app: FastifyInstance) {
       return ag.setAgentRepo(req.user!, req.params.id, body.project, body.path);
     });
     r.delete<{ Params: { id: string; project: string } }>('/api/agents/:id/repos/:project', async (req) => ag.removeAgentRepo(req.user!, req.params.id, req.params.project));
-    r.put<{ Params: { id: string; project: string } }>('/api/agents/:id/team/:project', async (req) => ag.joinTeamQueue(req.user!, req.params.id, req.params.project));
-    r.delete<{ Params: { id: string; project: string } }>('/api/agents/:id/team/:project', async (req) => ag.leaveTeamQueue(req.user!, req.params.id, req.params.project));
+    // Zgoda per projekt zastąpiona trybem zespołu per komputer (PATCH /api/agents/:id { teamMode }).
+    const gone = async (_req: unknown, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => reply.code(410).send({ error: 'Gone: use PATCH /api/agents/:id with teamMode' });
+    r.put('/api/agents/:id/team/:project', gone);
+    r.delete('/api/agents/:id/team/:project', gone);
     r.post('/api/me/dismiss', async (req) => ag.dismiss(req.user!, z.object({ key: z.string().min(1).max(100) }).parse(req.body).key));
     r.delete<{ Params: { id: string } }>('/api/agents/:id', async (req) => ag.removeAgent(req.user!, req.params.id));
     r.patch<{ Params: { id: string } }>('/api/agents/:id', async (req) => {
-      const b = z.object({ label: z.string().max(60).optional(), maxForOthersPerDay: z.number().int().min(0).max(1000).nullable().optional() }).parse(req.body);
+      const b = z.object({ teamMode: z.enum(ag.TEAM_MODES).optional(), label: z.string().max(60).optional(), maxOthersTokensPerDay: z.number().int().min(0).max(10_000_000_000).nullable().optional() }).parse(req.body);
+      // Token agenta może zmienić tylko teamMode (własnego komputera: setTeamMode sprawdza właściciela).
+      if (req.authVia === 'token' && (b.label !== undefined || b.maxOthersTokensPerDay !== undefined)) throw new RuleError('This token can only change teamMode', 'forbidden');
+      if (b.teamMode !== undefined) await ag.setTeamMode(req.user!, req.params.id, b.teamMode);
       if (b.label !== undefined) await ag.renameAgent(req.user!, req.params.id, b.label);
-      if (b.maxForOthersPerDay !== undefined) await ag.setAgentLimit(req.user!, req.params.id, b.maxForOthersPerDay);
+      if (b.maxOthersTokensPerDay !== undefined) await ag.setAgentLimit(req.user!, req.params.id, b.maxOthersTokensPerDay);
       return { ok: true };
     });
     // Przebieg agenta po zakończeniu (zużycie tokenów, zlecający).

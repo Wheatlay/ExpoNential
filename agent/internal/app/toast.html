@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html data-theme="{{THEME}}">
+<head>
+<meta charset="utf-8">
+<style>
+/*{{CSS}}*/
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-select: none; -webkit-user-select: none; cursor: default;
+  font: 13px/1.35 Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: var(--text-primary); }
+#stack { width: 356px; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.toast { position: relative; width: 340px; background: var(--bg-popover); color: var(--text-primary); border: 1px solid var(--border-secondary);
+  border-radius: 12px; box-shadow: 0 4px 14px rgb(0 0 0 / .35); overflow: hidden; animation: in .28s cubic-bezier(.2, .9, .3, 1); }
+.toast.noanim { animation: none; }
+@keyframes in { from { transform: translateX(110%); } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+/* AI analysis: a thin ai-coloured edge and a tinted header strip */
+.toast::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--ai); }
+.tt { display: flex; gap: 10px; align-items: center; padding: 10px 12px 10px 15px; background: color-mix(in srgb, var(--ai) 10%, transparent); }
+.av { position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 15px; }
+.av .mk { position: absolute; right: -3px; bottom: -3px; width: 18px; height: 18px; border-radius: 50%; background: var(--bg-popover); display: grid; place-items: center; }
+.av .mk svg { width: 12px; height: 12px; }
+.tx { min-width: 0; flex: 1; cursor: pointer; }
+.tx b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx span { display: block; color: var(--text-secondary); }
+.x { flex: none; align-self: flex-start; width: 22px; height: 22px; margin: -4px -6px 0 0; border-radius: 6px; display: grid; place-items: center; color: var(--text-tertiary); font-size: 12px; cursor: pointer; }
+.x:hover { background: var(--bg-hover); color: var(--text-primary); }
+.acts { display: flex; gap: 6px; padding: 8px 12px 10px 12px; flex-wrap: nowrap; align-items: center; white-space: nowrap; }
+.btn { height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid transparent; font: 600 12px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; display: inline-flex; align-items: center; cursor: pointer; background: none; color: var(--text-primary); }
+.btn.allow { background: var(--success); border-color: var(--success); color: var(--on-accent); }
+.btn.allow:hover { filter: brightness(1.1); }
+.btn.once { background: color-mix(in srgb, var(--success) 14%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); }
+.btn.once:hover { background: color-mix(in srgb, var(--success) 24%, transparent); }
+.btn.mute { height: 22px; padding: 0 8px; font-weight: 500; margin-left: auto; background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning-text); }
+.btn.mute:hover { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+.btn:focus-visible, .x:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 1px; }
+.timer { height: 2px; background: color-mix(in srgb, var(--info) 18%, transparent); }
+.timer i { display: block; height: 100%; width: 100%; background: var(--info); }
+.toast.small .tt { padding-top: 7px; padding-bottom: 7px; }
+.toast.small .av { width: 28px; height: 28px; font-size: 12px; }
+.toast.small .av .mk { display: none; }
+.toast.small .tx { cursor: default; }
+.toast.small .tx b { font-weight: 500; }
+</style>
+</head>
+<body>
+<div id="stack"></div>
+<script>
+(function () {
+  var MARK = '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3 L22 22 Z" fill="#5e6ad2"/><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3" fill="none" stroke="#7180ff" stroke-width="1.6"/></svg>';
+  var PALETTE = ["#e0457b", "#7c5cff", "#26b5ce", "#e8862e", "#2f9e6b", "#3b82f6", "#c084fc", "#f472b6"];
+  var TOTAL = 120000, INFO = 6000;
+  var stack = document.getElementById("stack");
+  var L = {}, els = {}, rem = {}, infoEnd = {}, hovered = false, state = { prompts: [], infos: [] };
+
+  function color(name) { var h = 0; for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0; return PALETTE[h % PALETTE.length]; }
+  function initial(name) { return (name || "?").trim().charAt(0).toUpperCase(); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function avatar(name) { return '<span class="av" style="background:' + color(name) + '">' + esc(initial(name)) + '<span class="mk">' + MARK + '</span></span>'; }
+
+  function build(item) {
+    var el = document.createElement("div");
+    var h = "";
+    if (item.kind === "active") {
+      h = '<div class="tt">' + avatar(item.name) + '<div class="tx" data-a="open"><b>' + esc(item.name) + ' · ' + esc(item.key) + '</b><span>' + esc(L.want) + '</span></div>' +
+        '<span class="x" data-a="decline" role="button" tabindex="0" title="' + esc(L.decline) + '" aria-label="' + esc(L.decline) + '">&#10005;</span></div>' +
+        '<div class="acts"><button class="btn allow" data-a="allow">' + esc(L.allow) + '</button><button class="btn once" data-a="once">' + esc(L.once) + '</button>' +
+        '<button class="btn mute" data-a="mute">' + esc(L.mute) + '</button></div><div class="timer"><i></i></div>';
+    } else if (item.kind === "wait") {
+      h = '<div class="tt">' + avatar(item.name) + '<div class="tx"><b>' + esc(item.name) + ' · ' + esc(item.key) + ' ' + esc(L.waiting) + '</b></div></div>';
+    } else {
+      h = '<div class="tt">' + avatar(item.name) + '<div class="tx"><b>' + esc(L.info.replace("%K", item.key).replace("%N", item.name)) + '</b></div></div>';
+    }
+    el.innerHTML = h;
+    return el;
+  }
+
+  stack.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-a]");
+    if (!t) return;
+    window.act(t.closest(".toast").dataset.key, t.dataset.a);
+  });
+  stack.addEventListener("keydown", function (e) {
+    if ((e.key === "Enter" || e.key === " ") && e.target.dataset && e.target.dataset.a) { e.preventDefault(); e.target.click(); }
+  });
+  document.addEventListener("mouseenter", function () { hovered = true; });
+  document.addEventListener("mouseleave", function () { hovered = false; });
+  document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
+  // The window is clipped to the cards by Go, so every card reports its layout box (transform free).
+  function report() {
+    var rects = [];
+    for (var i = 0; i < stack.children.length; i++) {
+      var c = stack.children[i];
+      rects.push([c.offsetLeft, c.offsetTop, c.offsetWidth, c.offsetHeight]);
+    }
+    window.report(stack.children.length ? stack.offsetHeight : 0, JSON.stringify(rects));
+  }
+
+  window.render = function (s) {
+    state = s; L = s.L || L;
+    document.documentElement.setAttribute("data-theme", s.theme);
+    var items = [], active = [];
+    (s.infos || []).forEach(function (i) { items.push({ id: "i" + i.id, kind: "info", key: i.key, name: i.name, iid: i.id }); });
+    (s.prompts || []).forEach(function (p, idx) {
+      var it = { id: "p" + p.key, kind: idx === 0 ? "active" : "wait", key: p.key, name: p.name };
+      if (idx === 0) active.push(it); else items.push(it);
+    });
+    items = items.concat(active); // waiting cards above, the active one at the bottom
+    var seen = {};
+    items.forEach(function (it, idx) {
+      var id = it.id, ex = els[id], again = false;
+      seen[id] = true;
+      if (ex && ex.kind !== it.kind) { ex.el.remove(); ex = null; again = true; }
+      if (!ex) {
+        var el = build(it);
+        el.className = "toast" + (it.kind === "active" ? "" : " small") + (again ? " noanim" : "");
+        el.dataset.key = it.key;
+        ex = els[id] = { el: el, kind: it.kind, iid: it.iid };
+        if (it.kind === "info") infoEnd[id] = Date.now() + INFO;
+        if (it.kind !== "info" && rem[it.key] == null) rem[it.key] = TOTAL;
+      }
+      var cur = stack.children[idx];
+      if (cur !== ex.el) stack.insertBefore(ex.el, cur || null);
+    });
+    Object.keys(els).forEach(function (id) { if (!seen[id]) { els[id].el.remove(); delete els[id]; delete infoEnd[id]; } });
+    Object.keys(rem).forEach(function (k) { if (!items.some(function (i) { return i.key === k && i.kind !== "info"; })) delete rem[k]; });
+    report();
+  };
+
+  // 2 minute countdown of the active card; the mouse over the window pauses it (and the info cards).
+  setInterval(function () {
+    var changed = false;
+    if (!hovered) {
+      var a = (state.prompts || [])[0];
+      if (a) {
+        rem[a.key] = (rem[a.key] == null ? TOTAL : rem[a.key]) - 100;
+        var ex = els["p" + a.key];
+        if (ex) { var bar = ex.el.querySelector(".timer i"); if (bar) bar.style.width = Math.max(0, rem[a.key] / TOTAL * 100) + "%"; }
+        if (rem[a.key] <= 0) { rem[a.key] = TOTAL; window.act(a.key, "timeout"); }
+      }
+      Object.keys(infoEnd).forEach(function (id) {
+        if (els[id] && Date.now() > infoEnd[id]) {
+          var iid = els[id].iid;
+          els[id].el.remove(); delete els[id]; delete infoEnd[id]; changed = true;
+          window.act(String(iid), "info-done");
+        }
+      });
+    } else {
+      Object.keys(infoEnd).forEach(function (id) { infoEnd[id] += 100; });
+    }
+    if (changed) report();
+  }, 100);
+
+  window.ready();
+})();
+</script>
+</body>
+</html>

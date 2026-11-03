@@ -1227,7 +1227,6 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .ai-hint-title { font-size: var(--text-md); font-weight: 600; }
 .ai-hint-actions { display: flex; gap: 8px; }
 .nav-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: auto; flex-shrink: 0; }
-.s-row.invite { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .settings-legacy summary { cursor: pointer; color: var(--text-secondary); list-style: none; display: flex; align-items: center; gap: 8px; }
 .settings-legacy summary::-webkit-details-marker { display: none; }
 .settings-legacy summary > svg { transition: transform 0.12s; color: var(--text-tertiary); }

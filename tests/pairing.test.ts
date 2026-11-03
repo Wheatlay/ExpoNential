@@ -80,6 +80,48 @@ describe('agent download', () => {
   });
 });
 
+describe('goal in the trailer', () => {
+  const goalOf = async (q: string) => (readTrailer((await app.inject({ method: 'GET', url: '/agent/download' + q, headers: { cookie: sessionCookie } })).rawPayload).cfg as { goal?: number }).goal;
+  it('defaults to 3 and accepts 1..3 only', async () => {
+    expect(await goalOf('')).toBe(3);
+    expect(await goalOf('?goal=1')).toBe(1);
+    expect(await goalOf('?engine=codex&goal=2')).toBe(2);
+    expect(await goalOf('?goal=9')).toBe(3);
+    expect(await goalOf('?goal=x')).toBe(3);
+  });
+});
+
+describe('POST /api/agent/mcp-key', () => {
+  const mcpInit = (token: string) => app.inject({
+    method: 'POST', url: '/mcp', headers: { authorization: `Bearer ${token}`, accept: 'application/json, text/event-stream' },
+    payload: { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } },
+  });
+  const post = (headers: Record<string, string>, payload: unknown) => app.inject({ method: 'POST', url: '/api/agent/mcp-key', headers, payload: payload as object });
+  const agentToken = async () => {
+    const { cfg } = await download();
+    return (await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: cfg.pairing } })).json().access_token as string;
+  };
+  it('gives the agent grant a trk_ token that works on /mcp and replaces the same name', async () => {
+    const exa = await agentToken();
+    const res = await post({ authorization: `Bearer ${exa}` }, { client: 'Claude Code', device: 'PC-1' });
+    expect(res.statusCode).toBe(200);
+    const { token } = res.json();
+    expect(token).toMatch(/^trk_/);
+    expect((await mcpInit(token)).statusCode).toBe(200);
+    const again = (await post({ authorization: `Bearer ${exa}` }, { client: 'Claude Code', device: 'PC-1' })).json().token as string;
+    expect((await mcpInit(token)).statusCode).toBe(401);
+    expect((await mcpInit(again)).statusCode).toBe(200);
+    const rows = await dbmod.db.select().from(schema.apiTokens).where(eq(schema.apiTokens.name, 'Claude Code · PC-1'));
+    expect(rows).toHaveLength(1);
+    expect((await post({ authorization: `Bearer ${exa}` }, { client: 'x'.repeat(41), device: 'PC' })).statusCode).toBe(400);
+  });
+  it('rejects a session cookie, a trk_ token and other OAuth clients', async () => {
+    expect((await post({ cookie: sessionCookie }, { client: 'Claude Code', device: 'PC' })).statusCode).toBe(403);
+    const trk = (await post({ authorization: `Bearer ${await agentToken()}` }, { client: 'Codex', device: 'PC' })).json().token as string;
+    expect((await post({ authorization: `Bearer ${trk}` }, { client: 'Codex', device: 'PC' })).statusCode).toBe(403);
+  });
+});
+
 describe('pairing', () => {
   it('pair info is valid, pair issues an exa_ token that works on /mcp, second use is 404', async () => {
     const { cfg } = await download();

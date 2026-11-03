@@ -48,18 +48,37 @@ func prepareToast() {
 	})
 }
 
-// notifyOther shows "Analysis KEY for Name" when the toast is enabled.
+// notifyOther shows the small "Analysis KEY for Name" card (a Windows toast when the card window is unavailable).
+// Nothing while muted or when the notification is switched off.
 func notifyOther(key, name string) {
-	if !notifyOthersOn() {
+	if !notifyOthersOn() || isMuted() {
 		return
 	}
 	go func() {
 		defer func() { _ = recover() }()
-		prepareToast()
-		title := "Analysis " + key + " for " + name
-		if uiLang() == "pl" {
-			title = "Analiza " + key + " dla " + name
+		if toastEnsure() {
+			if cards.AddInfo(key, name) {
+				toastPush()
+			}
+			return
 		}
+		prepareToast()
+		title := name + " · analysis " + key
+		if uiLang() == "pl" {
+			title = name + " · analiza " + key
+		}
+		n := toast.Notification{AppID: toastAppID, Title: title, Icon: toastIcon}
+		if err := n.Push(); err != nil {
+			logf("toast: %s", err)
+		}
+	}()
+}
+
+// notifyText shows a plain toast.
+func notifyText(title string) {
+	go func() {
+		defer func() { _ = recover() }()
+		prepareToast()
 		n := toast.Notification{AppID: toastAppID, Title: title, Icon: toastIcon}
 		if err := n.Push(); err != nil {
 			logf("toast: %s", err)

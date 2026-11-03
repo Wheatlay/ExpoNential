@@ -176,6 +176,20 @@
       "when": 1793707384477,
       "tag": "0024_team_queue_optin",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793722430639,
+      "tag": "0025_token_limit",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793723104279,
+      "tag": "0026_team_mode",
+      "breakpoints": true
     }
   ]
 }

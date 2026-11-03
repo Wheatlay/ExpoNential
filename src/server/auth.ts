@@ -90,10 +90,11 @@ const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
   [/^POST$/, /^\/api\/issues\/[^/]+\/worklog$/],
   [/^GET$/, /^\/api\/agent\/work$/],
   [/^POST$/, /^\/api\/agent\/runs$/],
+  [/^POST$/, /^\/api\/agent\/mcp-key$/], // klucz MCP dla instalatora agenta (pairing.ts sprawdza klienta grantu)
   [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
   // Stary instalator i deinstalator PowerShell (scripts/local-agent).
   [/^(POST|DELETE)$/, /^\/api\/me\/local-agent$/],
-  [/^DELETE$/, /^\/api\/agents\/[^/]+$/],
+  [/^(DELETE|PATCH)$/, /^\/api\/agents\/[^/]+$/], // PATCH: tylko teamMode (api.ts)
 ];
 export const tokenAllowed = (method: string, url: string) => {
   const path = url.split('?')[0];

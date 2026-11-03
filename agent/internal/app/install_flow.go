@@ -29,6 +29,7 @@ type installInfo struct {
 	// data:image/png icons of the engine binary and of its host app ("" = page shows a placeholder)
 	EngineIcon string `json:"engineIcon"`
 	HostIcon   string `json:"hostIcon"`
+	Goal       int    `json:"goal"` // 1-3, what the installer will set up
 }
 
 // installCtx keeps what the install steps need (not sent to the UI).
@@ -38,6 +39,8 @@ type installCtx struct {
 	trSize  int64
 	base    string
 	openURL string // server address for "Open Exponential"
+	goal    int
+	engine  string
 }
 
 func installErr(code, detail, host string) installInfo {
@@ -75,14 +78,21 @@ func prepareInstall() (installInfo, *installCtx) {
 			}
 		}
 		run := self
-		if _, err := os.Stat(installedPath()); err == nil {
+		_, instErr := os.Stat(installedPath())
+		if instErr == nil {
 			run = installedPath()
 		}
-		ensureRunning(run)
+		if instErr == nil || cfg.Goal == 0 { // goals 1-2 never start the background agent
+			ensureRunning(run)
+		}
 		for i := 0; i < 10 && agentPID() == 0; i++ {
 			time.Sleep(200 * time.Millisecond)
 		}
 		ci := installInfo{Lang: uiLang(), State: "connected", User: name, Host: hostOf(cfg.URL), Running: agentPID() != 0, Engine: cfg.Engine}
+		ci.Goal = 3
+		if cfg.Goal >= 1 && cfg.Goal < 3 {
+			ci.Goal = cfg.Goal
+		}
 		if ci.Engine != "codex" {
 			ci.Engine = "claude"
 		}
@@ -121,6 +131,8 @@ func prepareInstall() (installInfo, *installCtx) {
 	if info.Engine != "codex" {
 		info.Engine = "claude"
 	}
+	ctx.goal, ctx.engine = tr.GoalLevel(), info.Engine
+	info.Goal = ctx.goal
 	fillEngine(&info)
 	return info, ctx
 }
@@ -128,60 +140,6 @@ func prepareInstall() (installInfo, *installCtx) {
 type installResult struct {
 	Code, Detail string // empty Code = success
 	Base, Token  string
-}
-
-// doInstall pairs, installs the exe and starts the agent. progress(n) = n steps are done.
-func doInstall(ctx *installCtx, autostart bool, progress func(int)) installResult {
-	host := hostOf(ctx.base)
-	hn, _ := os.Hostname()
-	payload, _ := json.Marshal(map[string]string{"pairing": ctx.tr.Pairing, "name": hn})
-	status, body, err := httpDo("POST", ctx.base+"/api/agent/pair", map[string]string{"Content-Type": "application/json", "Accept": "application/json"}, payload, 30*time.Second)
-	if err != nil {
-		return installResult{Code: "network", Detail: err.Error()}
-	}
-	if status == 404 {
-		return installResult{Code: "expired"}
-	}
-	var pr struct {
-		ClientID     string `json:"client_id"`
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    any    `json:"expires_in"`
-		User         struct {
-			Name string `json:"name"`
-		} `json:"user"`
-	}
-	if status != 200 || json.Unmarshal(body, &pr) != nil || pr.AccessToken == "" {
-		return installResult{Code: "http", Detail: fmt.Sprintf("HTTP %d (%s)", status, host)}
-	}
-	exp := num(pr.ExpiresIn)
-	if exp == 0 {
-		exp = 3600
-	}
-	updateConfig(func(c *Config) {
-		c.URL, c.Token = ctx.base, ""
-		c.OAuth = &OAuth{Access: pr.AccessToken, Refresh: pr.RefreshToken, ExpiresAt: nowMs() + exp*1000, ClientID: pr.ClientID}
-		c.LastPairing = ctx.tr.Pairing
-		c.UserName = pr.User.Name
-		if e := ctx.tr.Engine; e == "claude" || e == "codex" {
-			c.Engine = e
-		}
-	})
-	progress(1)
-	installed, err := installApp(ctx.self, ctx.trSize)
-	if err != nil {
-		return installResult{Code: "install", Detail: err.Error()}
-	}
-	if !autostart {
-		autostartOff()
-	}
-	progress(2)
-	discoverBeforeStart()
-	if err := startDetachedExe(installed); err != nil {
-		return installResult{Code: "start", Detail: err.Error()}
-	}
-	progress(3)
-	return installResult{Base: ctx.base, Token: pr.AccessToken}
 }
 
 // waitForAgent polls /api/me until the server reports the agent online (up to 20 s).
@@ -247,11 +205,19 @@ func runInstall() {
 		if msgBox(fmt.Sprintf("Connect this computer to Exponential (%s) as %s?", info.Host, info.User), dlgAsk) != idYes {
 			return
 		}
-		if r := doInstall(ctx, true, func(int) {}); r.Code != "" {
-			msgBox(errText(r.Code, r.Detail, info.Host), dlgError)
+		out := runSetup(ctx, true, func(int, string, string) {})
+		if out.Res.Code != "" {
+			msgBox(errText(out.Res.Code, out.Res.Detail, info.Host), dlgError)
 			return
 		}
-		msgBox("Exponential agent is running. It starts with Windows; remove it in Settings > Apps.", dlgInfo)
+		msg := "Exponential is set up."
+		if ctx.goal >= 3 {
+			msg = "Exponential agent is running. It starts with Windows; remove it in Settings > Apps."
+		}
+		if out.Errors > 0 {
+			msg = fmt.Sprintf("Done with %d error(s), see log.txt.", out.Errors)
+		}
+		msgBox(msg, dlgInfo)
 	}
 }
 

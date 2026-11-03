@@ -377,11 +377,11 @@ function Appearance() {
  * dodaje serwer MCP każdemu kontu Claude Code, instaluje plugin (skille, ślad pracy) i analizę w tle.
  * Po instalacji to samo polecenie bez tokenu tylko aktualizuje. Tokeny niżej, żeby dało się je unieważnić.
  */
-type UsageInfo = { runs: number; forOthers: number; costUsd: number; byRequester: { name: string; runs: number; costUsd: number }[] };
-/** Koszt przybliżony, w walucie z kodem (np. "~4,20 USD") w języku użytkownika. */
-const usd = (n: number) => '~' + new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD', currencyDisplay: 'code' }).format(n);
-const byRequesterText = (u: UsageInfo) => u.byRequester.map((b) => `${b.name} ${b.runs}`).join(' · ') || null;
-const LIMITS = [5, 10, 20, 50];
+type UsageInfo = { runs: number; forOthers: number; costUsd: number; tokens: number; byRequester: { name: string; runs: number; costUsd: number; tokens: number }[] };
+/** Tokeny w zapisie skróconym języka użytkownika (np. "1,2 mln", po polsku "tys."/"mln"). */
+const tok = (n: number) => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+const byRequesterText = (u: UsageInfo) => u.byRequester.map((b) => `${b.name} ${b.runs} · ${t('{n} tokens', { n: tok(b.tokens) })}`).join(' · ') || null;
+const LIMITS = [1e6, 5e6, 10e6, 50e6];
 
 const dmy = (iso: string) => { const d = new Date(iso); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`; };
 
@@ -389,7 +389,7 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxForOthersPerDay: number | null; limitReached24h: boolean; forOthers24h: number; usage30d: UsageInfo; teamProjects: string[]; teamInvites: string[]; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxOthersTokensPerDay: number | null; limitReached24h: boolean; forOthers24h: number; forOthersTokens24h: number; claudeLimit: string; usage30d: UsageInfo; teamMode: TeamMode; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
   const projects = useProjects(!!me && !me.demo).data;
   const projectOf = (k: string) => projects?.find((p) => p.key === k);
   const refreshTeam = () => { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); };
@@ -445,32 +445,31 @@ function ClaudeConnect() {
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                     onBlur={(e) => { const v = e.target.value.trim(); if (v !== a.label) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { label: v } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); }); }} />
                   {a.outdated && !a.legacy && <span className="pill stalled">{t('Update needed')}</span>}
-                  {a.legacy && <button className="btn sm" onClick={() => openSetupWizard(3, 3)}>{t('Switch to the new agent')}</button>}
+                  {a.legacy && <button className="btn sm" onClick={() => openSetupWizard(3)}>{t('Switch to the new agent')}</button>}
                   {a.limitReached24h && <span className="pill stalled">{t('Limit reached')}</span>}
+                  {a.claudeLimit && <Tooltip text={t('Analyses will return automatically after the limit renews.')}><span className="pill">{a.claudeLimit}</span></Tooltip>}
                   {a.inactive && <Tooltip text={t('Not seen for over 3 days. Hidden after 14 days.')}><span className="pill">{t('Inactive')}</span></Tooltip>}
-                  {(a.limitReached24h || a.lastError || a.legacy || (a.maxForOthersPerDay == null && a.forOthers24h >= 20)) && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />}
+                  {(a.limitReached24h || a.lastError || a.legacy || (a.maxOthersTokensPerDay == null && a.forOthersTokens24h >= 2_000_000)) && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />}
                 </span>
-                {a.teamProjects.length > 0 && (
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                    {a.teamProjects.map((k) => (
-                      <Tooltip key={k} text={t('Takes requests from teammates in {project}', { project: projectOf(k)?.name ?? k })}>
-                        <button className="pill ok" onClick={(e) => openMenu(e.currentTarget, { items: [{ key: 'leave', label: t('Leave queue'), onSelect: () => { void api(`/api/agents/${a.id}/team/${k}`, { method: 'DELETE' }).then(refreshTeam); } }] })}>{t('Queue: {project}', { project: k })}</button>
-                      </Tooltip>
-                    ))}
-                  </div>
-                )}
                 {a.label && a.computerName && <div className="hint">{t('Windows name: {name}', { name: a.computerName })}</div>}
                 {a.usage30d.runs > 0 && (
                   <Tooltip text={byRequesterText(a.usage30d)}>
-                    <div className="hint">{t('30 days: {runs} · for others {others} · {cost}', { runs: a.usage30d.runs, others: a.usage30d.forOthers, cost: usd(a.usage30d.costUsd) })}</div>
+                    <div className="hint">{t('30 days: {runs} analyses · {tokens}', { runs: a.usage30d.runs, tokens: t('{n} tokens', { n: tok(a.usage30d.tokens) }) })}</div>
                   </Tooltip>
                 )}
                 {a.lastError && <Tooltip text={t('Last error {when}: {error}', { when: a.lastErrorAt ? timeAgo(a.lastErrorAt) : '', error: a.lastError.slice(0, 300) })}><span className="pill stalled">{t('Error')}</span></Tooltip>}</span>
+              <Tooltip text={t('Requests from other people in projects with a team queue.')}><span className="hint">{t('Team requests')}</span></Tooltip>
+              <div className="seg" role="group" aria-label={t('Team requests')}>
+                {TEAM_MODES.map((m) => (
+                  <button key={m} className={a.teamMode === m ? 'on' : ''} aria-pressed={a.teamMode === m}
+                    onClick={() => { if (a.teamMode !== m) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { teamMode: m } }).then(refreshTeam); }}>{TEAM_MODE_LABEL[m]()}</button>
+                ))}
+              </div>
               <Tooltip text={t('Runs for other people on this computer in 24 hours. Your own are never limited.')}>
-                <select className="input" value={a.maxForOthersPerDay ?? ''} aria-label={t('Limit for others per day')}
-                  onChange={(e) => void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { maxForOthersPerDay: e.target.value === '' ? null : Number(e.target.value) } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); })}>
+                <select className="input" value={a.maxOthersTokensPerDay ?? ''} aria-label={t('Limit for others per day')}
+                  onChange={(e) => void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { maxOthersTokensPerDay: e.target.value === '' ? null : Number(e.target.value) } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); })}>
                   <option value="">{t('No limit for others')}</option>
-                  {[...new Set([...LIMITS, ...(a.maxForOthersPerDay != null ? [a.maxForOthersPerDay] : [])])].sort((x, y) => x - y).map((n) => <option key={n} value={n}>{t('{n} for others / day', { n })}</option>)}
+                  {[...new Set([...LIMITS, ...(a.maxOthersTokensPerDay != null ? [a.maxOthersTokensPerDay] : [])])].sort((x, y) => x - y).map((n) => <option key={n} value={n}>{t('{n} / day', { n: tok(n) })}</option>)}
                 </select>
               </Tooltip>
               <span className="hint">{a.online ? (a.busy ? t('running an analysis') : t('online')) : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>
@@ -478,17 +477,6 @@ function ClaudeConnect() {
                 title: t('Remove "{name}"?', { name: a.name || t('Unnamed computer') }), body: t('This computer stops picking up work until the install command is run on it again.'), action: t('Remove'), danger: true,
               }).then((ok) => { if (ok) void api(`/api/agents/${a.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['agents'] })); })}>{t('Remove')}</button>
             </div>
-            {a.teamInvites.map((k) => (
-              <div key={k} className="s-row invite">
-                <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />
-                <span className="grow">{t('Project {name} has a team queue', { name: projectOf(k)?.name ?? k })}</span>
-                {/* Bez repo tego projektu komputer i tak nie dostanie zleceń: od razu skrót do wskazania folderu. */}
-                {!a.repos?.some((r) => r.project === k && r.status === 'ok') && <button className="btn sm" onClick={() => openSetupWizard(3, 3)}>{t('Choose folder')}</button>}
-                <span className="hint">{t('Take requests')}</span>
-                <button className="switch" role="switch" aria-checked={false} aria-label={t('Take requests')} onClick={() => void api(`/api/agents/${a.id}/team/${k}`, { method: 'PUT' }).then(refreshTeam)} />
-                <button className="btn sm" onClick={() => { const pr = projectOf(k); if (pr) void api('/api/me/dismiss', { method: 'POST', body: { key: `team-invite:${pr.id}` } }).then(refreshTeam); }}>{t('Not now')}</button>
-              </div>
-            ))}
             </Fragment>
           ))}
           {/* Tylko dla starego skryptu: link tracker:// z tej przeglądarki. Nowy agent bierze zlecenia z kolejki sam. */}
@@ -1051,18 +1039,23 @@ function toHex(c: string) {
 }
 
 /** Kolejka zespołu projektu: online komputer któregokolwiek członka bierze analizy wszystkich (na limitach jego Claude). */
+type TeamMode = 'ask' | 'auto' | 'off';
+const TEAM_MODES: TeamMode[] = ['ask', 'auto', 'off'];
+const TEAM_MODE_LABEL: Record<TeamMode, () => string> = { ask: () => t('Ask first'), auto: () => t('Without asking'), off: () => t('Not taking') };
+const TEAM_MODE_STATE: Record<TeamMode, () => string> = { ask: () => t('asks'), auto: () => t('without asking'), off: () => t('not taking') };
+
 function TeamQueue() {
   const c = useProject();
   const demo = !!useMe().data?.demo;
   const key = useProjectKey();
-  const online = useQuery({ queryKey: ['project-agents', key], queryFn: () => api<{ name: string; owner: string; busy: boolean; joined: boolean; usage30d: UsageInfo }[]>(`/api/projects/${key}/agents`), enabled: !!c && !demo, refetchInterval: 30_000 });
+  const online = useQuery({ queryKey: ['project-agents', key], queryFn: () => api<{ name: string; owner: string; busy: boolean; teamMode: TeamMode; usage30d: UsageInfo }[]>(`/api/projects/${key}/agents`), enabled: !!c && !demo, refetchInterval: 30_000 });
   if (!c) return null;
   const { p, ro: roBase, patch } = c;
   const ro = roBase ?? (demo ? t('Disabled in the demo') : null);
   return (
     <div className="s-card" id="team-queue" style={{ marginTop: 12 }}>
       <div className="s-row">
-        <span className="grow"><Tooltip text={t('Lets members share their computers. Each member turns this on for their own.')}><span>{t('Team queue')} · {p.name}</span></Tooltip></span>
+        <span className="grow"><Tooltip text={t('Lets members share their computers. Each owner sets how their computer handles it.')}><span>{t('Team queue')} · {p.name}</span></Tooltip></span>
         <Tooltip text={ro}>
           <button className={`switch ${p.agentTeamQueue ? 'on' : ''}`} role="switch" aria-checked={p.agentTeamQueue} aria-label={t('Team queue')}
             disabled={!!ro} style={ro ? { opacity: 0.45, cursor: 'not-allowed' } : undefined} onClick={() => void patch({ agentTeamQueue: !p.agentTeamQueue })} />
@@ -1072,8 +1065,8 @@ function TeamQueue() {
         <div key={i} className="s-row">
           <span className="grow">{a.name || t('Unnamed computer')} · {a.owner}</span>
           {a.busy && <span className="hint">{t('running an analysis')}</span>}
-          <span className={a.joined ? 'pill ok' : 'pill ended'}>{a.joined ? t('takes requests') : t('not joined')}</span>
-          <Tooltip text={byRequesterText(a.usage30d)}><span className="hint">{t('30 days: {runs} · {cost}', { runs: a.usage30d.runs, cost: usd(a.usage30d.costUsd) })}</span></Tooltip>
+          <span className={a.teamMode === 'off' ? 'pill ended' : 'pill ok'}>{TEAM_MODE_STATE[a.teamMode]()}</span>
+          <Tooltip text={byRequesterText(a.usage30d)}><span className="hint">{t('30 days: {runs} analyses · {tokens}', { runs: a.usage30d.runs, tokens: t('{n} tokens', { n: tok(a.usage30d.tokens) }) })}</span></Tooltip>
         </div>
       ))}
       {!demo && !(online.data ?? []).length && <div className="s-row"><span className="hint">{t('No computer is online right now.')}</span></div>}

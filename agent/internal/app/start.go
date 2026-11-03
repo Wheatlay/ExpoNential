@@ -141,7 +141,7 @@ func mergeServerRepos(list []serverRepo) {
 	logf("mapping from server: %s", strings.Join(names, ", "))
 }
 
-func analyze(a *Auth, key string, deepJob bool, deviceID string) {
+func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInfo) {
 	if !keyRe.MatchString(key) {
 		panic(fmt.Sprintf("rejected key from server: %s", key))
 	}
@@ -151,22 +151,31 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string) {
 		return
 	}
 	_ = os.WriteFile(lock, []byte(strconv.Itoa(os.Getpid())), 0o644)
-	claimed, failMsg := false, ""
+	claimed, failMsg, requeue := false, "", false
 	cleanup := func() {}
 	defer func() {
 		cleanup()
 		_ = os.Remove(lock)
 		// Release only after an error. After code 0 NOT: if the engine ran but saved nothing, the job should go to
 		// Stalled, not back to the queue forever (every run is paid usage).
-		if claimed && failMsg != "" {
+		if claimed && requeue {
+			// usage limit on every account: not a failure, the job goes back to the queue (no "error")
+			if err := request(a, "DELETE", "/api/issues/"+key+"/analyze/claim", map[string]any{"deviceId": deviceID}, 0, nil); err != nil {
+				logf("release: %s", err)
+			}
+		} else if claimed && failMsg != "" {
 			e := hhmm() + " " + failMsg
 			setLastErr(cut(e, 300))
-			if err := request(a, "DELETE", "/api/issues/"+key+"/analyze/claim", map[string]any{"deviceId": deviceID, "error": cut(failMsg, 2000)}, 0, nil); err != nil {
+			if err := request(a, "DELETE", "/api/issues/"+key+"/analyze/claim", map[string]any{"deviceId": deviceID, "error": cut(failMsg, 300)}, 0, nil); err != nil {
 				logf("release: %s", err)
 			}
 		}
 	}()
 	fail := func(err error) { failMsg = err.Error(); logf("error: %s", failMsg) }
+
+	if !consentFor(a, key, rq) {
+		return
+	}
 
 	cfg := loadConfig()
 	engine := cfg.Engine
@@ -279,12 +288,43 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string) {
 		return
 	}
 	cleanup = cl
-	started := time.Now()
-	code, usage := runEngine(runOpts{engine: engine, bin: bin, prompt: res.Prompt, model: model, untrusted: entry.Source == "clone", cwd: dir, base: a.Base, auth: a.Auth, activeAccount: activeAccount()})
-	logf("end %s (code %d)", key, code)
-	reportRun(a, deviceID, key, "analyze", engine, model, started, code, usage)
-	if code != 0 {
-		failMsg = fmt.Sprintf("%s exited with code %d (details in log.txt)", engine, code)
+	accts := []string{""}
+	if engine == "claude" {
+		accts = claudeAccounts()
+	}
+	skip := map[string]bool{}
+	for {
+		acct, ok := nextAccount(accts, limitedSnapshot(), skip, time.Now())
+		if !ok {
+			// Every Claude account is at its limit: back to the queue without an error, pause until the earliest reset.
+			until, all := earliestReset(accts, limitedSnapshot(), time.Now())
+			if !all {
+				until = time.Now().Add(60 * time.Minute)
+			}
+			requeue = true
+			setLastErr(limitText(uiLang(), until))
+			pauseAnalyses(until)
+			return
+		}
+		if engine == "claude" {
+			logf("%s: account %s", key, accountName(acct))
+		}
+		started := time.Now()
+		code, usage, f := runEngine(runOpts{engine: engine, bin: bin, prompt: res.Prompt, model: model, untrusted: entry.Source == "clone", cwd: dir, base: a.Base, auth: a.Auth, activeAccount: acct})
+		logf("end %s (code %d)", key, code)
+		reportRun(a, deviceID, key, "analyze", engine, model, started, code, usage)
+		if code == 0 {
+			return
+		}
+		if engine == "claude" && f.Limit {
+			until := parseResetTime(f.Raw, time.Now())
+			setLimited(acct, until)
+			skip[acct] = true
+			logf("%s: account %s at its limit until %s", key, accountName(acct), until.Local().Format("15:04"))
+			continue
+		}
+		failMsg = failMessage(engine, code, f)
+		return
 	}
 }
 
@@ -353,10 +393,15 @@ func startJob(a *Auth, id int, deviceID string) error {
 }
 
 type pollJob struct {
-	Kind string   `json:"kind"`
-	Key  string   `json:"key"`
-	Deep any      `json:"deep"`
-	ID   *float64 `json:"id"`
+	Kind        string   `json:"kind"`
+	Key         string   `json:"key"`
+	Deep        any      `json:"deep"`
+	ID          *float64 `json:"id"`
+	RequestedAt *string  `json:"requestedAt"`
+	RequestedBy *struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	} `json:"requestedBy"`
 }
 
 func cmdStart() {
@@ -365,7 +410,13 @@ func cmdStart() {
 		return
 	}
 	logf("start (PID %d, v%s)", os.Getpid(), Version)
-	runWithTray(pollLoop)
+	migrateTeamModeOnDisk()
+	runWithTray(func() {
+		go updateLoop()
+		go cleanupOldExe()
+		go refreshAppVersion()
+		pollLoop()
+	})
 }
 
 func pollLoop() {
@@ -411,7 +462,9 @@ func pollOnce(delay *int, errLogged *bool) error {
 	if a == nil {
 		return errors.New("not logged in (run: exponential-agent login)")
 	}
-	busy := running.Load() || freshLocks()
+	busyOther := running.Load() || freshLocks()
+	_, paused := pausedUntil()
+	busy := busyOther || paused // while every Claude account is at its limit the server offers no jobs
 	b := "0"
 	if busy {
 		b = "1"
@@ -435,6 +488,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 		Jobs         []pollJob         `json:"jobs"`
 		Repos        []json.RawMessage `json:"repos"`
 		CloneAllowed []any             `json:"cloneAllowed"`
+		TeamMode     string            `json:"teamMode"`
 	}
 	if err := request(a, "GET", "/api/agent/work?"+qs.Encode(), nil, 0, &res); err != nil {
 		return err
@@ -459,14 +513,49 @@ func pollOnce(delay *int, errLogged *bool) error {
 	if len(sr) > 0 {
 		mergeServerRepos(sr)
 	}
+	syncTeamMode(a, cfg, res.TeamMode)
 	*delay, *errLogged = 2, false
 	var job *pollJob
-	if !busy && len(res.Jobs) > 0 {
-		job = &res.Jobs[0]
+	pending := 0
+	if !busyOther {
+		live := map[string]bool{}
+		for i := range res.Jobs {
+			if res.Jobs[i].Kind == "analyze" {
+				live[res.Jobs[i].Key] = true
+			}
+		}
+		if !busy && len(cards.SyncPrompts(live)) > 0 {
+			cardsChanged() // the job was taken by another computer or cancelled: its card closes
+		}
+		for i := range res.Jobs {
+			j := &res.Jobs[i]
+			if j.Kind == "analyze" {
+				if paused || recentlyDeclined(j.Key) {
+					continue
+				}
+				rq := newRequester(j.RequestedBy, j.RequestedAt)
+				d := consentDecision(a, j.Key, rq)
+				if d == dPending {
+					if ensurePrompt(j.Key, rq) {
+						pending++
+					}
+					continue
+				}
+				if d == dNo {
+					continue
+				}
+				if _, ok := cards.RemovePrompt(j.Key); ok {
+					cardsChanged()
+				}
+			}
+			job = j
+			break
+		}
 	}
 	if job != nil && job.Kind == "analyze" {
 		logf("analysis %s", job.Key)
 		running.Store(true)
+		rq := newRequester(job.RequestedBy, job.RequestedAt)
 		// Not awaited: the loop keeps polling (busy=1) so the server keeps the claim fresh during a long run.
 		go func(key string, deep bool) {
 			setAnalyzing(key, "")
@@ -477,7 +566,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 					logf("error: %v", r)
 				}
 			}()
-			analyze(a, key, deep, cfg.DeviceID)
+			analyze(a, key, deep, cfg.DeviceID, rq)
 		}(job.Key, truthy(job.Deep))
 	} else if job != nil && job.Kind == "start" && job.ID != nil {
 		if err := startJob(a, int(*job.ID), cfg.DeviceID); err != nil {
@@ -487,7 +576,9 @@ func pollOnce(delay *int, errLogged *bool) error {
 		}
 	}
 	// No pause after a successful poll: the server holds the request (long poll). Only guards against a tight loop.
-	if !busy && job == nil {
+	if pending > 0 && job == nil {
+		time.Sleep(time.Second) // cards are waiting for an answer: do not hammer the server
+	} else if !busy && job == nil {
 		time.Sleep(200 * time.Millisecond)
 	} else if busy {
 		time.Sleep(2 * time.Second)
@@ -506,4 +597,17 @@ func shortErr(err error) string {
 		return "cannot reach the server: " + cut(ue.Err.Error(), 120)
 	}
 	return cut(err.Error(), 200)
+}
+
+// syncTeamMode adopts the team mode the server reports (it is the source of truth). Right after the legacy
+// askOthers=false migration the local 'auto' goes to the server instead.
+func syncTeamMode(a *Auth, cfg Config, server string) {
+	if migratedAuto.CompareAndSwap(true, false) {
+		go patchTeamMode(teamAuto)
+		return
+	}
+	if m, ok := adoptServerTeamMode(cfg, server, time.Now()); ok {
+		updateConfig(func(c *Config) { c.TeamMode = m })
+		notifyStatus()
+	}
 }

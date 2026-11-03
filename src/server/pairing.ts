@@ -6,8 +6,8 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { agentPairings, oauthClients, users } from '../db/schema.ts';
-import { sha256 } from './auth.ts';
+import { agentPairings, oauthClients, oauthGrants, apiTokens, users } from '../db/schema.ts';
+import { createApiToken, sha256 } from './auth.ts';
 import { issueGrant } from './oauth.ts';
 import { createAttemptLimiter } from './password.ts';
 
@@ -40,7 +40,7 @@ async function agentExe(): Promise<Buffer> {
 }
 
 /** Stopka doklejana do pliku: JSON, jego długość (uint32 LE) i znacznik. */
-export function pairingTrailer(config: { url: string; pairing: string; engine?: string }) {
+export function pairingTrailer(config: { url: string; pairing: string; engine?: string; goal?: number }) {
   const json = Buffer.from(JSON.stringify(config), 'utf8');
   const len = Buffer.alloc(4);
   len.writeUInt32LE(json.length);
@@ -58,9 +58,12 @@ const limited = (req: FastifyRequest, reply: FastifyReply) => {
 const validPairing = (token: string) => and(eq(agentPairings.hash, sha256(token)), isNull(agentPairings.usedAt), gt(agentPairings.expiresAt, new Date()));
 
 export async function registerPairing(app: FastifyInstance) {
-  app.get<{ Querystring: { engine?: string } }>('/agent/download', async (req, reply) => {
+  app.get<{ Querystring: { engine?: string; goal?: string } }>('/agent/download', async (req, reply) => {
     // Klient wybrany w kreatorze: instalator go pokazuje i ustawia jako silnik agenta.
     const engine = req.query.engine === 'codex' ? 'codex' : 'claude';
+    // Cel z kreatora (1..3): instalator wie, do jakiego poziomu ma skonfigurować komputer.
+    const g = Number.parseInt(req.query.goal ?? '', 10);
+    const goal = g >= 1 && g <= 3 ? g : 3;
     if (req.authVia !== 'session' || !req.user) return reply.redirect('/login');
     let exe: Buffer;
     try { exe = await agentExe(); } catch (e) {
@@ -71,7 +74,7 @@ export async function registerPairing(app: FastifyInstance) {
     const token = `pair_${randomBytes(24).toString('base64url')}`;
     await db.insert(agentPairings).values({ hash: sha256(token), userId: req.user.id, expiresAt: new Date(Date.now() + PAIR_MS) });
     return reply.type('application/octet-stream').header('Content-Disposition', 'attachment; filename="exponential-agent.exe"')
-      .header('Cache-Control', 'no-store').send(Buffer.concat([exe, pairingTrailer({ url: BASE_URL, pairing: token, engine })]));
+      .header('Cache-Control', 'no-store').send(Buffer.concat([exe, pairingTrailer({ url: BASE_URL, pairing: token, engine, goal })]));
   });
 
   app.get<{ Params: { pairing: string } }>('/api/agent/pair/:pairing', async (req, reply) => {
@@ -95,4 +98,22 @@ export async function registerPairing(app: FastifyInstance) {
     return reply.header('Cache-Control', 'no-store').send({ client_id: AGENT_CLIENT_ID, ...grant, user: { name: u.name } });
   });
 
+  /**
+   * Klucz MCP dla instalatora: agent (grant OAuth klienta exponential-agent) prosi o osobisty token trk_ dla klienta AI
+   * na tym komputerze. Nazwa "<klient> · <komputer>"; ponowna instalacja zastępuje poprzedni token o tej nazwie.
+   */
+  app.post('/api/agent/mcp-key', async (req, reply) => {
+    const m = /^Bearer\s+(exa_\S+)$/i.exec(req.headers.authorization ?? '');
+    if (req.authVia !== 'token' || !req.user || !m) return reply.code(403).send({ error: 'Only the Exponential agent can create this key' });
+    const [g] = await db.select({ clientId: oauthGrants.clientId, clientName: oauthClients.name }).from(oauthGrants)
+      .innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId)).where(eq(oauthGrants.accessHash, sha256(m[1])));
+    if (!g || (g.clientId !== AGENT_CLIENT_ID && g.clientName !== 'Exponential agent')) return reply.code(403).send({ error: 'Only the Exponential agent can create this key' });
+    const b = (req.body && typeof req.body === 'object' ? req.body : {}) as { client?: unknown; device?: unknown };
+    if (typeof b.client !== 'string' || !b.client.trim() || b.client.length > 40 || typeof b.device !== 'string' || !b.device.trim() || b.device.length > 80) {
+      return reply.code(400).send({ error: 'client (max 40) and device (max 80) are required' });
+    }
+    const name = `${b.client.trim()} · ${b.device.trim()}`;
+    await db.delete(apiTokens).where(and(eq(apiTokens.userId, req.user.id), eq(apiTokens.name, name)));
+    return reply.header('Cache-Control', 'no-store').send({ token: await createApiToken(req.user.id, name) });
+  });
 }

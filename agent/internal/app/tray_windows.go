@@ -4,14 +4,15 @@ package app
 
 import (
 	"os"
-	"os/exec"
 	"strings"
+	"time"
 
 	"fyne.io/systray"
 )
 
 // runWithTray shows the tray icon and runs loop in a goroutine; it returns only when the agent is quit from the menu.
 // The icon is best-effort: when it cannot be created the loop still runs.
+// Left click on the icon opens the mini settings window (SetOnTapped); the menu opens on right click.
 func runWithTray(loop func()) {
 	lang := uiLang()
 	pl := lang == "pl"
@@ -27,63 +28,101 @@ func runWithTray(loop func()) {
 		}
 		systray.SetTitle("Exponential")
 		systray.SetTooltip(statusText(lang))
+		systray.SetOnTapped(openSettings)
 		cfg := loadConfig()
+		settings := systray.AddMenuItem(tx("Ustawienia…", "Settings…"), "")
+		systray.AddSeparator()
 		who := strings.TrimSpace(cfg.UserName + " · " + hostOf(cfg.URL))
 		head := systray.AddMenuItem(who, "")
 		head.Disable()
-		// Stan i wersja w menu, nie tylko w podpowiedzi ikony.
-		state := systray.AddMenuItem(strings.TrimPrefix(statusText(lang), "Exponential · ")+" · agent "+Version, "")
+		// State and version in the menu, not only in the icon tooltip.
+		state := systray.AddMenuItem("", "")
 		state.Disable()
 		open := systray.AddMenuItem(tx("Otwórz Exponential", "Open Exponential"), "")
-		settings := systray.AddMenuItem(tx("Ustawienia AI", "AI settings"), "")
+		aiSettings := systray.AddMenuItem(tx("Ustawienia AI", "AI settings"), "")
 		systray.AddSeparator()
-		notif := systray.AddMenuItemCheckbox(tx("Powiadomienia o analizach dla innych", "Notifications for analyses for others"), "", notifyOthersOn())
-		auto := systray.AddMenuItemCheckbox(tx("Uruchamiaj z Windows", "Start with Windows"), "", strings.HasPrefix(autostartState(), "on"))
+		teamHead := systray.AddMenuItem(tx("Zlecenia zespołu", "Team jobs"), "")
+		teamHead.Disable()
+		teamItems := map[string]*systray.MenuItem{
+			teamAsk:  systray.AddMenuItemCheckbox(tx("Pytaj", "Ask"), "", false),
+			teamAuto: systray.AddMenuItemCheckbox(tx("Bez pytania", "Don't ask"), "", false),
+			teamOff:  systray.AddMenuItemCheckbox(tx("Nie biorę", "Don't take"), "", false),
+		}
+		mute := systray.AddMenuItem("", "")
 		systray.AddSeparator()
+		notif := systray.AddMenuItemCheckbox(tx("Powiadomienia o analizach dla innych", "Notifications for analyses for others"), "", false)
+		auto := systray.AddMenuItemCheckbox(tx("Uruchamiaj z Windows", "Start with Windows"), "", false)
+		systray.AddSeparator()
+		upd := systray.AddMenuItem("", "")
+		upd.Hide()
 		uninstall := systray.AddMenuItem(tx("Odinstaluj…", "Uninstall…"), "")
 		quit := systray.AddMenuItem(tx("Zakończ agenta", "Quit agent"), "")
-		trayMu.Lock()
-		onStatus = func() {
-			systray.SetTooltip(statusText(lang))
-			state.SetTitle(strings.TrimPrefix(statusText(lang), "Exponential · ") + " · agent " + Version)
+
+		check := func(it *systray.MenuItem, on bool) {
+			if on {
+				it.Check()
+			} else {
+				it.Uncheck()
+			}
 		}
+		// sync brings every item in line with config and live state (called after any change, also from the settings window).
+		sync := func() {
+			c := loadConfig()
+			text, _ := statusParts(lang)
+			systray.SetTooltip("Exponential · " + text)
+			state.SetTitle(text + " · agent " + Version + updateSuffix(lang))
+			until, muted := mutedUntilOf(c, time.Now())
+			mute.SetTitle(muteItemTitle(lang, until, muted))
+			mode := teamModeOf(c)
+			for m, it := range teamItems {
+				check(it, m == mode)
+			}
+			check(notif, notifyOthersOn())
+			check(auto, strings.HasPrefix(autostartState(), "on"))
+			trayMu.Lock()
+			uv := updateVer
+			trayMu.Unlock()
+			if uv != "" {
+				upd.SetTitle(tx("Zaktualizuj do ", "Update to ") + uv)
+				upd.Show()
+			} else {
+				upd.Hide()
+			}
+		}
+		trayMu.Lock()
+		onStatus = sync
 		trayMu.Unlock()
+		notifyStatus()
+		go func() { // the mute ends by itself: refresh the labels now and then
+			for range time.Tick(time.Minute) {
+				notifyStatus()
+			}
+		}()
 		go func() {
 			for {
 				select {
-				case <-open.ClickedCh:
-					if u := loadConfig().URL; u != "" {
-						openURL(u)
-					}
 				case <-settings.ClickedCh:
-					if u := loadConfig().URL; u != "" {
-						openURL(strings.TrimRight(u, "/") + "/settings#claude")
-					}
+					openSettings()
+				case <-open.ClickedCh:
+					openApp()
+				case <-aiSettings.ClickedCh:
+					openAISettings()
+				case <-teamItems[teamAsk].ClickedCh:
+					setTeamMode(teamAsk)
+				case <-teamItems[teamAuto].ClickedCh:
+					setTeamMode(teamAuto)
+				case <-teamItems[teamOff].ClickedCh:
+					setTeamMode(teamOff)
+				case <-mute.ClickedCh:
+					toggleMute()
 				case <-auto.ClickedCh:
-					if auto.Checked() {
-						autostartOff()
-						auto.Uncheck()
-					} else if exe, err := os.Executable(); err == nil && autostartOn(exe) == nil {
-						auto.Check()
-					}
-				case <-uninstall.ClickedCh:
-					// The installer window (no arguments) shows this computer with "Disconnect": the same place
-					// as a reinstall, with a confirmation, no system dialogs.
-					if exe, err := os.Executable(); err == nil {
-						c := exec.Command(exe)
-						detachCmd(c)
-						if c.Start() == nil {
-							_ = c.Process.Release()
-						}
-					}
+					setAutostart(!auto.Checked())
 				case <-notif.ClickedCh:
-					on := !notif.Checked()
-					if on {
-						notif.Check()
-					} else {
-						notif.Uncheck()
-					}
-					updateConfig(func(c *Config) { c.NotifyOthers = &on })
+					setNotifyOthers(!notif.Checked())
+				case <-upd.ClickedCh:
+					runUpdate()
+				case <-uninstall.ClickedCh:
+					launchUninstall()
 				case <-quit.ClickedCh:
 					systray.Quit()
 					return
@@ -92,7 +131,9 @@ func runWithTray(loop func()) {
 		}()
 		go loop()
 	}, func() {
-		_ = os.Remove(lockPath())
+		if !skipLockRemove.Load() {
+			_ = os.Remove(lockPath())
+		}
 		os.Exit(0)
 	})
 }

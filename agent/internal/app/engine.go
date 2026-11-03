@@ -92,7 +92,7 @@ type runOpts struct {
 }
 
 // runEngine runs the engine non-interactively in cwd, prompt on stdin, output appended to the log. Returns the exit code.
-func runEngine(o runOpts) (int, *runUsage) {
+func runEngine(o runOpts) (int, *runUsage, engineFailure) {
 	env := append(os.Environ(), "TRACKER_HOOKS=0") // a background session leaves no worklog
 	var args []string
 	if o.engine == "claude" {
@@ -104,7 +104,7 @@ func runEngine(o runOpts) (int, *runUsage) {
 		pdir, err := ensurePlugin()
 		if err != nil {
 			logRaw("agent: plugin error " + err.Error() + "\n")
-			return -1, nil
+			return -1, nil, engineFailure{Reason: "plugin error: " + err.Error()}
 		}
 		// A 'clone' repo comes from the project's githubRepo, which a project admin controls: its .claude/settings*.json,
 		// hooks and .mcp.json must not run on this machine. So only user settings load; --strict-mcp-config ignores every
@@ -131,22 +131,24 @@ func runEngine(o runOpts) (int, *runUsage) {
 	_ = os.MkdirAll(dataDir(), 0o755)
 	out, err := os.OpenFile(logFile(), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return -1, nil
+		return -1, nil, engineFailure{Reason: "cannot open log.txt"}
 	}
 	defer out.Close()
 	c := engineCmd(o.bin, args)
 	c.Dir, c.Env = o.cwd, env
 	c.Stdin = strings.NewReader(o.prompt)
 	var captured limitedBuf
+	var outTail, errTail tailBuf
+	outTail.n, errTail.n = 4096, 4096
 	if o.engine == "claude" {
-		c.Stdout = io.MultiWriter(out, &captured)
+		c.Stdout = io.MultiWriter(out, &captured, &outTail)
 	} else {
-		c.Stdout = out
+		c.Stdout = io.MultiWriter(out, &outTail)
 	}
-	c.Stderr = out
+	c.Stderr = io.MultiWriter(out, &errTail)
 	if err := c.Start(); err != nil {
 		_, _ = out.WriteString("agent: spawn error " + err.Error() + "\n")
-		return -1, nil
+		return -1, nil, engineFailure{Reason: "cannot start: " + err.Error()}
 	}
 	timer := time.AfterFunc(30*time.Minute, func() {
 		_, _ = out.WriteString("agent: timeout 30 min, killing\n")
@@ -160,10 +162,18 @@ func runEngine(o runOpts) (int, *runUsage) {
 			code = ee.ExitCode()
 		}
 	}
-	if o.engine == "claude" {
-		return code, parseClaudeUsage(captured.b)
+	var fail engineFailure
+	if code != 0 {
+		stdout := outTail.Bytes()
+		if o.engine == "claude" {
+			stdout = captured.b
+		}
+		fail = analyzeFailure(stdout, errTail.Bytes())
 	}
-	return code, nil // codex: no usage option checked (codex is not installed here), so none is sent
+	if o.engine == "claude" {
+		return code, parseClaudeUsage(captured.b), fail
+	}
+	return code, nil, fail // codex: no usage option checked (codex is not installed here), so none is sent
 }
 
 // limitedBuf keeps the last 4 MB written to it (the JSON result is at the end).

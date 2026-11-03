@@ -43,3 +43,13 @@ func TestParseBadLength(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestGoalLevel(t *testing.T) {
+	for js, want := range map[string]int{`{"url":"u","pairing":"p"}`: 3, `{"url":"u","pairing":"p","goal":1}`: 1, `{"url":"u","pairing":"p","goal":2}`: 2, `{"url":"u","pairing":"p","goal":9}`: 3} {
+		d := build(nil, js)
+		c, _, err := Parse(bytes.NewReader(d), int64(len(d)))
+		if err != nil || c.GoalLevel() != want {
+			t.Fatalf("%s: %v %d", js, err, c.GoalLevel())
+		}
+	}
+}

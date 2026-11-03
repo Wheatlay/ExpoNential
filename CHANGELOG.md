@@ -2,6 +2,14 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.0], Agent [0.3.0] - 03.11.2026
+
+- Installer sets up every level up to the goal chosen in Connect AI: issue access in Claude Code (MCP on every account, key issued during pairing), work trace (plugin), background agent. Connect AI is one "Download and run" button; manual commands moved under a link.
+- Before running an analysis someone else requested, the agent asks in an Exponential-styled toast: "Allow for 24 h", "Just this once", ✕ to decline, "Mute 24 h"; 2 minutes to answer. Each computer has one team mode: Ask (default), Without asking, Not taking; the per-project opt-in is gone (computers that had joined got "Without asking").
+- Claude usage limit: the agent retries on the next Claude account (`~/.claude-accounts`), and only when all are limited returns the request to the queue and pauses until the reset; Settings show "Claude limit until HH:MM" instead of an error. Real Claude errors are reported with their reason.
+- Tray: left click opens a small settings window (team mode, notifications, autostart, mute, theme system/dark/light, update, uninstall); the agent updates itself from GitHub releases after checking SHA256.
+- Usage in tokens instead of dollars; the daily limit for others is in tokens.
+
 ## Agent [0.2.4] - 03.11.2026
 
 - Tray menu: state and agent version, "AI settings", "Start with Windows" toggle, "Uninstall…" (opens the installer window with Disconnect).

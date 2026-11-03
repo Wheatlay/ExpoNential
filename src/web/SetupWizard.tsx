@@ -139,6 +139,9 @@ export function SetupWizardHost() {
   const [editing, setEditing] = useState<string | null>(null);
   const [path, setPath] = useState('');
   const [terminal, setTerminal] = useState(false);
+  const [manual, setManual] = useState(false);
+  // Wejście na konkretny krok (np. "Wybierz folder" przy komputerze) rozwija sekcję ręczną, gdzie ten krok jest.
+  useEffect(() => { if (open && pickedStep) setManual(true); }, [open, pickedStep]);
 
   useEffect(() => {
     if (!open) return;
@@ -236,7 +239,7 @@ export function SetupWizardHost() {
   const step3 = (
     <>
       <div className="wiz-line">
-        <a className="btn primary" href={`/agent/download?engine=${client === 'Codex' ? 'codex' : 'claude'}`}><Icon.download size={13} /> {t('Download and run')}</a>
+        <a className="btn primary" href={`/agent/download?engine=${client === 'Codex' ? 'codex' : 'claude'}&goal=${goal}`}><Icon.download size={13} /> {t('Download and run')}</a>
         <Tooltip text={t('Windows may warn about an unsigned file: More info, then Run anyway.')}>
           <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Windows may warn about an unsigned file: More info, then Run anyway.')}><Icon.question size={14} /></span>
         </Tooltip>
@@ -299,6 +302,27 @@ export function SetupWizardHost() {
                   ))}
                 </fieldset>
                 <div className="wiz-steps">
+                  {/* Domyślna ścieżka: jeden instalator (klient, plik, status poziomów na żywo); ręczne kroki za przełącznikiem. */}
+                  <section className="wiz-block" aria-label={t('Download and run')}>
+                    <div className="seg" role="group" aria-label={t('Client')}>
+                      {(['Claude Code', 'Codex'] as ClientName[]).map((c) => <button key={c} className={client === c ? 'on' : ''} onClick={() => setClient(c)}>{c}</button>)}
+                    </div>
+                    <div className="wiz-line">
+                      <a className="btn primary" href={`/agent/download?engine=${client === 'Codex' ? 'codex' : 'claude'}&goal=${goal}`}><Icon.download size={13} /> {t('Download and run')}</a>
+                      <Tooltip text={t('Windows may warn about an unsigned file: More info, then Run anyway.')}>
+                        <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Windows may warn about an unsigned file: More info, then Run anyway.')}><Icon.question size={14} /></span>
+                      </Tooltip>
+                    </div>
+                    {needed.map((n) => (
+                      <div key={n} className="wiz-line">
+                        <span className={`wiz-mark${done[n] ? ' done' : ''}`} aria-hidden="true">{done[n] && <Icon.check size={12} />}</span>
+                        <span className="grow">{chipText[n]}</span>
+                        {done[n] ? <span className="wiz-ok">{t('Done')}</span> : <span className="wiz-wait"><span className="wiz-pulse" aria-hidden="true" />{t('Waiting')}</span>}
+                      </div>
+                    ))}
+                  </section>
+                  <button type="button" className="wiz-link" aria-expanded={manual} onClick={() => setManual(!manual)}>{t('Manually (Cursor, terminal, no installer)')}</button>
+                  {manual && <>
                   {/* Kroki celu jako zakładki (ten sam przełącznik co wybór klienta): widać, że da się klikać i który jest otwarty. */}
                   {needed.length > 1 && (
                     <div className="seg wiz-steptabs" role="tablist" aria-label={t('Steps')}>
@@ -318,6 +342,7 @@ export function SetupWizardHost() {
                       <div className="wiz-step-body">{bodies[openStep]}</div>
                     </section>
                   )}
+                  </>}
                 </div>
               </>
             )}

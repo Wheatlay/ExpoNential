@@ -36,4 +36,4 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ github.ref_name }}" dist/exponential-agent.exe dist/SHA256SUMS --title "Exponential agent ${{ github.ref_name }}" --generate-notes
+        run: gh release create "${{ github.ref_name }}" dist/exponential-agent.exe dist/SHA256SUMS --title "Exponential agent ${{ github.ref_name }}" --generate-notes --latest

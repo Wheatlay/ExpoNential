@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { and, asc, eq, gt, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { activity, agentJobs, agentRepos, agentRuns, agentTeamProjects, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, userDismissals, users } from '../db/schema.ts';
+import { activity, agentJobs, agentRepos, agentRuns, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, userDismissals, users } from '../db/schema.ts';
 import { NOT_AGENT_CLIENT } from './oauth.ts';
 import { RuleError, identifier, parseIdentifier } from './rules.ts';
 import { analysisModel } from './prompts.ts';
@@ -51,14 +51,25 @@ export async function requireOwnAgent(user: User, deviceId: string) {
   return row;
 }
 
-/** Czy komputer wyczerpał dobowy limit zleceń dla innych osób (własne zlecenia właściciela nie liczą się i nie są limitowane). */
+/**
+ * Tokeny przebiegu = wejście + wyjście + zapis cache. Odczyty cache są pominięte celowo: są tanie i zawyżałyby liczbę
+ * wielokrotnie (każdy turn czyta cały kontekst od nowa).
+ */
+const RUN_TOKENS = dsql`(coalesce(${agentRuns.inputTokens}, 0) + coalesce(${agentRuns.outputTokens}, 0) + coalesce(${agentRuns.cacheWriteTokens}, 0))`;
+
+/** Tokeny zleceń innych osób na tym komputerze w ostatnich 24 h. */
+export async function tokensForOthers24h(agentId: string, ownerId: number) {
+  const [r] = await db.select({ n: dsql<string>`coalesce(sum(${RUN_TOKENS}), 0)` }).from(agentRuns)
+    .where(and(eq(agentRuns.agentId, agentId), dsql`${agentRuns.requesterId} <> ${ownerId}`, dsql`${agentRuns.createdAt} >= now() - interval '24 hours'`));
+  return Number(r?.n ?? 0);
+}
+
+/** Czy komputer wyczerpał dobowy limit tokenów dla innych osób (własne zlecenia właściciela nie liczą się i nie są limitowane). */
 export async function limitReached(agentId: string, ownerId: number, max: number | null | undefined) {
   if (max == null) return false;
-  const [r] = await db.select({ n: dsql<number>`count(*)::int` }).from(agentRuns)
-    .where(and(eq(agentRuns.agentId, agentId), dsql`${agentRuns.requesterId} <> ${ownerId}`, dsql`${agentRuns.createdAt} >= now() - interval '24 hours'`));
-  return (r?.n ?? 0) >= max;
+  return (await tokensForOthers24h(agentId, ownerId)) >= max;
 }
-const LIMIT_MSG = 'Daily limit for others reached on this PC';
+const LIMIT_MSG = 'Daily token limit for others reached on this PC';
 
 /**
  * Przejęcie zlecenia analizy przed uruchomieniem. Jeden UPDATE z warunkami w WHERE daje wyłączność:
@@ -85,14 +96,14 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
   if (!cur) throw new RuleError(`Issue ${identifier(p.key, number)} not found`, 'not_found');
   const already = cur.analysisClaimedDevice === deviceId && cur.analysisClaimedAt != null;
   // Limit dla innych: zlecenie cudzej osoby nie przejdzie, gdy komputer wyczerpał dobowy limit. Własne zlecenia nigdy.
-  if (!already && cur.analysisRequestedBy != null && cur.analysisRequestedBy !== user.id && await limitReached(deviceId, user.id, agent.maxForOthersPerDay)) throw new RuleError(LIMIT_MSG, 'conflict');
+  if (!already && cur.analysisRequestedBy != null && cur.analysisRequestedBy !== user.id && await limitReached(deviceId, user.id, agent.maxOthersTokensPerDay)) throw new RuleError(LIMIT_MSG, 'conflict');
   const rows = await db.update(issues).set({ analysisClaimedAt: new Date(), analysisClaimedBy: user.id, analysisClaimedDevice: deviceId })
     .where(and(
       eq(issues.id, cur.id),
       dsql`${issues.analysisRequestedAt} is not null`,
       isNull(issues.analysisFailedAt),
       dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}) or ${issues.analysisClaimedDevice} = ${deviceId})`,
-      dsql`(${issues.analysisRequestedBy} = ${user.id} or (${p.agentTeamQueue && !ownOnly}::boolean and exists (select 1 from agent_team_projects tp where tp.agent_id = ${deviceId} and tp.project_id = ${p.id}) and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
+      dsql`(${issues.analysisRequestedBy} = ${user.id} or (${p.agentTeamQueue && !ownOnly}::boolean and ${agent.teamMode !== 'off'}::boolean and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
     ))
     .returning({ deep: issues.analysisDeep });
   if (!rows.length) throw new RuleError('Already taken or no longer requested', 'conflict');
@@ -128,7 +139,7 @@ export async function analysisRunner(p: Project, issue: { analysisRequestedBy: n
       select 1 from agents a
       where a.last_seen_at > now() - make_interval(secs => ${ONLINE_MS / 1000})
         and (a.user_id = ${issue.analysisRequestedBy}::int
-          or (${p.agentTeamQueue}::boolean and exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id) and exists (select 1 from agent_team_projects tp where tp.agent_id = a.id and tp.project_id = ${p.id})))
+          or (${p.agentTeamQueue}::boolean and exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id) and a.team_mode <> 'off'))
     ) as can`);
   let claimedDeviceName: string | null = null;
   if (issue.analysisClaimedDevice) {
@@ -142,7 +153,7 @@ export async function analysisRunner(p: Project, issue: { analysisRequestedBy: n
       select a.version from agents a
       where a.last_seen_at > now() - make_interval(secs => ${ONLINE_MS / 1000})
         and (a.user_id = ${issue.analysisRequestedBy}::int
-          or (${p.agentTeamQueue}::boolean and exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id) and exists (select 1 from agent_team_projects tp where tp.agent_id = a.id and tp.project_id = ${p.id})))
+          or (${p.agentTeamQueue}::boolean and exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id) and a.team_mode <> 'off'))
         and (${p.agentsMayClone}::boolean or exists (select 1 from agent_repos r where r.agent_id = a.id and r.project_id = ${p.id} and r.status = 'ok'))`);
     noCapablePc = !cands.some((c) => agentUpToDate(c.version));
   }
@@ -220,7 +231,8 @@ export async function repoState(user: User, deviceId: string) {
   const clone = await db.select({ key: projects.key }).from(projects)
     .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
     .where(eq(projects.agentsMayClone, true)).orderBy(asc(projects.key));
-  return { repos, cloneAllowed: clone.map((c) => c.key) };
+  const [me] = await db.select({ teamMode: agents.teamMode }).from(agents).where(eq(agents.id, deviceId));
+  return { repos, cloneAllowed: clone.map((c) => c.key), teamMode: me?.teamMode ?? 'ask' };
 }
 
 /** Ręczne ustawienie ścieżki repo na moim komputerze (z Ustawień). */
@@ -244,28 +256,31 @@ export async function removeAgentRepo(user: User, deviceId: string, projectKey: 
   return { ok: true };
 }
 
-export type AgentJob = { kind: 'analyze'; key: string; deep: boolean } | { kind: 'start'; id: number; key: string };
+/** requestedBy: kto zlecił analizę, żeby agent mógł zapytać właściciela komputera o zgodę, zanim przejmie cudze zlecenie. */
+export type AgentJob = { kind: 'analyze'; key: string; deep: boolean; requestedAt?: string | null; requestedBy?: { id: number; name: string } | null } | { kind: 'start'; id: number; key: string };
 
 /** Co ten agent może teraz wziąć: moje zlecenia (i kolejka zespołu w projektach z włączonym przełącznikiem) oraz zlecenia Start. */
-export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string; ownOnly?: boolean; maxForOthersPerDay?: number | null }): Promise<AgentJob[]> {
+export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string; ownOnly?: boolean; maxOthersTokensPerDay?: number | null }): Promise<AgentJob[]> {
   // Stara wersja skryptów: nic nie dostaje (Ustawienia i pasek analizy pokazują "Update needed").
   if (agent.busy || !agentUpToDate(agent.version)) return [];
   const jobs: AgentJob[] = [];
   // Wyczerpany limit dla innych: oferujemy tylko zlecenia właściciela.
-  const limited = !!agent.id && await limitReached(agent.id, user.id, agent.maxForOthersPerDay);
+  const limited = !!agent.id && await limitReached(agent.id, user.id, agent.maxOthersTokensPerDay);
   {
-    const rows = await db.select({ key: projects.key, number: issues.number, deep: issues.analysisDeep })
+    const rows = await db.select({ key: projects.key, number: issues.number, deep: issues.analysisDeep, requestedAt: issues.analysisRequestedAt, byId: issues.analysisRequestedBy, byName: users.name })
       .from(issues).innerJoin(projects, eq(projects.id, issues.projectId))
+      .leftJoin(users, eq(users.id, issues.analysisRequestedBy))
       .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
       .where(and(
         dsql`${issues.analysisRequestedAt} is not null`,
         isNull(issues.analysisFailedAt),
         dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}))`,
         dsql`(${projects.agentsMayClone} or exists (select 1 from agent_repos r where r.agent_id = ${agent.id ?? ''} and r.project_id = ${projects.id} and r.status = 'ok'))`,
-        dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and ${!agent.ownOnly && !limited}::boolean and exists (select 1 from agent_team_projects tp where tp.agent_id = ${agent.id ?? ''} and tp.project_id = ${projects.id}) and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
+        dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and ${!agent.ownOnly && !limited}::boolean and exists (select 1 from agents ta where ta.id = ${agent.id ?? ''} and ta.team_mode <> 'off') and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
       ))
       .orderBy(asc(issues.analysisRequestedAt)).limit(5);
-    for (const r of rows) jobs.push({ kind: 'analyze', key: identifier(r.key, r.number), deep: r.deep });
+    for (const r of rows) jobs.push({ kind: 'analyze', key: identifier(r.key, r.number), deep: r.deep,
+      requestedAt: r.requestedAt ? new Date(r.requestedAt).toISOString() : null, requestedBy: r.byId != null ? { id: r.byId, name: r.byName ?? '' } : null });
   }
   const starts = await db.select({ id: agentJobs.id, key: projects.key, number: issues.number })
     .from(agentJobs).innerJoin(issues, eq(issues.id, agentJobs.issueId)).innerJoin(projects, eq(projects.id, issues.projectId))
@@ -305,23 +320,23 @@ export async function claimStartJob(user: User, jobId: number, deviceId: string)
   return { key: identifier(r.key, r.number), requester: { id: user.id, name: u?.name ?? '' } };
 }
 
-export type Usage = { runs: number; forOthers: number; costUsd: number; byRequester: { name: string; runs: number; costUsd: number }[] };
-const emptyUsage = (): Usage => ({ runs: 0, forOthers: 0, costUsd: 0, byRequester: [] });
+export type Usage = { runs: number; forOthers: number; costUsd: number; tokens: number; byRequester: { name: string; runs: number; costUsd: number; tokens: number }[] };
+const emptyUsage = (): Usage => ({ runs: 0, forOthers: 0, costUsd: 0, tokens: 0, byRequester: [] });
 const round4 = (n: number) => Math.round(n * 10000) / 10000;
 
 /** Statystyki z ostatnich 30 dni per komputer (opcjonalnie tylko jeden projekt); najczęstsi zlecający (top 5). */
 async function usageByAgent(agentIds: string[], projectId?: number) {
   const out = new Map<string, Usage>(agentIds.map((id) => [id, emptyUsage()]));
   if (!agentIds.length) return out;
-  const rows = await db.select({ agentId: agentRuns.agentId, ownerId: agentRuns.ownerId, requesterId: agentRuns.requesterId, name: users.name, runs: dsql<number>`count(*)::int`, cost: dsql<string>`coalesce(sum(${agentRuns.costUsd}), 0)` })
+  const rows = await db.select({ agentId: agentRuns.agentId, ownerId: agentRuns.ownerId, requesterId: agentRuns.requesterId, name: users.name, runs: dsql<number>`count(*)::int`, cost: dsql<string>`coalesce(sum(${agentRuns.costUsd}), 0)`, tokens: dsql<string>`coalesce(sum(${RUN_TOKENS}), 0)` })
     .from(agentRuns).leftJoin(users, eq(users.id, agentRuns.requesterId))
     .where(and(inArray(agentRuns.agentId, agentIds), dsql`${agentRuns.createdAt} >= now() - interval '30 days'`, projectId != null ? eq(agentRuns.projectId, projectId) : undefined))
     .groupBy(agentRuns.agentId, agentRuns.ownerId, agentRuns.requesterId, users.name);
   for (const r of rows) {
-    const u = out.get(r.agentId)!, cost = Number(r.cost);
-    u.runs += r.runs; u.costUsd += cost;
+    const u = out.get(r.agentId)!, cost = Number(r.cost), tokens = Number(r.tokens);
+    u.runs += r.runs; u.costUsd += cost; u.tokens += tokens;
     if (r.requesterId != null && r.requesterId !== r.ownerId) u.forOthers += r.runs;
-    if (r.requesterId != null && r.name) u.byRequester.push({ name: r.name, runs: r.runs, costUsd: cost });
+    if (r.requesterId != null && r.name) u.byRequester.push({ name: r.name, runs: r.runs, costUsd: cost, tokens });
   }
   for (const u of out.values()) {
     u.costUsd = round4(u.costUsd);
@@ -364,6 +379,7 @@ export async function recordRun(user: User, r: RunReport) {
 
 /** Moje komputery do Ustawień. */
 /** Błędy połączenia, które mijają same: 5xx, brak odpowiedzi, brak połączenia z serwerem. */
+const CLAUDE_LIMIT = /^(Limit Claude do|Claude limit until) \d{1,2}:\d{2}/;
 const TRANSIENT_ERROR = /HTTP 5\d\d|did not answer|cannot reach|ECONNREFUSED|ECONNRESET|ETIMEDOUT|timeout/i;
 
 export async function myAgents(user: User) {
@@ -374,53 +390,28 @@ export async function myAgents(user: User) {
     .from(agentRepos).innerJoin(projects, eq(projects.id, agentRepos.projectId))
     .where(inArray(agentRepos.agentId, rows.map((a) => a.id))).orderBy(asc(projects.key)) : [];
   const usage = await usageByAgent(rows.map((a) => a.id));
-  const day = rows.length ? await db.select({ agentId: agentRuns.agentId, n: dsql<number>`count(*)::int` }).from(agentRuns)
+  const day = rows.length ? await db.select({ agentId: agentRuns.agentId, n: dsql<number>`count(*)::int`, tokens: dsql<string>`coalesce(sum(${RUN_TOKENS}), 0)` }).from(agentRuns)
     .where(and(inArray(agentRuns.agentId, rows.map((a) => a.id)), dsql`${agentRuns.requesterId} <> ${agentRuns.ownerId}`, dsql`${agentRuns.createdAt} >= now() - interval '24 hours'`))
     .groupBy(agentRuns.agentId) : [];
   const others24 = new Map(day.map((d) => [d.agentId, d.n]));
-  // Kolejka zespołu: projekty, do których komputer dołączył, i zaproszenia (kolejka włączona w projekcie, w którym jestem,
-  // brak zgody i odrzucenia). Repo nie jest warunkiem: bez niego linijka zaproszenia proponuje wskazanie folderu.
-  const ids = rows.map((a) => a.id);
-  const joined = ids.length ? await db.select({ agentId: agentTeamProjects.agentId, key: projects.key }).from(agentTeamProjects)
-    .innerJoin(projects, eq(projects.id, agentTeamProjects.projectId)).where(inArray(agentTeamProjects.agentId, ids)).orderBy(asc(projects.key)) : [];
-  const invites = ids.length ? await db.select({ agentId: agents.id, key: projects.key }).from(agents)
-    .innerJoin(projectMembers, eq(projectMembers.userId, user.id))
-    .innerJoin(projects, and(eq(projects.id, projectMembers.projectId), eq(projects.agentTeamQueue, true)))
-    .where(and(inArray(agents.id, ids),
-      dsql`not exists (select 1 from agent_team_projects tp where tp.agent_id = ${agents.id} and tp.project_id = ${projects.id})`,
-      dsql`not exists (select 1 from user_dismissals d where d.user_id = ${user.id} and d.key = 'team-invite:' || ${projects.id}::text)`)).orderBy(asc(projects.key)) : [];
-  return rows.map((a) => ({ id: a.id, maxForOthersPerDay: a.maxForOthersPerDay, usage30d: usage.get(a.id)!,
-    forOthers24h: others24.get(a.id) ?? 0, limitReached24h: a.maxForOthersPerDay != null && (others24.get(a.id) ?? 0) >= a.maxForOthersPerDay, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5, outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),
+  const othersTokens24 = new Map(day.map((d) => [d.agentId, Number(d.tokens)]));
+  return rows.map((a) => ({ id: a.id, maxOthersTokensPerDay: a.maxOthersTokensPerDay, usage30d: usage.get(a.id)!,
+    forOthers24h: others24.get(a.id) ?? 0, forOthersTokens24h: othersTokens24.get(a.id) ?? 0, limitReached24h: a.maxOthersTokensPerDay != null && (othersTokens24.get(a.id) ?? 0) >= a.maxOthersTokensPerDay, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5, outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),
     repos: repos.filter((r) => r.agentId === a.id).map(({ agentId: _, ...r }) => r),
-    teamProjects: joined.filter((j) => j.agentId === a.id).map((j) => j.key),
-    teamInvites: invites.filter((j) => j.agentId === a.id).map((j) => j.key),
+    teamMode: a.teamMode,
     // Błąd starszy niż 24 h już nie jest istotny.
     // Błąd starszy niż 24 h już nie jest istotny, a chwilowy błąd połączenia (np. restart serwera przy wdrożeniu) znika, gdy komputer znów jest online.
-    lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 && !(isOnline(a.lastSeenAt) && TRANSIENT_ERROR.test(a.lastError ?? '')) ? a.lastError : '', lastErrorAt: a.lastErrorAt }));
+    // Limit Claude użytkownika to stan, nie błąd: pokazujemy go osobno, tylko przez 6 godzin.
+    lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 && !CLAUDE_LIMIT.test(a.lastError ?? '') && !(isOnline(a.lastSeenAt) && TRANSIENT_ERROR.test(a.lastError ?? '')) ? a.lastError : '', lastErrorAt: a.lastErrorAt,
+    claudeLimit: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 6 * 3600_000 && CLAUDE_LIMIT.test(a.lastError ?? '') ? a.lastError : '' }));
 }
 
 
-async function memberProject(user: User, projectKey: string) {
-  const [pr] = await db.select({ id: projects.id, team: projects.agentTeamQueue }).from(projects)
-    .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
-    .where(eq(projects.key, projectKey.toUpperCase()));
-  if (!pr) throw new RuleError('Project not found', 'not_found');
-  return pr;
-}
-
-/** Mój komputer dołącza do kolejki zespołu projektu (projekt musi mieć ją włączoną, a ja być członkiem). */
-export async function joinTeamQueue(user: User, deviceId: string, projectKey: string) {
-  await requireOwnAgent(user, deviceId);
-  const pr = await memberProject(user, projectKey);
-  if (!pr.team) throw new RuleError('Team queue is off in this project', 'conflict');
-  await db.insert(agentTeamProjects).values({ agentId: deviceId, projectId: pr.id }).onConflictDoNothing();
-  return { ok: true };
-}
-
-export async function leaveTeamQueue(user: User, deviceId: string, projectKey: string) {
-  await requireOwnAgent(user, deviceId);
-  const [pr] = await db.select({ id: projects.id }).from(projects).where(eq(projects.key, projectKey.toUpperCase()));
-  if (pr) await db.delete(agentTeamProjects).where(and(eq(agentTeamProjects.agentId, deviceId), eq(agentTeamProjects.projectId, pr.id)));
+/** Tryb zleceń zespołu na komputerze: 'ask' (agent pyta właściciela), 'auto' (bierze bez pytania), 'off' (tylko własne). Tylko właściciel. */
+export const TEAM_MODES = ['ask', 'auto', 'off'] as const;
+export async function setTeamMode(user: User, id: string, mode: (typeof TEAM_MODES)[number]) {
+  const rows = await db.update(agents).set({ teamMode: mode }).where(and(eq(agents.id, id), eq(agents.userId, user.id))).returning({ id: agents.id });
+  if (!rows.length) throw new RuleError('Computer not found', 'not_found');
   return { ok: true };
 }
 
@@ -437,9 +428,9 @@ export async function renameAgent(user: User, id: string, label: string) {
   return { ok: true };
 }
 
-/** Limit zleceń dla innych na dobę (null = brak). Tylko właściciel. */
+/** Limit tokenów dla innych na dobę (null = brak). Tylko właściciel. */
 export async function setAgentLimit(user: User, id: string, max: number | null) {
-  const rows = await db.update(agents).set({ maxForOthersPerDay: max }).where(and(eq(agents.id, id), eq(agents.userId, user.id))).returning({ id: agents.id });
+  const rows = await db.update(agents).set({ maxOthersTokensPerDay: max }).where(and(eq(agents.id, id), eq(agents.userId, user.id))).returning({ id: agents.id });
   if (!rows.length) throw new RuleError('Computer not found', 'not_found');
   return { ok: true };
 }
@@ -450,16 +441,15 @@ export async function removeAgent(user: User, id: string) {
 }
 
 /**
- * Komputery członków projektu z działającym repo (kolejka zespołu): online albo już dołączone. `joined`: właściciel zgodził się
- * brać zlecenia kolegów w tym projekcie. Komputer bez zgody też jest na liście, żeby karta mogła pokazać "nie dołączył".
+ * Komputery członków projektu z działającym repo (kolejka zespołu) albo online. `teamMode`: 'ask' | 'auto' | 'off', czyli
+ * czy właściciel bierze zlecenia kolegów (z pytaniem, bez pytania, wcale).
  */
 export async function projectAgents(p: Project) {
   const rows = await db.select({ id: agents.id, name: dsql<string>`coalesce(nullif(${agents.label}, ''), ${agents.name})`, owner: users.name, busy: agents.busy,
-    joined: dsql<boolean>`exists (select 1 from agent_team_projects tp where tp.agent_id = ${agents.id} and tp.project_id = ${p.id})`, online: dsql<boolean>`${agents.lastSeenAt} > now() - make_interval(secs => ${ONLINE_MS / 1000})` })
+    teamMode: agents.teamMode, online: dsql<boolean>`${agents.lastSeenAt} > now() - make_interval(secs => ${ONLINE_MS / 1000})` })
     .from(agents).innerJoin(users, eq(users.id, agents.userId))
     .innerJoin(projectMembers, and(eq(projectMembers.userId, agents.userId), eq(projectMembers.projectId, p.id)))
-    .where(dsql`(${agents.lastSeenAt} > now() - make_interval(secs => ${ONLINE_MS / 1000}) or exists (select 1 from agent_team_projects tp where tp.agent_id = ${agents.id} and tp.project_id = ${p.id})
-      or exists (select 1 from agent_repos r where r.agent_id = ${agents.id} and r.project_id = ${p.id} and r.status = 'ok'))`).orderBy(asc(agents.name));
+    .where(dsql`(${agents.lastSeenAt} > now() - make_interval(secs => ${ONLINE_MS / 1000}) or exists (select 1 from agent_repos r where r.agent_id = ${agents.id} and r.project_id = ${p.id} and r.status = 'ok'))`).orderBy(asc(agents.name));
   const usage = await usageByAgent(rows.map((r) => r.id), p.id);
   return rows.map(({ id, online, ...r }) => ({ ...r, busy: r.busy && online, usage30d: usage.get(id)! }));
 }
@@ -508,10 +498,9 @@ export async function aiStatus(user: User, mine?: Awaited<ReturnType<typeof myAg
   const attention: string[] = [];
   if (!client) attention.push('connect');
   if (computers.some((a) => a.limitReached24h)) attention.push('limit');
-  if (computers.some((a) => a.maxForOthersPerDay == null && a.forOthers24h >= 20)) attention.push('busy-for-others');
+  if (computers.some((a) => a.maxOthersTokensPerDay == null && a.forOthersTokens24h >= 2_000_000)) attention.push('busy-for-others');
   if (computers.some((a) => a.lastError)) attention.push('agent-error');
   if (computers.some((a) => a.legacy)) attention.push('legacy');
-  if (computers.some((a) => a.teamInvites.length)) attention.push('team-invite');
   return {
     attention,
     client: !!grant || !!token,

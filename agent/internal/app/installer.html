@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html data-theme="{{THEME}}">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -51,17 +51,27 @@ button:focus-visible { outline: 2px solid var(--acc-h); outline-offset: 2px; }
 .mut.warn { color: var(--warn); }
 .tip { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .tm { width: 18px; height: 18px; flex-shrink: 0; }
-.steplist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; text-align: left; font-size: 14px; width: 260px; }
-.steplist li { display: flex; align-items: center; gap: 10px; height: 22px; color: var(--mut); visibility: hidden; opacity: 0; }
-.steplist li.now, .steplist li.ok { visibility: visible; opacity: 1; transition: opacity 0.2s ease-out; }
+.steplist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; text-align: left; font-size: 14px; width: 330px; }
+.steplist li { display: flex; align-items: center; gap: 10px; height: 22px; color: var(--fg2); white-space: nowrap; }
 .steplist li.now { color: var(--fg); }
+.steplist li.err { color: var(--err); }
+.steplist li.skip { color: var(--mut); }
+.steplist .ri { width: 16px; height: 16px; flex-shrink: 0; display: grid; place-items: center; }
+.steplist .ri img, .steplist .ri svg { width: 16px; height: 16px; }
+.steplist .nt { color: var(--mut); font-size: 13px; }
+.steplist li.err .ic::before { content: "\2715"; color: var(--err); font-weight: 700; }
+.steplist li.skip .ic::before { content: "\2013"; color: var(--mut); }
 .steplist .ic { width: 18px; height: 18px; display: grid; place-items: center; flex-shrink: 0; }
 .steplist li.ok .ic::before { content: "\2713"; color: var(--ok); font-weight: 700; }
 .steplist li.now .ic::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--acc-h); animation: sp 0.8s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .steplist li.now .ic::before { animation: none; } .steplist li { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .steplist li.now .ic::before { animation: none; } }
 .spin { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--acc-h); animation: sp 0.8s linear infinite; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
+/*{{CSS}}*/
+:root[data-theme] { --bg: var(--bg-primary); --line: var(--border-primary); --line2: var(--border-secondary); --sec: var(--bg-secondary);
+  --fg: var(--text-primary); --fg2: var(--text-secondary); --mut: var(--text-tertiary); --acc: var(--accent); --acc-h: var(--accent-hover);
+  --ok: var(--success); --err: var(--danger); --warn: var(--warning); }
 </style>
 </head>
 <body>
@@ -70,9 +80,10 @@ button:focus-visible { outline: 2px solid var(--acc-h); outline-offset: 2px; }
 var S = {
   pl: {
     autostart: "Startuje z Windows", cancel: "Anuluj", go: "Połącz",
-    steps: ["Łączę z kontem…", "Kopiuję agenta…", "Uruchamiam agenta…", "Czekam, aż serwer go zobaczy…"],
-    done: "Połączono", doneWarn: "Serwer jeszcze nie potwierdził agenta.",
+    lv: ["", "Dostęp do zgłoszeń w Claude Code", "Ślad pracy", "Agent w tle"], lvCodex1: "Dostęp do zgłoszeń w Codex",
+    done: "Gotowe", doneErr: "Gotowe z błędami", doneWarn: "Serwer jeszcze nie potwierdził agenta.",
     trayTip: "Ikona Exponential obok zegara pokazuje, co robi agent.",
+    onlyClaude: "tylko Claude Code",
     nf: "nie znaleziono na tym komputerze", term: "Terminal",
     close: "Zamknij", open: "Otwórz Exponential", on: "● działa", off: "○ nie działa", disconnect: "Odłącz",
     removeWarn: "Nie udało się wyrejestrować komputera z serwera. Usuń go w Ustawieniach > AI.", removed: "Odłączono", removedLine: "Agent został usunięty z tego komputera.", account: "twoje konto",
@@ -85,9 +96,10 @@ var S = {
   },
   en: {
     autostart: "Starts with Windows", cancel: "Cancel", go: "Connect",
-    steps: ["Connecting to your account…", "Copying the agent…", "Starting the agent…", "Waiting for the server to see it…"],
-    done: "Connected", doneWarn: "The server has not confirmed the agent yet.",
+    lv: ["", "Issue access in Claude Code", "Work trace", "Background agent"], lvCodex1: "Issue access in Codex",
+    done: "Done", doneErr: "Done with errors", doneWarn: "The server has not confirmed the agent yet.",
     trayTip: "The Exponential icon next to the clock shows what the agent is doing.",
+    onlyClaude: "Claude Code only",
     nf: "not found on this computer", term: "Terminal",
     close: "Close", open: "Open Exponential", on: "● running", off: "○ not running", disconnect: "Disconnect",
     removeWarn: "Could not unregister this computer from the server. Remove it in Settings > AI.", removed: "Disconnected", removedLine: "The agent was removed from this computer.", account: "your account",
@@ -104,7 +116,7 @@ var MARK = '<svg viewBox="0 0 26 26" aria-hidden="true">' + MARKP + '</svg>';
 var TRAYMARK = '<svg class="tm" viewBox="0 0 16 16" aria-hidden="true"><rect width="16" height="16" rx="4" fill="#1a1b1f" stroke="#31333a"/><path d="M3 12.5 C6.5 12.5 8.5 12 10.5 8.5 C11.5 6.5 12 4.5 12.5 3 L12.5 12.5 Z" fill="#5e6ad2"/></svg>';
 var GLYPH_AI = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 L13.8 9.2 L20 11 L13.8 12.8 L12 19 L10.2 12.8 L4 11 L10.2 9.2 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
 var GLYPH_APP = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 6.5 L6.5 8 L4.5 9.5 M8 9.5 H11" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-var T = S.en, app = document.getElementById("app"), cur = {}, step = 0;
+var T = S.en, app = document.getElementById("app"), cur = {};
 
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
 function engName() { return cur.engine === "codex" ? "Codex" : "Claude Code"; }
@@ -132,32 +144,42 @@ function title() { return '<p class="h">' + esc(engName()) + ' ↔ Exponential</
 function render(h) { app.innerHTML = h; }
 
 function viewLoading() { render('<div class="spin"></div>'); }
+// Wiersze celu (poziomy 1..goal): te same na ekranie startowym i w postępie, wstępnie wyrenderowane, bez przeskoków.
+function goalOf() { return cur.goal >= 1 && cur.goal <= 3 ? cur.goal : 3; }
+function rowIcon(l) {
+  if (l === 3) return '<svg viewBox="0 0 26 26" aria-hidden="true">' + MARKP + '</svg>';
+  var ic = cur.engineFound ? safeIcon(cur.engineIcon) : "";
+  return ic ? '<img src="' + ic + '" alt="">' : GLYPH_AI;
+}
+function rowLabel(l) { return l === 1 && cur.engine === "codex" ? T.lvCodex1 : T.lv[l]; }
+function rowsHtml() {
+  var html = "";
+  for (var l = 1; l <= goalOf(); l++) {
+    var skip = l === 2 && cur.engine === "codex";
+    html += '<li id="rw' + l + '" class="' + (skip ? "skip" : "") + '"><span class="ic"></span><span class="ri">' + rowIcon(l) + '</span><span class="tx">' + esc(rowLabel(l)) + '</span>' +
+      (skip ? '<span class="nt">' + esc(T.onlyClaude) + '</span>' : '') + '</li>';
+  }
+  return '<ul class="steplist" aria-live="polite">' + html + '</ul>';
+}
 function viewStart() {
-  render(pair("") + title() + who(chip()) +
-    '<label class="chk"><input type="checkbox" id="auto" checked><span class="box"></span>' + esc(T.autostart) + '</label>' +
+  render(pair("") + title() + who(chip()) + rowsHtml() +
+    (goalOf() === 3 ? '<label class="chk"><input type="checkbox" id="auto" checked><span class="box"></span>' + esc(T.autostart) + '</label>' : '') +
     '<div class="actions"><button id="b1">' + esc(T.cancel) + '</button><button class="p" id="b2">' + esc(T.go) + '</button></div>');
   document.getElementById("b1").onclick = function () { window.close(); };
-  document.getElementById("b2").onclick = function () { var a = document.getElementById("auto").checked; viewProgress(); window.install(a); };
+  document.getElementById("b2").onclick = function () { var c = document.getElementById("auto"); viewProgress(); window.install(c ? c.checked : false); };
   document.getElementById("b2").focus();
 }
 function viewProgress() {
-  // Wszystkie kroki od razu na swoich miejscach (ukryte), żeby nic nie przeskakiwało, gdy kolejne się pojawiają.
-  var html = "";
-  for (var i = 0; i < T.steps.length; i++) html += '<li id="st' + i + '"><span class="ic"></span><span class="tx"></span></li>';
-  render(pair("run") + '<ul class="steplist" aria-live="polite">' + html + '</ul>');
-  setStep(0);
+  render(pair("run") + rowsHtml());
+  setRow(1, "now", "");
 }
-// Zrobione kroki zostają z ptaszkiem, bieżący ma kółko; zmieniamy tylko klasy i tekst, bez przebudowy listy.
-function setStep(n, allDone) {
-  step = Math.min(n, T.steps.length - 1);
-  for (var i = 0; i < T.steps.length; i++) {
-    var li = document.getElementById("st" + i);
-    if (!li) return;
-    var state = i > step ? "" : (i < step || allDone ? "ok" : "now");
-    if (li.className === state) continue;
-    li.className = state;
-    li.querySelector(".tx").textContent = state === "ok" ? T.steps[i].replace(/…$/, "") : T.steps[i];
-  }
+// state: now | ok | err | skip; note = powód (w podpowiedzi wiersza, przy pominięciu także widoczny)
+function setRow(l, state, note) {
+  var li = document.getElementById("rw" + l);
+  if (!li) return;
+  li.className = state === "now" ? "now" : state;
+  li.title = state === "err" ? note : "";
+  if (state === "skip") return;
 }
 function viewDone(title, line, warn, tip) {
   render(pair("ok") + '<p class="h">' + esc(title) + '</p>' +
@@ -168,11 +190,13 @@ function viewDone(title, line, warn, tip) {
   document.getElementById("b1").onclick = function () { window.close(); };
   document.getElementById("b1").focus();
 }
-function finish(ok) {
-  setStep(T.steps.length - 1, true);
-  setTimeout(function () { viewDone(T.done, "", ok ? "" : T.doneWarn, T.trayTip); }, 900);
+function finish(r) {
+  var names = [];
+  for (var i = 0; i < r.done.length; i++) names.push(rowLabel(r.done[i]));
+  var warn = r.goal === 3 && r.done.indexOf(3) >= 0 && !r.agentSeen ? T.doneWarn : "";
+  setTimeout(function () { viewDone(r.errors ? T.doneErr : T.done, names.join(" · "), warn, r.goal === 3 && r.done.indexOf(3) >= 0 ? T.trayTip : ""); }, 700);
 }
-function showError(e) {
+ function showError(e) {
   var m = T.err[e.errCode] || T.err.exe, line = m[1];
   if (e.errDetail) line = (line ? line + " " : "") + e.errDetail;
   render(pair("err") + '<p class="h">' + esc(m[0]) + '</p><span class="mut">' + esc(line) + '</span>' +
@@ -183,7 +207,7 @@ function showError(e) {
 }
 function viewConnected() {
   var on = !!cur.running;
-  render(pair("ok") + title() + who('<span class="chip ' + (on ? "on" : "off") + '">' + esc(on ? T.on : T.off) + '</span>') +
+  render(pair("ok") + title() + who(goalOf() === 3 ? '<span class="chip ' + (on ? "on" : "off") + '">' + esc(on ? T.on : T.off) + '</span>' : "") +
     '<div class="actions"><button id="b1">' + esc(T.disconnect) + '</button><button class="p" id="b2">' + esc(T.close) + '</button></div>');
   document.getElementById("b1").onclick = function () { viewLoading(); window.disconnect(); };
   document.getElementById("b2").onclick = function () { window.close(); };

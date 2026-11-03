@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html data-theme="{{THEME}}">
+<head>
+<meta charset="utf-8">
+<style>
+/*{{CSS}}*/
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(--text-primary); overflow: hidden; user-select: none; -webkit-user-select: none; cursor: default;
+  font: 13px/1.4 Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+.wrap { height: 100%; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.head { display: flex; gap: 12px; align-items: center; }
+.tile { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--bg-secondary); border: 1px solid var(--border-secondary); }
+.tile svg { width: 24px; height: 24px; }
+.who { min-width: 0; flex: 1; }
+.who b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ver { display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 12px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 9999px; font-size: 12px; font-weight: 500; border: 1px solid; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.pill.ok { color: var(--success-text); background: color-mix(in srgb, var(--success) 12%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+.pill.ai { color: var(--ai-text); background: color-mix(in srgb, var(--ai) 12%, transparent); border-color: color-mix(in srgb, var(--ai) 45%, transparent); }
+.pill.warn { color: var(--warning-text); background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
+.pill.danger { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.sec { display: flex; flex-direction: column; gap: 6px; }
+.lbl { font-size: 12px; color: var(--text-tertiary); font-weight: 500; }
+.seg { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); }
+.seg button { flex: 1; height: 28px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text-tertiary); font: 500 13px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+.seg button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.seg button.on { color: var(--text-primary); }
+.seg button.on.accent { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-text); }
+.seg button.on.success { background: color-mix(in srgb, var(--success) 14%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); }
+.seg button.on.neutral { background: var(--bg-tertiary); border-color: var(--border-tertiary); color: var(--text-secondary); }
+.row { display: flex; align-items: center; gap: 10px; height: 32px; cursor: pointer; color: var(--text-secondary); }
+.row span { flex: 1; }
+.sw { flex: none; width: 32px; height: 18px; border-radius: 9999px; background: var(--bg-tertiary); border: 1px solid var(--border-tertiary); position: relative; transition: background .15s; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-tertiary); transition: transform .15s, background .15s; }
+.row.on .sw { background: var(--accent); border-color: var(--accent); }
+.row.on .sw::after { transform: translateX(14px); background: #fff; }
+@media (prefers-reduced-motion: reduce) { .sw, .sw::after { transition: none; } }
+.btn { height: 30px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--border-secondary); background: none; color: var(--text-primary); font: 500 13px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+.btn:hover { background: var(--bg-hover); }
+.btn.mute { background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning-text); }
+.btn.mute:hover { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+.btn.upd { height: 22px; padding: 0 8px; font-size: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-text); }
+.btn.link { border-color: transparent; color: var(--text-secondary); padding: 0 8px; }
+.btn.danger { border-color: transparent; color: var(--danger-text); }
+.btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.btn:focus-visible, .seg button:focus-visible, .row:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 1px; }
+.foot { margin-top: auto; display: flex; gap: 2px; border-top: 1px solid var(--border-primary); padding-top: 10px; }
+.foot .danger { margin-left: auto; }
+hr { border: 0; border-top: 1px solid var(--border-primary); margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+(function () {
+  var MARK = '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3 L22 22 Z" fill="#5e6ad2"/><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3" fill="none" stroke="#7180ff" stroke-width="1.6"/></svg>';
+  var app = document.getElementById("app"), last = "", busy = false;
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function seg(id, items, cur) {
+    return '<div class="seg" id="' + id + '">' + items.map(function (i) {
+      return '<button data-v="' + i[0] + '" class="' + (cur === i[0] ? "on " + (i[2] || "neutral") : "") + '" title="' + esc(i[3] || "") + '">' + esc(i[1]) + '</button>';
+    }).join("") + '</div>';
+  }
+  function draw(s) {
+    var L = s.L;
+    document.documentElement.setAttribute("data-theme", s.theme);
+    app.innerHTML =
+      '<div class="head"><span class="tile">' + MARK + '</span><div class="who"><b>' + esc(s.who) + '</b>' +
+      '<div class="ver"><span>' + esc(L.version.replace("%V", s.version)) + '</span>' +
+      (s.updateTo ? '<button class="btn upd" id="upd">' + esc(L.update.replace("%V", s.updateTo)) + '</button>' : "") + '</div></div></div>' +
+      '<div><span class="pill ' + esc(s.kind) + '"><i></i>' + esc(s.state) + '</span></div>' +
+      '<div class="sec"><span class="lbl">' + esc(L.team) + '</span>' +
+      seg("team", [["ask", L.ask, "accent", L.tipAsk], ["auto", L.auto, "success", L.tipAuto], ["off", L.off, "neutral", L.tipOff]], s.teamMode) + '</div>' +
+      '<div class="sec"><div class="row' + (s.notify ? " on" : "") + '" id="notify" role="switch" tabindex="0" aria-checked="' + s.notify + '"><span>' + esc(L.notify) + '</span><i class="sw"></i></div>' +
+      '<div class="row' + (s.autostart ? " on" : "") + '" id="autostart" role="switch" tabindex="0" aria-checked="' + s.autostart + '"><span>' + esc(L.autostart) + '</span><i class="sw"></i></div></div>' +
+      '<button class="btn mute" id="mute">' + esc(s.muteLabel) + '</button>' +
+      '<div class="sec"><span class="lbl">' + esc(L.theme) + '</span>' +
+      seg("theme", [["system", L.sys, "accent"], ["dark", L.dark, "accent"], ["light", L.light, "accent"]], s.themeSetting) + '</div>' +
+      '<div class="foot"><button class="btn link" id="open">' + esc(L.open) + '</button><button class="btn link" id="ai">' + esc(L.ai) + '</button>' +
+      '<button class="btn danger" id="uninstall">' + esc(L.uninstall) + '</button></div>';
+    bind();
+  }
+  function call(fn) { return function () { fn(); setTimeout(refresh, 80); }; }
+  function bind() {
+    function $(id) { return document.getElementById(id); }
+    function toggle(id, f) { var el = $(id); el.onclick = call(function () { f(!el.classList.contains("on")); }); el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } }; }
+    toggle("notify", window.setNotify); toggle("autostart", window.setAutostart);
+    $("mute").onclick = call(window.toggleMute);
+    $("open").onclick = call(window.openApp); $("ai").onclick = call(window.openAI); $("uninstall").onclick = call(window.uninstall);
+    if ($("upd")) $("upd").onclick = call(window.update);
+    [["team", window.setTeamMode], ["theme", window.setTheme]].forEach(function (p) {
+      Array.prototype.forEach.call($(p[0]).children, function (b) { b.onclick = call(function () { p[1](b.dataset.v); }); });
+    });
+  }
+  function refresh() {
+    if (busy) return; busy = true;
+    window.getState().then(function (s) {
+      busy = false;
+      var j = JSON.stringify(s);
+      if (j !== last) { last = j; draw(s); }
+    }, function () { busy = false; });
+  }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") window.close(); });
+  var born = Date.now();
+  window.addEventListener("blur", function () { if (Date.now() - born > 1200) window.close(); });
+  document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  setInterval(refresh, 1000);
+  refresh();
+})();
+</script>
+</body>
+</html>

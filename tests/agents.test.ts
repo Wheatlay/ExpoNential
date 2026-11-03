@@ -425,6 +425,19 @@ describe('heartbeat', () => {
     expect((await ag.myAgents(bob)).some((a) => a.id === id)).toBe(false);
   });
 
+  it('treats a Claude usage limit as a status, not an error, for 6 hours', async () => {
+    const base = { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'] };
+    const get = async () => (await ag.myAgents(alice)).find((x) => x.id === DEV_A1)!;
+    await ag.heartbeat(alice, DEV_A1, { ...base, error: 'Limit Claude do 18:00' });
+    expect(await get()).toMatchObject({ lastError: '', claudeLimit: 'Limit Claude do 18:00' });
+    expect((await ag.aiStatus(alice)).attention).not.toContain('agent-error');
+    await ag.heartbeat(alice, DEV_A1, { ...base, error: 'Claude limit until 9:30' });
+    expect((await get()).claudeLimit).toBe('Claude limit until 9:30');
+    await dbmod.sql`update agents set last_error_at = now() - interval '7 hours' where id = ${DEV_A1}`;
+    expect(await get()).toMatchObject({ lastError: '', claudeLimit: '' });
+    await dbmod.sql`update agents set last_error = '', last_error_at = null where id = ${DEV_A1}`;
+  });
+
   it('stores the reported error, an empty error keeps it, and an error older than 24 h is hidden', async () => {
     const base = { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'] };
     await ag.heartbeat(alice, DEV_A1, { ...base, error: 'boom' });
@@ -477,8 +490,8 @@ describe('projectAgents', () => {
     const list = await ag.projectAgents(P);
     expect(list.map((a) => a.name)).toContain('ALICE-PC');
     expect(list.map((a) => a.name)).not.toContain('OUT-PC');
-    // Offline, ale z mapowaniem i zgodą: zostaje na liście (karta pokazuje "nie dołączył" / "bierze").
-    expect(list.find((a) => a.name === 'BOB-PC')).toMatchObject({ joined: true, busy: false });
+    // Offline, ale z mapowaniem: zostaje na liście z trybem zespołu komputera (domyślnie ask).
+    expect(list.find((a) => a.name === 'BOB-PC')).toMatchObject({ teamMode: 'ask', busy: false });
     expect(list.find((a) => a.name === 'ALICE-PC')?.owner).toBe('Alice');
   });
 });

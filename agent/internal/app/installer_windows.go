@@ -5,6 +5,7 @@ package app
 import (
 	_ "embed"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,17 +114,16 @@ func runInstallerWindow() (shown bool) {
 					fail("install", "internal error")
 				}
 			}()
-			res := doInstall(c, autostart, func(n int) { push("setStep(" + string(rune('0'+n)) + ")") })
-			if res.Code != "" {
-				fail(res.Code, res.Detail)
+			out := runSetup(c, autostart, func(level int, state, note string) {
+				b, _ := json.Marshal(note)
+				push(fmt.Sprintf("setRow(%d,%q,%s)", level, state, b))
+			})
+			if out.Res.Code != "" {
+				fail(out.Res.Code, out.Res.Detail)
 				return
 			}
-			ok := waitForAgent(res.Base, res.Token)
-			if ok {
-				push("finish(true)")
-			} else {
-				push("finish(false)")
-			}
+			b, _ := json.Marshal(map[string]any{"errors": out.Errors, "done": out.Done, "agentSeen": out.AgentSeen, "goal": c.goal})
+			push("finish(" + string(b) + ")")
 		}()
 	})
 	_ = w.Bind("disconnect", func() {
@@ -155,7 +155,7 @@ func runInstallerWindow() (shown bool) {
 	})
 	_ = w.Bind("close", func() { w.Dispatch(func() { w.Terminate() }) })
 
-	w.SetHtml(installerHTML)
+	w.SetHtml(applyUI(installerHTML, currentTheme()))
 	w.Run()
 	return true
 }
@@ -170,6 +170,12 @@ func darkTitleBar(hwnd uintptr) {
 		return
 	}
 	set := func(attr uintptr, v uint32) { procDwmSet.Call(hwnd, attr, uintptr(unsafe.Pointer(&v)), 4) }
+	if currentTheme() == "light" {
+		set(20, 0)
+		set(35, colorRef(255, 255, 255))
+		set(36, colorRef(0x1a, 0x1b, 0x1f))
+		return
+	}
 	set(20, 1)                          // DWMWA_USE_IMMERSIVE_DARK_MODE
 	set(35, colorRef(15, 16, 18))       // DWMWA_CAPTION_COLOR = #0f1012
 	set(36, colorRef(0xc9, 0xcc, 0xd3)) // DWMWA_TEXT_COLOR

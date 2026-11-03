@@ -12,6 +12,7 @@ let ag: typeof import('../src/server/agents.ts');
 let dbmod: typeof import('../src/db/index.ts');
 let schema: typeof import('../src/db/schema.ts');
 let projects: typeof import('../src/server/projects.ts');
+let app: import('fastify').FastifyInstance;
 let P: import('../src/server/projects.ts').Project;
 let alice: { id: number; name: string };
 let bob: { id: number; name: string };
@@ -44,8 +45,19 @@ beforeAll(async () => {
   ]);
   await db.insert(schema.agentRepos).values([DEV_A, DEV_B].map((agentId) => ({ agentId, projectId: P.id, path: 'C:/tq', source: 'manual' as const })));
   P = await projects.updateProject(P.id, { agentTeamQueue: true });
+  const Fastify = (await import('fastify')).default;
+  const cookie = (await import('@fastify/cookie')).default;
+  const auth = await import('../src/server/auth.ts');
+  const { registerApi } = await import('../src/server/api.ts');
+  tokenBob = await auth.createApiToken(bob.id, 'agent');
+  app = Fastify();
+  await app.register(cookie);
+  await auth.registerAuth(app);
+  await registerApi(app);
 });
-afterAll(async () => { await dbmod?.sql.end(); });
+afterAll(async () => { await app?.close(); await dbmod?.sql.end(); });
+let tokenBob: string;
+const setMode = (id: string, mode: string) => dbmod.sql`update agents set team_mode = ${mode} where id = ${id}`;
 
 const code = async (p: Promise<unknown>) => p.then(() => null, (e) => (e as { code: string }).code);
 const agentOf = async (id: string) => {
@@ -61,69 +73,89 @@ const requested = async (user: { id: number; name: string }) => {
 const clear = () => dbmod.sql`update issues set analysis_requested_at = null, analysis_claimed_at = null, analysis_claimed_device = null`;
 const runner = (by: number) => ag.analysisRunner(P, { analysisRequestedBy: by, analysisClaimedDevice: null, analysisRequestedAt: new Date(), analysisClaimedAt: null });
 
-describe('team queue opt-in', () => {
-  it('does not offer or let a non-joined device claim a teammate request; own requests are unaffected', async () => {
+describe('team mode per computer', () => {
+  it('mode off gets no teammate jobs and cannot claim; own requests are unaffected', async () => {
     await clear();
+    await setMode(DEV_B, 'off');
     const n = await requested(alice), m = await requested(bob);
     expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).toEqual([`TQ-${m}`]);
     expect(await code(ag.claimAnalysis(P, bob, n, DEV_B))).toBe('conflict');
     await expect(ag.claimAnalysis(P, bob, m, DEV_B)).resolves.toMatchObject({ ok: true });
   });
 
-  it('offers and allows the claim after PUT, and stops after DELETE', async () => {
+  it('ask and auto get teammate jobs and can claim', async () => {
+    for (const mode of ['ask', 'auto']) {
+      await clear();
+      await setMode(DEV_B, mode);
+      const n = await requested(alice);
+      expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).toContain(`TQ-${n}`);
+      await expect(ag.claimAnalysis(P, bob, n, DEV_B)).resolves.toMatchObject({ ok: true });
+    }
+  });
+
+  it('noCapablePc and canRun follow the mode of the teammate computers', async () => {
     await clear();
-    const n = await requested(alice);
-    await ag.joinTeamQueue(bob, DEV_B, 'TQ');
-    expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).toContain(`TQ-${n}`);
-    await ag.leaveTeamQueue(bob, DEV_B, 'TQ');
-    expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).not.toContain(`TQ-${n}`);
-    expect(await code(ag.claimAnalysis(P, bob, n, DEV_B))).toBe('conflict');
-    // Alice offline, komputer Boba bez zgody: nikt nie może wziąć zlecenia Alice.
+    await requested(alice);
     await dbmod.sql`update agents set last_seen_at = now() - interval '1 hour' where id = ${DEV_A}`;
+    await setMode(DEV_B, 'off');
     const r = await runner(alice.id);
     expect(r.noCapablePc).toBe(true);
     expect(r.canRun).toBe(false);
-    await ag.joinTeamQueue(bob, DEV_B, 'TQ');
+    await setMode(DEV_B, 'ask');
     expect((await runner(alice.id)).noCapablePc).toBe(false);
-    await ag.leaveTeamQueue(bob, DEV_B, 'TQ');
+    expect((await runner(alice.id)).canRun).toBe(true);
     await dbmod.sql`update agents set last_seen_at = now() where id = ${DEV_A}`;
   });
 
-  it('only the owner can join, only members, only when the project has the queue on', async () => {
-    expect(await code(ag.joinTeamQueue(alice, DEV_B, 'TQ'))).toBe('forbidden');
-    expect(await code(ag.joinTeamQueue(bob, DEV_B, 'NOPE'))).toBe('not_found');
-    P = await projects.updateProject(P.id, { agentTeamQueue: false });
-    expect(await code(ag.joinTeamQueue(bob, DEV_B, 'TQ'))).toBe('conflict');
-    P = await projects.updateProject(P.id, { agentTeamQueue: true });
-  });
-
-  it('lists invites, drops them after dismiss and after join, and sets attention', async () => {
-    await dbmod.sql`delete from agent_team_projects`;
-    const mine = async () => (await ag.myAgents(bob))[0];
-    expect((await mine()).teamInvites).toEqual(['TQ']);
-    expect((await ag.aiStatus(bob)).attention).toContain('team-invite');
-    await ag.dismiss(bob, `team-invite:${P.id}`);
-    expect((await mine()).teamInvites).toEqual([]);
+  it('myAgents and the aiStatus attention no longer carry team invites', async () => {
+    await setMode(DEV_B, 'auto');
+    const a = (await ag.myAgents(bob))[0] as Record<string, unknown>;
+    expect(a.teamMode).toBe('auto');
+    expect(a).not.toHaveProperty('teamProjects');
+    expect(a).not.toHaveProperty('teamInvites');
     expect((await ag.aiStatus(bob)).attention).not.toContain('team-invite');
-    await dbmod.sql`delete from user_dismissals`;
-    expect((await mine()).teamInvites).toEqual(['TQ']);
-    await ag.joinTeamQueue(bob, DEV_B, 'TQ');
-    const a = await mine();
-    expect(a.teamInvites).toEqual([]);
-    expect(a.teamProjects).toEqual(['TQ']);
   });
 
-  it('project agents list shows joined and not joined computers', async () => {
+  it('project agents list shows the mode of each computer', async () => {
+    await setMode(DEV_A, 'ask'); await setMode(DEV_B, 'off');
     const list = await ag.projectAgents(P);
-    expect(list.map((a) => [a.owner, a.joined])).toEqual([['Alice', false], ['Bob', true]]);
+    expect(list.map((a) => [a.owner, a.teamMode])).toEqual([['Alice', 'ask'], ['Bob', 'off']]);
+    await setMode(DEV_B, 'ask');
   });
 
-  it('the data migration SQL keeps existing team queue participants', async () => {
+  it('token PATCH of teamMode works for own computer, fails for another one and for other fields', async () => {
+    const patch = (id: string, body: unknown) => app.inject({ method: 'PATCH', url: `/api/agents/${id}`, headers: { authorization: `Bearer ${tokenBob}` }, payload: body as object });
+    expect((await patch(DEV_B, { teamMode: 'off' })).statusCode).toBe(200);
+    expect((await dbmod.sql`select team_mode from agents where id = ${DEV_B}`)[0].team_mode).toBe('off');
+    expect((await patch(DEV_A, { teamMode: 'off' })).statusCode).toBe(404);
+    expect((await dbmod.sql`select team_mode from agents where id = ${DEV_A}`)[0].team_mode).toBe('ask');
+    expect((await patch(DEV_B, { label: 'x' })).statusCode).toBe(403);
+    expect((await patch(DEV_B, { teamMode: 'bogus' })).statusCode).toBeGreaterThanOrEqual(400);
+    await setMode(DEV_B, 'ask');
+  });
+
+  it('GET /api/agent/work includes teamMode', async () => {
+    await clear();
+    await setMode(DEV_B, 'auto');
+    await requested(bob);
+    const res = await app.inject({ method: 'GET', url: `/api/agent/work?deviceId=${DEV_B}&version=${ag.agentScriptsVersion()}`, headers: { authorization: `Bearer ${tokenBob}` } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ teamMode: 'auto' });
+  });
+
+  it('old team routes answer 410 Gone', async () => {
+    const res = await app.inject({ method: 'PUT', url: `/api/agents/${DEV_B}/team/TQ`, headers: { authorization: `Bearer ${tokenBob}` } });
+    expect([403, 410]).toContain(res.statusCode);
+  });
+
+  it('the data migration SQL maps opted-in computers to auto and leaves the rest on ask', async () => {
     const { readFileSync } = await import('node:fs');
-    const sql = readFileSync('drizzle/0024_team_queue_optin.sql', 'utf8').split('--> statement-breakpoint').pop()!;
+    const sql = readFileSync('drizzle/0026_team_mode.sql', 'utf8').split('--> statement-breakpoint').pop()!;
+    await dbmod.sql`update agents set team_mode = 'ask'`;
     await dbmod.sql`delete from agent_team_projects`;
+    await dbmod.sql`insert into agent_team_projects (agent_id, project_id) values (${DEV_B}, ${P.id})`;
     await dbmod.sql.unsafe(sql);
-    const rows = await dbmod.sql`select agent_id from agent_team_projects order by agent_id`;
-    expect(rows.map((r) => r.agent_id)).toEqual([DEV_A, DEV_B]);
+    const rows = await dbmod.sql`select id, team_mode from agents order by id`;
+    expect(rows.map((r) => [r.id, r.team_mode])).toEqual([[DEV_A, 'ask'], [DEV_B, 'auto']]);
   });
 });

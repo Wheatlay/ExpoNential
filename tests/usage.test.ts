@@ -50,7 +50,7 @@ afterAll(async () => { await dbmod?.sql.end(); });
 const newIssue = async () => (await svc.createIssue(P, null, { title: 't' })).number;
 const pending = async () => {
   const [a] = await dbmod.sql`select * from agents where id = ${DEV_A}`;
-  return ag.pendingWork(alice, { id: DEV_A, busy: false, repoKeys: a.repo_keys, version: a.version, maxForOthersPerDay: a.max_for_others_per_day });
+  return ag.pendingWork(alice, { id: DEV_A, busy: false, repoKeys: a.repo_keys, version: a.version, maxOthersTokensPerDay: a.max_others_tokens_per_day == null ? null : Number(a.max_others_tokens_per_day) });
 };
 const setLimit = (n: number | null) => ag.setAgentLimit(alice, DEV_A, n);
 const setRequester = async (id: number) => { await dbmod.sql`update agents set current_requester_id = ${id} where id = ${DEV_A}`; };
@@ -96,13 +96,15 @@ describe('limit for others', () => {
     await svc.requestAnalysis(P, bob, othersN);
     expect((await pending()).filter((j) => j.kind === 'analyze')).toHaveLength(2);
     await setRequester(bob.id);
-    await ag.recordRun(alice, run()); await ag.recordRun(alice, run());
-    await setLimit(2);
+    // Odczyty cache nie liczą się do tokenów: 1000 + 500 + 0 na przebieg.
+    const big = { inputTokens: 1000, outputTokens: 400, cacheReadTokens: 9_000_000, cacheWriteTokens: 100 };
+    await ag.recordRun(alice, run({ usage: big })); await ag.recordRun(alice, run({ usage: big }));
+    await setLimit(3000);
     const jobs = (await pending()).filter((j) => j.kind === 'analyze');
-    expect(jobs).toEqual([{ kind: 'analyze', key: `USG-${mineN}`, deep: false }]);
+    expect(jobs).toMatchObject([{ kind: 'analyze', key: `USG-${mineN}`, deep: false, requestedBy: { name: 'Alice' } }]);
     expect(await code(ag.claimAnalysis(P, alice, othersN, DEV_A))).toBe('conflict');
     await expect(ag.claimAnalysis(P, alice, mineN, DEV_A)).resolves.toMatchObject({ ok: true });
-    await setLimit(3);
+    await setLimit(3001);
     expect((await pending()).some((j) => j.kind === 'analyze' && j.key === `USG-${othersN}`)).toBe(true);
   });
 });
@@ -111,13 +113,13 @@ describe('usage and attention', () => {
   it('aggregates usage30d with a top requester breakdown', async () => {
     await clean();
     await setRequester(bob.id);
-    await ag.recordRun(alice, run({ usage: { costUsd: 1 } })); await ag.recordRun(alice, run({ usage: { costUsd: 2 } }));
+    await ag.recordRun(alice, run({ usage: { costUsd: 1, inputTokens: 100, outputTokens: 50, cacheReadTokens: 999, cacheWriteTokens: 10 } })); await ag.recordRun(alice, run({ usage: { costUsd: 2, inputTokens: 200 } }));
     await setRequester(carol.id);
-    await ag.recordRun(alice, run({ usage: { costUsd: 0.5 } }));
+    await ag.recordRun(alice, run({ usage: { costUsd: 0.5, outputTokens: 7 } }));
     await ag.recordRun(alice, run({ kind: 'start' }));
     await dbmod.sql`insert into agent_runs (agent_id, owner_id, requester_id, kind, created_at) values (${DEV_A}, ${alice.id}, ${bob.id}, 'analyze', now() - interval '40 days')`;
     const a = (await ag.myAgents(alice)).find((x) => x.id === DEV_A)!;
-    expect(a.usage30d).toEqual({ runs: 4, forOthers: 3, costUsd: 3.5, byRequester: [{ name: 'Bob', runs: 2, costUsd: 3 }, { name: 'Alice', runs: 1, costUsd: 0 }, { name: 'Carol', runs: 1, costUsd: 0.5 }] });
+    expect(a.usage30d).toEqual({ runs: 4, forOthers: 3, costUsd: 3.5, tokens: 367, byRequester: [{ name: 'Bob', runs: 2, costUsd: 3, tokens: 360 }, { name: 'Alice', runs: 1, costUsd: 0, tokens: 0 }, { name: 'Carol', runs: 1, costUsd: 0.5, tokens: 7 }] });
     const pa = (await ag.projectAgents(P)).find((x) => x.owner === 'Alice')!;
     expect(pa.usage30d.runs).toBe(4);
   });
@@ -126,9 +128,9 @@ describe('usage and attention', () => {
     await clean();
     expect((await ag.aiStatus(alice)).attention).not.toContain('limit');
     await setRequester(bob.id);
-    for (let i = 0; i < 20; i++) await ag.recordRun(alice, run());
+    for (let i = 0; i < 2; i++) await ag.recordRun(alice, run({ usage: { inputTokens: 1_000_000 } }));
     expect((await ag.aiStatus(alice)).attention).toContain('busy-for-others');
-    await setLimit(10);
+    await setLimit(1_500_000);
     const att = (await ag.aiStatus(alice)).attention;
     expect(att).toContain('limit');
     expect(att).not.toContain('busy-for-others');

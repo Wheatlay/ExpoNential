@@ -1,0 +1,43 @@
+package app
+
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestClaudeMcpArgs(t *testing.T) {
+	got := claudeMcpAddArgs("https://x.example", "trk_abc")
+	want := []string{"mcp", "add", "--transport", "http", "--scope", "user", "tracker", "https://x.example/mcp", "--header", "Authorization: Bearer trk_abc"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("%q", got)
+	}
+	if strings.Join(claudeMcpRemoveArgs(), " ") != "mcp remove tracker --scope user" {
+		t.Fatal("remove")
+	}
+	if len(claudePluginSteps("https://x.example")) != 4 {
+		t.Fatal("plugin steps")
+	}
+}
+
+func TestMcpConfigHas(t *testing.T) {
+	if !mcpConfigHas([]byte(`{"mcpServers":{"tracker":{"type":"http","url":"https://x.example/mcp"}}}`), "https://x.example") {
+		t.Fatal("present")
+	}
+	if mcpConfigHas([]byte(`{"mcpServers":{"other":{}}}`), "https://x.example") || mcpConfigHas([]byte(`bad`), "https://x.example") {
+		t.Fatal("absent")
+	}
+}
+
+func TestStripEnvAndScrub(t *testing.T) {
+	got := stripEnv([]string{"A=1", "claude_config_dir=x", "B=2"}, "CLAUDE_CONFIG_DIR")
+	if len(got) != 2 {
+		t.Fatal(got)
+	}
+	if scrub("Bearer trk_secret", "trk_secret") != "Bearer ***" {
+		t.Fatal("scrub")
+	}
+	if !pluginListHas("tracker@tracker  enabled") || pluginListHas("nothing") {
+		t.Fatal("list")
+	}
+}
