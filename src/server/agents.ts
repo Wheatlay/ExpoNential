@@ -373,15 +373,16 @@ export async function myAgents(user: User) {
     .where(and(inArray(agentRuns.agentId, rows.map((a) => a.id)), dsql`${agentRuns.requesterId} <> ${agentRuns.ownerId}`, dsql`${agentRuns.createdAt} >= now() - interval '24 hours'`))
     .groupBy(agentRuns.agentId) : [];
   const others24 = new Map(day.map((d) => [d.agentId, d.n]));
-  // Kolejka zespołu: projekty, do których komputer dołączył, i zaproszenia (kolejka włączona, jest działające repo, brak zgody i odrzucenia).
+  // Kolejka zespołu: projekty, do których komputer dołączył, i zaproszenia (kolejka włączona w projekcie, w którym jestem,
+  // brak zgody i odrzucenia). Repo nie jest warunkiem: bez niego linijka zaproszenia proponuje wskazanie folderu.
   const ids = rows.map((a) => a.id);
   const joined = ids.length ? await db.select({ agentId: agentTeamProjects.agentId, key: projects.key }).from(agentTeamProjects)
     .innerJoin(projects, eq(projects.id, agentTeamProjects.projectId)).where(inArray(agentTeamProjects.agentId, ids)).orderBy(asc(projects.key)) : [];
-  const invites = ids.length ? await db.select({ agentId: agentRepos.agentId, key: projects.key }).from(agentRepos)
-    .innerJoin(projects, and(eq(projects.id, agentRepos.projectId), eq(projects.agentTeamQueue, true)))
-    .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
-    .where(and(inArray(agentRepos.agentId, ids), eq(agentRepos.status, 'ok'),
-      dsql`not exists (select 1 from agent_team_projects tp where tp.agent_id = ${agentRepos.agentId} and tp.project_id = ${projects.id})`,
+  const invites = ids.length ? await db.select({ agentId: agents.id, key: projects.key }).from(agents)
+    .innerJoin(projectMembers, eq(projectMembers.userId, user.id))
+    .innerJoin(projects, and(eq(projects.id, projectMembers.projectId), eq(projects.agentTeamQueue, true)))
+    .where(and(inArray(agents.id, ids),
+      dsql`not exists (select 1 from agent_team_projects tp where tp.agent_id = ${agents.id} and tp.project_id = ${projects.id})`,
       dsql`not exists (select 1 from user_dismissals d where d.user_id = ${user.id} and d.key = 'team-invite:' || ${projects.id}::text)`)).orderBy(asc(projects.key)) : [];
   return rows.map((a) => ({ id: a.id, maxForOthersPerDay: a.maxForOthersPerDay, usage30d: usage.get(a.id)!,
     forOthers24h: others24.get(a.id) ?? 0, limitReached24h: a.maxForOthersPerDay != null && (others24.get(a.id) ?? 0) >= a.maxForOthersPerDay, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),

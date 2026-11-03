@@ -389,7 +389,7 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; lastError: string; lastErrorAt: string | null; maxForOthersPerDay: number | null; limitReached24h: boolean; forOthers24h: number; usage30d: UsageInfo; teamProjects: string[]; teamInvites: string[] }[]>('/api/agents'), enabled: !!me && !me.demo });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; lastError: string; lastErrorAt: string | null; maxForOthersPerDay: number | null; limitReached24h: boolean; forOthers24h: number; usage30d: UsageInfo; teamProjects: string[]; teamInvites: string[]; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
   const projects = useProjects(!!me && !me.demo).data;
   const projectOf = (k: string) => projects?.find((p) => p.key === k);
   const refreshTeam = () => { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); };
@@ -410,7 +410,11 @@ function ClaudeConnect() {
       <div className="s-card" id="claude-connect">
         <div className="s-row">
           <span className="grow">{t('AI clients')}</span>
-          <button className="btn primary" onClick={() => openSetupWizard()}>{t('Connect AI')}{!demo && me?.aiStatus?.attention?.includes('connect') && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 6 }} />}</button>
+          {/* Podłączony klient (też starym tokenem, którego nie ma na liście połączeń) widać tu, a przycisk staje się drugorzędny. */}
+          {me?.aiStatus?.client && (
+            <span className="hint"><span className="wiz-chip-check"><Icon.check size={12} /></span> {me.aiStatus.clientName}{me.aiStatus.clientAt ? ` · ${timeAgo(me.aiStatus.clientAt)}` : ''}</span>
+          )}
+          <button className={`btn${me?.aiStatus?.client ? '' : ' primary'}`} onClick={() => openSetupWizard()}>{me?.aiStatus?.client ? t('Connect another') : t('Connect AI')}{!demo && me?.aiStatus?.attention?.includes('connect') && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 6 }} />}</button>
         </div>
       </div>
       {(grants.data?.length ?? 0) > 0 && (
@@ -477,6 +481,8 @@ function ClaudeConnect() {
               <div key={k} className="s-row invite">
                 <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />
                 <span className="grow">{t('Project {name} has a team queue', { name: projectOf(k)?.name ?? k })}</span>
+                {/* Bez repo tego projektu komputer i tak nie dostanie zleceń: od razu skrót do wskazania folderu. */}
+                {!a.repos?.some((r) => r.project === k && r.status === 'ok') && <button className="btn sm" onClick={() => openSetupWizard(3, 3)}>{t('Choose folder')}</button>}
                 <span className="hint">{t('Take requests')}</span>
                 <button className="switch" role="switch" aria-checked={false} aria-label={t('Take requests')} onClick={() => void api(`/api/agents/${a.id}/team/${k}`, { method: 'PUT' }).then(refreshTeam)} />
                 <button className="btn sm" onClick={() => { const pr = projectOf(k); if (pr) void api('/api/me/dismiss', { method: 'POST', body: { key: `team-invite:${pr.id}` } }).then(refreshTeam); }}>{t('Not now')}</button>
@@ -493,7 +499,7 @@ function ClaudeConnect() {
       )}
       {(tokens.data?.length ?? 0) > 0 && (
         <details id="tokens" className="s-card settings-legacy">
-          <summary className="s-row"><Tooltip text={t('For scripts and integrations. AI clients and the agent connect by signing in.')}><b>{t('API keys')}</b></Tooltip></summary>
+          <summary className="s-row"><Icon.chevronRight size={12} /><Tooltip text={t('For scripts and integrations. AI clients and the agent connect by signing in.')}><b>{t('API keys')}</b></Tooltip><span className="hint">{tokens.data!.length}</span></summary>
           {tokens.data!.map((tk) => (
             <div key={tk.id} className="s-row">
               <span className="grow">{tk.name}</span>

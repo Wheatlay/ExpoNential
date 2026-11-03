@@ -1228,7 +1228,10 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .ai-hint-actions { display: flex; gap: 8px; }
 .nav-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: auto; flex-shrink: 0; }
 .s-row.invite { background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.settings-legacy summary { cursor: pointer; color: var(--text-secondary); }
+.settings-legacy summary { cursor: pointer; color: var(--text-secondary); list-style: none; display: flex; align-items: center; gap: 8px; }
+.settings-legacy summary::-webkit-details-marker { display: none; }
+.settings-legacy summary > svg { transition: transform 0.12s; color: var(--text-tertiary); }
+.settings-legacy[open] summary > svg { transform: rotate(90deg); }
 .settings-legacy { margin-top: 12px; }
 @media (max-width: 760px) {
   .backdrop:has(.wiz) { padding-top: 0; }
