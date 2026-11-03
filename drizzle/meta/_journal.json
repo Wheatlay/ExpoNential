@@ -155,6 +155,27 @@
       "when": 1793700615540,
       "tag": "0021_profile_logo",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793704257393,
+      "tag": "0022_agent_pairing",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793706181649,
+      "tag": "0023_agent_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793707384477,
+      "tag": "0024_team_queue_optin",
+      "breakpoints": true
     }
   ]
 }

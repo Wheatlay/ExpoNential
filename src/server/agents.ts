@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { and, asc, eq, gt, inArray, isNull, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { activity, agentJobs, agentRepos, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, users } from '../db/schema.ts';
-import { RuleError, identifier } from './rules.ts';
+import { activity, agentJobs, agentRepos, agentRuns, agentTeamProjects, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, userDismissals, users } from '../db/schema.ts';
+import { NOT_AGENT_CLIENT } from './oauth.ts';
+import { RuleError, identifier, parseIdentifier } from './rules.ts';
 import { analysisModel } from './prompts.ts';
 import { log, publish, requireIssue, updateIssue, type Actor, type Project } from './service.ts';
 
@@ -50,6 +51,15 @@ export async function requireOwnAgent(user: User, deviceId: string) {
   return row;
 }
 
+/** Czy komputer wyczerpał dobowy limit zleceń dla innych osób (własne zlecenia właściciela nie liczą się i nie są limitowane). */
+export async function limitReached(agentId: string, ownerId: number, max: number | null | undefined) {
+  if (max == null) return false;
+  const [r] = await db.select({ n: dsql<number>`count(*)::int` }).from(agentRuns)
+    .where(and(eq(agentRuns.agentId, agentId), dsql`${agentRuns.requesterId} <> ${ownerId}`, dsql`${agentRuns.createdAt} >= now() - interval '24 hours'`));
+  return (r?.n ?? 0) >= max;
+}
+const LIMIT_MSG = 'Daily limit for others reached on this PC';
+
 /**
  * Przejęcie zlecenia analizy przed uruchomieniem. Jeden UPDATE z warunkami w WHERE daje wyłączność:
  * z dwóch równoczesnych wywołań wygra jedno, drugie dostaje 409. To samo urządzenie może przejąć ponownie (idempotentnie).
@@ -74,22 +84,28 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
   const [cur] = await db.select().from(issues).where(and(eq(issues.projectId, p.id), eq(issues.number, number)));
   if (!cur) throw new RuleError(`Issue ${identifier(p.key, number)} not found`, 'not_found');
   const already = cur.analysisClaimedDevice === deviceId && cur.analysisClaimedAt != null;
+  // Limit dla innych: zlecenie cudzej osoby nie przejdzie, gdy komputer wyczerpał dobowy limit. Własne zlecenia nigdy.
+  if (!already && cur.analysisRequestedBy != null && cur.analysisRequestedBy !== user.id && await limitReached(deviceId, user.id, agent.maxForOthersPerDay)) throw new RuleError(LIMIT_MSG, 'conflict');
   const rows = await db.update(issues).set({ analysisClaimedAt: new Date(), analysisClaimedBy: user.id, analysisClaimedDevice: deviceId })
     .where(and(
       eq(issues.id, cur.id),
       dsql`${issues.analysisRequestedAt} is not null`,
       isNull(issues.analysisFailedAt),
       dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}) or ${issues.analysisClaimedDevice} = ${deviceId})`,
-      dsql`(${issues.analysisRequestedBy} = ${user.id} or (${p.agentTeamQueue && !ownOnly}::boolean and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
+      dsql`(${issues.analysisRequestedBy} = ${user.id} or (${p.agentTeamQueue && !ownOnly}::boolean and exists (select 1 from agent_team_projects tp where tp.agent_id = ${deviceId} and tp.project_id = ${p.id}) and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
     ))
     .returning({ deep: issues.analysisDeep });
   if (!rows.length) throw new RuleError('Already taken or no longer requested', 'conflict');
+  // Kto zlecił: zapisujemy na komputerze, bo analiza (set_analysis) kasuje claim na zgłoszeniu, zanim agent zgłosi przebieg.
+  const requesterId = cur.analysisRequestedBy ?? null;
+  await db.update(agents).set({ currentRequesterId: requesterId }).where(eq(agents.id, deviceId));
+  const [rq] = requesterId != null ? await db.select({ id: users.id, name: users.name }).from(users).where(eq(users.id, requesterId)) : [];
   if (!already) {
     // Zajęcie robi skrypt na PC, nie człowiek: w aktywności ze znacznikiem AI, jak inne akcje agenta.
     await db.transaction((tx) => log(tx, cur.id, { ...user, ai: true } as Actor, { kind: 'analysis_claimed', device: agent.label || agent.name || 'PC' }));
     await publish({ type: 'issue', projectKey: p.key, number });
   }
-  return { ok: true, deep: rows[0].deep, model: analysisModel(p, rows[0].deep) };
+  return { ok: true, deep: rows[0].deep, model: analysisModel(p, rows[0].deep), requester: rq ? { id: rq.id, name: rq.name } : null };
 }
 
 /**
@@ -112,7 +128,7 @@ export async function analysisRunner(p: Project, issue: { analysisRequestedBy: n
       select 1 from agents a
       where a.last_seen_at > now() - make_interval(secs => ${ONLINE_MS / 1000})
         and (a.user_id = ${issue.analysisRequestedBy}::int
-          or (${p.agentTeamQueue}::boolean and exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id)))
+          or (${p.agentTeamQueue}::boolean and exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id) and exists (select 1 from agent_team_projects tp where tp.agent_id = a.id and tp.project_id = ${p.id})))
     ) as can`);
   let claimedDeviceName: string | null = null;
   if (issue.analysisClaimedDevice) {
@@ -126,7 +142,7 @@ export async function analysisRunner(p: Project, issue: { analysisRequestedBy: n
       select a.version from agents a
       where a.last_seen_at > now() - make_interval(secs => ${ONLINE_MS / 1000})
         and (a.user_id = ${issue.analysisRequestedBy}::int
-          or (${p.agentTeamQueue}::boolean and exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id)))
+          or (${p.agentTeamQueue}::boolean and exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id) and exists (select 1 from agent_team_projects tp where tp.agent_id = a.id and tp.project_id = ${p.id})))
         and (${p.agentsMayClone}::boolean or exists (select 1 from agent_repos r where r.agent_id = a.id and r.project_id = ${p.id} and r.status = 'ok'))`);
     noCapablePc = !cands.some((c) => agentUpToDate(c.version));
   }
@@ -231,10 +247,12 @@ export async function removeAgentRepo(user: User, deviceId: string, projectKey: 
 export type AgentJob = { kind: 'analyze'; key: string; deep: boolean } | { kind: 'start'; id: number; key: string };
 
 /** Co ten agent może teraz wziąć: moje zlecenia (i kolejka zespołu w projektach z włączonym przełącznikiem) oraz zlecenia Start. */
-export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string; ownOnly?: boolean }): Promise<AgentJob[]> {
+export async function pendingWork(user: User, agent: { id?: string; busy: boolean; repoKeys: string[]; version: string; ownOnly?: boolean; maxForOthersPerDay?: number | null }): Promise<AgentJob[]> {
   // Stara wersja skryptów: nic nie dostaje (Ustawienia i pasek analizy pokazują "Update needed").
   if (agent.busy || !agentUpToDate(agent.version)) return [];
   const jobs: AgentJob[] = [];
+  // Wyczerpany limit dla innych: oferujemy tylko zlecenia właściciela.
+  const limited = !!agent.id && await limitReached(agent.id, user.id, agent.maxForOthersPerDay);
   {
     const rows = await db.select({ key: projects.key, number: issues.number, deep: issues.analysisDeep })
       .from(issues).innerJoin(projects, eq(projects.id, issues.projectId))
@@ -244,7 +262,7 @@ export async function pendingWork(user: User, agent: { id?: string; busy: boolea
         isNull(issues.analysisFailedAt),
         dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}))`,
         dsql`(${projects.agentsMayClone} or exists (select 1 from agent_repos r where r.agent_id = ${agent.id ?? ''} and r.project_id = ${projects.id} and r.status = 'ok'))`,
-        dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and ${!agent.ownOnly}::boolean and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
+        dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and ${!agent.ownOnly && !limited}::boolean and exists (select 1 from agent_team_projects tp where tp.agent_id = ${agent.id ?? ''} and tp.project_id = ${projects.id}) and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
       ))
       .orderBy(asc(issues.analysisRequestedAt)).limit(5);
     for (const r of rows) jobs.push({ kind: 'analyze', key: identifier(r.key, r.number), deep: r.deep });
@@ -282,7 +300,66 @@ export async function claimStartJob(user: User, jobId: number, deviceId: string)
     .returning({ issueId: agentJobs.issueId });
   if (!job) throw new RuleError('Already taken or expired', 'conflict');
   const [r] = await db.select({ key: projects.key, number: issues.number }).from(issues).innerJoin(projects, eq(projects.id, issues.projectId)).where(eq(issues.id, job.issueId));
-  return { key: identifier(r.key, r.number) };
+  await db.update(agents).set({ currentRequesterId: user.id }).where(eq(agents.id, deviceId));
+  const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, user.id));
+  return { key: identifier(r.key, r.number), requester: { id: user.id, name: u?.name ?? '' } };
+}
+
+export type Usage = { runs: number; forOthers: number; costUsd: number; byRequester: { name: string; runs: number; costUsd: number }[] };
+const emptyUsage = (): Usage => ({ runs: 0, forOthers: 0, costUsd: 0, byRequester: [] });
+const round4 = (n: number) => Math.round(n * 10000) / 10000;
+
+/** Statystyki z ostatnich 30 dni per komputer (opcjonalnie tylko jeden projekt); najczęstsi zlecający (top 5). */
+async function usageByAgent(agentIds: string[], projectId?: number) {
+  const out = new Map<string, Usage>(agentIds.map((id) => [id, emptyUsage()]));
+  if (!agentIds.length) return out;
+  const rows = await db.select({ agentId: agentRuns.agentId, ownerId: agentRuns.ownerId, requesterId: agentRuns.requesterId, name: users.name, runs: dsql<number>`count(*)::int`, cost: dsql<string>`coalesce(sum(${agentRuns.costUsd}), 0)` })
+    .from(agentRuns).leftJoin(users, eq(users.id, agentRuns.requesterId))
+    .where(and(inArray(agentRuns.agentId, agentIds), dsql`${agentRuns.createdAt} >= now() - interval '30 days'`, projectId != null ? eq(agentRuns.projectId, projectId) : undefined))
+    .groupBy(agentRuns.agentId, agentRuns.ownerId, agentRuns.requesterId, users.name);
+  for (const r of rows) {
+    const u = out.get(r.agentId)!, cost = Number(r.cost);
+    u.runs += r.runs; u.costUsd += cost;
+    if (r.requesterId != null && r.requesterId !== r.ownerId) u.forOthers += r.runs;
+    if (r.requesterId != null && r.name) u.byRequester.push({ name: r.name, runs: r.runs, costUsd: cost });
+  }
+  for (const u of out.values()) {
+    u.costUsd = round4(u.costUsd);
+    u.byRequester = u.byRequester.sort((a, b) => b.runs - a.runs || a.name.localeCompare(b.name)).slice(0, 5).map((b) => ({ ...b, costUsd: round4(b.costUsd) }));
+  }
+  return out;
+}
+
+const inRange = (v: unknown, max: number, min = 0): v is number => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+export type RunReport = { deviceId: string; key: string; kind: 'analyze' | 'start'; engine: string; model: string; startedAt?: string; durationMs: number; exitCode: number;
+  usage?: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; costUsd?: number } };
+
+/**
+ * Przebieg zgłoszony przez agenta po zakończeniu. Zlecający: dla analizy ten, kogo zapisał claim (agents.currentRequesterId),
+ * dla Start właściciel. Liczby muszą być nieujemne i w rozsądnych granicach.
+ */
+export async function recordRun(user: User, r: RunReport) {
+  const agent = await requireOwnAgent(user, r.deviceId);
+  if (r.kind !== 'analyze' && r.kind !== 'start') throw new RuleError('Invalid run kind', 'invalid');
+  const u = r.usage ?? {};
+  for (const k of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'] as const) {
+    if (u[k] !== undefined && !(inRange(u[k], 2_000_000_000) && Number.isInteger(u[k]))) throw new RuleError(`Invalid ${k}`, 'invalid');
+  }
+  if (u.costUsd !== undefined && !inRange(u.costUsd, 100_000)) throw new RuleError('Invalid costUsd', 'invalid');
+  if (!inRange(r.durationMs, 7 * 86_400_000) || !Number.isInteger(r.durationMs)) throw new RuleError('Invalid durationMs', 'invalid');
+  if (!inRange(r.exitCode, 1_000_000, -1_000_000) || !Number.isInteger(r.exitCode)) throw new RuleError('Invalid exitCode', 'invalid');
+  const started = r.startedAt ? new Date(r.startedAt) : null;
+  if (started && Number.isNaN(started.getTime())) throw new RuleError('Invalid startedAt', 'invalid');
+  const id = parseIdentifier(r.key);
+  const [pr] = id?.key ? await db.select({ id: projects.id }).from(projects).where(eq(projects.key, id.key.toUpperCase())) : [];
+  const requesterId = r.kind === 'start' ? user.id : agent.currentRequesterId;
+  const [row] = await db.insert(agentRuns).values({
+    agentId: agent.id, ownerId: user.id, requesterId, projectId: pr?.id ?? null, issueNumber: id?.number ?? null, kind: r.kind,
+    engine: (r.engine ?? '').slice(0, 20), model: (r.model ?? '').slice(0, 80), startedAt: started, durationMs: r.durationMs, exitCode: r.exitCode,
+    inputTokens: u.inputTokens ?? null, outputTokens: u.outputTokens ?? null, cacheReadTokens: u.cacheReadTokens ?? null, cacheWriteTokens: u.cacheWriteTokens ?? null,
+    costUsd: u.costUsd !== undefined ? u.costUsd.toFixed(4) : null,
+  }).returning({ id: agentRuns.id });
+  return { ok: true, id: row.id };
 }
 
 /** Moje komputery do Ustawień. */
@@ -291,10 +368,59 @@ export async function myAgents(user: User) {
   const repos = rows.length ? await db.select({ agentId: agentRepos.agentId, project: projects.key, path: agentRepos.path, source: agentRepos.source, status: agentRepos.status, error: agentRepos.error })
     .from(agentRepos).innerJoin(projects, eq(projects.id, agentRepos.projectId))
     .where(inArray(agentRepos.agentId, rows.map((a) => a.id))).orderBy(asc(projects.key)) : [];
-  return rows.map((a) => ({ id: a.id, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: !agentUpToDate(a.version),
+  const usage = await usageByAgent(rows.map((a) => a.id));
+  const day = rows.length ? await db.select({ agentId: agentRuns.agentId, n: dsql<number>`count(*)::int` }).from(agentRuns)
+    .where(and(inArray(agentRuns.agentId, rows.map((a) => a.id)), dsql`${agentRuns.requesterId} <> ${agentRuns.ownerId}`, dsql`${agentRuns.createdAt} >= now() - interval '24 hours'`))
+    .groupBy(agentRuns.agentId) : [];
+  const others24 = new Map(day.map((d) => [d.agentId, d.n]));
+  // Kolejka zespołu: projekty, do których komputer dołączył, i zaproszenia (kolejka włączona, jest działające repo, brak zgody i odrzucenia).
+  const ids = rows.map((a) => a.id);
+  const joined = ids.length ? await db.select({ agentId: agentTeamProjects.agentId, key: projects.key }).from(agentTeamProjects)
+    .innerJoin(projects, eq(projects.id, agentTeamProjects.projectId)).where(inArray(agentTeamProjects.agentId, ids)).orderBy(asc(projects.key)) : [];
+  const invites = ids.length ? await db.select({ agentId: agentRepos.agentId, key: projects.key }).from(agentRepos)
+    .innerJoin(projects, and(eq(projects.id, agentRepos.projectId), eq(projects.agentTeamQueue, true)))
+    .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
+    .where(and(inArray(agentRepos.agentId, ids), eq(agentRepos.status, 'ok'),
+      dsql`not exists (select 1 from agent_team_projects tp where tp.agent_id = ${agentRepos.agentId} and tp.project_id = ${projects.id})`,
+      dsql`not exists (select 1 from user_dismissals d where d.user_id = ${user.id} and d.key = 'team-invite:' || ${projects.id}::text)`)).orderBy(asc(projects.key)) : [];
+  return rows.map((a) => ({ id: a.id, maxForOthersPerDay: a.maxForOthersPerDay, usage30d: usage.get(a.id)!,
+    forOthers24h: others24.get(a.id) ?? 0, limitReached24h: a.maxForOthersPerDay != null && (others24.get(a.id) ?? 0) >= a.maxForOthersPerDay, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),
     repos: repos.filter((r) => r.agentId === a.id).map(({ agentId: _, ...r }) => r),
+    teamProjects: joined.filter((j) => j.agentId === a.id).map((j) => j.key),
+    teamInvites: invites.filter((j) => j.agentId === a.id).map((j) => j.key),
     // Błąd starszy niż 24 h już nie jest istotny.
     lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 ? a.lastError : '', lastErrorAt: a.lastErrorAt }));
+}
+
+
+async function memberProject(user: User, projectKey: string) {
+  const [pr] = await db.select({ id: projects.id, team: projects.agentTeamQueue }).from(projects)
+    .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
+    .where(eq(projects.key, projectKey.toUpperCase()));
+  if (!pr) throw new RuleError('Project not found', 'not_found');
+  return pr;
+}
+
+/** Mój komputer dołącza do kolejki zespołu projektu (projekt musi mieć ją włączoną, a ja być członkiem). */
+export async function joinTeamQueue(user: User, deviceId: string, projectKey: string) {
+  await requireOwnAgent(user, deviceId);
+  const pr = await memberProject(user, projectKey);
+  if (!pr.team) throw new RuleError('Team queue is off in this project', 'conflict');
+  await db.insert(agentTeamProjects).values({ agentId: deviceId, projectId: pr.id }).onConflictDoNothing();
+  return { ok: true };
+}
+
+export async function leaveTeamQueue(user: User, deviceId: string, projectKey: string) {
+  await requireOwnAgent(user, deviceId);
+  const [pr] = await db.select({ id: projects.id }).from(projects).where(eq(projects.key, projectKey.toUpperCase()));
+  if (pr) await db.delete(agentTeamProjects).where(and(eq(agentTeamProjects.agentId, deviceId), eq(agentTeamProjects.projectId, pr.id)));
+  return { ok: true };
+}
+
+/** Odrzucenie podpowiedzi (np. "team-invite:<projectId>"). */
+export async function dismiss(user: User, key: string) {
+  await db.insert(userDismissals).values({ userId: user.id, key }).onConflictDoNothing();
+  return { ok: true };
 }
 
 /** Własna nazwa komputera (pusta = nazwa z Windowsa). Tylko właściciel. */
@@ -304,18 +430,31 @@ export async function renameAgent(user: User, id: string, label: string) {
   return { ok: true };
 }
 
+/** Limit zleceń dla innych na dobę (null = brak). Tylko właściciel. */
+export async function setAgentLimit(user: User, id: string, max: number | null) {
+  const rows = await db.update(agents).set({ maxForOthersPerDay: max }).where(and(eq(agents.id, id), eq(agents.userId, user.id))).returning({ id: agents.id });
+  if (!rows.length) throw new RuleError('Computer not found', 'not_found');
+  return { ok: true };
+}
+
 export async function removeAgent(user: User, id: string) {
   await db.delete(agents).where(and(eq(agents.id, id), eq(agents.userId, user.id)));
   return { ok: true };
 }
 
-/** Komputery online należące do członków projektu (kolejka zespołu). */
+/**
+ * Komputery członków projektu z działającym repo (kolejka zespołu): online albo już dołączone. `joined`: właściciel zgodził się
+ * brać zlecenia kolegów w tym projekcie. Komputer bez zgody też jest na liście, żeby karta mogła pokazać "nie dołączył".
+ */
 export async function projectAgents(p: Project) {
-  const rows = await db.select({ name: dsql<string>`coalesce(nullif(${agents.label}, ''), ${agents.name})`, owner: users.name, busy: agents.busy })
+  const rows = await db.select({ id: agents.id, name: dsql<string>`coalesce(nullif(${agents.label}, ''), ${agents.name})`, owner: users.name, busy: agents.busy,
+    joined: dsql<boolean>`exists (select 1 from agent_team_projects tp where tp.agent_id = ${agents.id} and tp.project_id = ${p.id})`, online: dsql<boolean>`${agents.lastSeenAt} > now() - make_interval(secs => ${ONLINE_MS / 1000})` })
     .from(agents).innerJoin(users, eq(users.id, agents.userId))
     .innerJoin(projectMembers, and(eq(projectMembers.userId, agents.userId), eq(projectMembers.projectId, p.id)))
-    .where(gt(agents.lastSeenAt, ago(ONLINE_MS))).orderBy(asc(agents.name));
-  return rows;
+    .where(dsql`(${agents.lastSeenAt} > now() - make_interval(secs => ${ONLINE_MS / 1000}) or exists (select 1 from agent_team_projects tp where tp.agent_id = ${agents.id} and tp.project_id = ${p.id})
+      or exists (select 1 from agent_repos r where r.agent_id = ${agents.id} and r.project_id = ${p.id} and r.status = 'ok'))`).orderBy(asc(agents.name));
+  const usage = await usageByAgent(rows.map((r) => r.id), p.id);
+  return rows.map(({ id, online, ...r }) => ({ ...r, busy: r.busy && online, usage30d: usage.get(id)! }));
 }
 
 /**
@@ -343,17 +482,31 @@ export async function createStartJob(p: Project, user: NonNullable<Actor>, numbe
  * Stan podłączenia AI dla kreatora: klient (pierwsze wywołanie MCP przez OAuth albo użyty token), ślad pracy (jakikolwiek
  * worklog tego użytkownika) i agent (któryś własny komputer online ze świeżą wersją). Kilka tanich zapytań z LIMIT 1.
  */
+const CLIENT_FRESH_MS = 14 * 864e5;
 export async function aiStatus(user: User, mine?: Awaited<ReturnType<typeof myAgents>>) {
+  // Klient liczy się, gdy był używany w ostatnich 14 dniach (nieużywany token albo grant nie dowodzi działającego połączenia).
+  const recent = new Date(Date.now() - CLIENT_FRESH_MS).toISOString();
   const [grant] = await db.select({ name: oauthClients.name, at: oauthGrants.firstMcpAt }).from(oauthGrants)
     .innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
-    .where(and(eq(oauthGrants.userId, user.id), isNull(oauthGrants.revokedAt), dsql`${oauthGrants.firstMcpAt} is not null`))
+    .where(and(eq(oauthGrants.userId, user.id), isNull(oauthGrants.revokedAt), NOT_AGENT_CLIENT, dsql`${oauthGrants.firstMcpAt} is not null`,
+      dsql`greatest(${oauthGrants.lastUsedAt}, ${oauthGrants.firstMcpAt}) > ${recent}::timestamptz`))
     .orderBy(dsql`${oauthGrants.firstMcpAt} desc`).limit(1);
   const [token] = grant ? [] : await db.select({ at: apiTokens.lastUsedAt }).from(apiTokens)
-    .where(and(eq(apiTokens.userId, user.id), dsql`${apiTokens.lastUsedAt} is not null`)).orderBy(dsql`${apiTokens.lastUsedAt} desc`).limit(1);
+    .where(and(eq(apiTokens.userId, user.id), dsql`${apiTokens.lastUsedAt} > ${recent}::timestamptz`)).orderBy(dsql`${apiTokens.lastUsedAt} desc`).limit(1);
   const [wl] = await db.select({ id: activity.id }).from(activity)
     .where(and(eq(activity.actorId, user.id), dsql`${activity.payload}->>'kind' = 'worklog'`)).limit(1);
   const computers = mine ?? await myAgents(user);
+  const client = !!grant || !!token;
+  // Co wymaga sprawdzenia (kółko przy Settings, AI i konkretnym komputerze).
+  const attention: string[] = [];
+  if (!client) attention.push('connect');
+  if (computers.some((a) => a.limitReached24h)) attention.push('limit');
+  if (computers.some((a) => a.maxForOthersPerDay == null && a.forOthers24h >= 20)) attention.push('busy-for-others');
+  if (computers.some((a) => a.lastError)) attention.push('agent-error');
+  if (computers.some((a) => a.legacy)) attention.push('legacy');
+  if (computers.some((a) => a.teamInvites.length)) attention.push('team-invite');
   return {
+    attention,
     client: !!grant || !!token,
     clientName: grant ? grant.name : token ? 'Claude Code' : null,
     clientAt: grant?.at ?? token?.at ?? null,

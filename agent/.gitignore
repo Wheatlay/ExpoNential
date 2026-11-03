@@ -1,2 +1,5 @@
-node_modules
 dist
+internal/plugin/files/*
+!internal/plugin/files/.gitkeep
+/winres/winres.json
+*.syso

@@ -1189,21 +1189,8 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .wiz-goal input { accent-color: var(--accent); margin: 0; flex-shrink: 0; }
 .wiz-goal .grow { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .wiz-goal-title { font-size: var(--text-md); font-weight: 500; }
-.wiz-ladder { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.wiz-step { position: relative; display: flex; gap: 12px; padding-bottom: 14px; }
-.wiz-step:last-child { padding-bottom: 0; }
-.wiz-step::before { content: ''; position: absolute; left: 11px; top: 24px; bottom: 2px; width: 1px; background: var(--border-secondary); }
-.wiz-step:last-child::before { display: none; }
-.wiz-step.off { opacity: 0.5; }
 .wiz-mark { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-tertiary); display: grid; place-items: center; flex-shrink: 0; color: var(--on-accent); }
-.wiz-step.cur .wiz-mark { border-color: var(--accent); }
-.wiz-step.done .wiz-mark, .wiz-mark.done { background: var(--success); border-color: var(--success); }
-.wiz-step-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
-.wiz-step-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 22px; }
-.wiz-step-head b, .wiz-step-toggle { font-weight: 600; }
-.wiz-step-toggle { all: unset; cursor: pointer; border-radius: var(--radius-sm); }
-.wiz-step-toggle:hover { color: var(--accent-text); }
-.wiz-step-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wiz-mark.done { background: var(--success); border-color: var(--success); }
 .wiz-step-body { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; animation: wiz-open 0.12s ease-out both; }
 @keyframes wiz-open { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .wiz-ok { color: var(--success-text); font-size: var(--text-sm); }
@@ -1214,7 +1201,19 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .wiz-wait { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-tertiary); }
 .wiz-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); animation: wiz-pulse 1.2s ease-in-out infinite; }
 @keyframes wiz-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
-.wiz-warn { color: var(--warning-text); font-size: var(--text-sm); }
+.wiz-steps { display: flex; flex-direction: column; gap: 10px; }
+.wiz-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.wiz-chip { display: inline-flex; align-items: center; gap: 6px; height: var(--control-sm); padding: 0 10px; border: 1px solid var(--border-secondary); border-radius: var(--radius-full); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.wiz-chip:hover { background: var(--bg-hover); }
+.wiz-chip-check { color: var(--success-text); display: inline-flex; }
+.wiz-block { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--border-secondary); border-radius: var(--radius-lg); }
+.wiz-mark.cur { border-color: var(--accent); color: var(--text-primary); font-size: var(--text-xs); }
+.wiz-block-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.wiz-info { display: inline-flex; color: var(--text-tertiary); cursor: help; border-radius: var(--radius-sm); }
+.wiz-info:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.wiz-link { all: unset; cursor: pointer; font-size: var(--text-sm); color: var(--accent-text); border-radius: var(--radius-sm); }
+.wiz-link:hover { text-decoration: underline; }
+.wiz-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .wiz-computer { width: 100%; display: flex; flex-direction: column; gap: 6px; }
 .wiz-computer .grow { flex: 1; min-width: 0; }
 .wiz-repo { display: flex; align-items: center; gap: 8px; padding-left: 12px; font-size: var(--text-sm); }
@@ -1228,6 +1227,7 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .ai-hint-title { font-size: var(--text-md); font-weight: 600; }
 .ai-hint-actions { display: flex; gap: 8px; }
 .nav-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: auto; flex-shrink: 0; }
+.s-row.invite { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .settings-legacy summary { cursor: pointer; color: var(--text-secondary); }
 .settings-legacy { margin-top: 12px; }
 @media (max-width: 760px) {

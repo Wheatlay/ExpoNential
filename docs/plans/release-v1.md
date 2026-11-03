@@ -123,3 +123,15 @@ Check Codex and Cursor docs for MCP OAuth and MCP prompts support. Where missing
 - Team queue: two projects, PC A has only project 1's repo, PC B both → project 2's issue goes only to B; with B off it
   waits with a message; PC A with cloning allowed clones and takes it; changing `githubRepo` invalidates mappings.
 - Wizard (ui-checker): steps visible, dot turns "connected", "Skip" ends with MCP only.
+
+## Legacy removal
+
+Remove `scripts/local-agent`, the `/agent/*.ps1`, `/agent/exponential-install.cmd` / `exponential-uninstall.cmd` and `/agent/version` routes (and `agentScriptsVersion`) once no agent with a non-semver version has been seen for 30 days (`agents.last_seen_at`). Check:
+
+```sql
+select count(*) from agents
+where version is not null and version !~ '^[0-9]+[.][0-9]+[.][0-9]+$'
+  and last_seen_at > now() - interval '30 days';
+```
+
+Remove when the count is 0.

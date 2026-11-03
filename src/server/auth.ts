@@ -89,6 +89,7 @@ const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
   [/^(POST|DELETE)$/, /^\/api\/issues\/[^/]+\/analyze\/claim$/],
   [/^POST$/, /^\/api\/issues\/[^/]+\/worklog$/],
   [/^GET$/, /^\/api\/agent\/work$/],
+  [/^POST$/, /^\/api\/agent\/runs$/],
   [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
   // Stary instalator i deinstalator PowerShell (scripts/local-agent).
   [/^(POST|DELETE)$/, /^\/api\/me\/local-agent$/],

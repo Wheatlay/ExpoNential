@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { TimeInput } from './DateTime.tsx';
 import { askConfirm } from './Confirm.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, useMe, useMeta, useSprints, type User } from './api.ts';
+import { api, useMe, useMeta, useProjects, useSprints, type User } from './api.ts';
 import { useProjectKey } from './project.ts';
 import { ProjectBadge } from './ProjectSwitcher.tsx';
 import { NotificationSettings } from './Notifications.tsx';
@@ -11,10 +11,10 @@ import { PersonLink } from './PersonCard.tsx';
 import { Avatar, Icon, StatusIcon, startedFraction } from './icons.tsx';
 import { copyText, toast } from './toast.ts';
 import { timeAgo } from './time.ts';
-import { Tooltip } from './menu.tsx';
-import { agentHere, agentInstallCommand } from './startWork.ts';
+import { Tooltip, openMenu } from './menu.tsx';
+import { agentHere } from './startWork.ts';
 import { openSetupWizard } from './SetupWizard.tsx';
-import { lang, setLang, t, type Lang } from './i18n.ts';
+import { lang, locale, setLang, t, type Lang } from './i18n.ts';
 import { uploadImageFile } from './paste.ts';
 
 export type Theme = 'dark' | 'light' | 'oled';
@@ -29,7 +29,7 @@ export function setTheme(t: Theme) {
  * Ty (wygląd, powiadomienia, Claude Code na tym komputerze), bieżący projekt, workspace (admin).
  * Widać jedną sekcję naraz; wybór w adresie (#sekcja), więc link "#project" dalej działa.
  */
-type Section = { id: string; name: string; render: () => ReactNode };
+type Section = { id: string; name: string; render: () => ReactNode; dot?: boolean };
 
 function useHash() {
   const [hash, setHash] = useState(() => location.hash.slice(1));
@@ -49,7 +49,7 @@ export function Settings() {
       { id: 'profile', name: t('Profile'), render: () => <ProfileSettings /> },
       { id: 'appearance', name: t('Appearance'), render: () => <Appearance /> },
       { id: 'notifications', name: t('Notifications'), render: () => <NotificationSettings /> },
-      { id: 'claude', name: 'Claude Code', render: () => <ClaudeConnect /> },
+      { id: 'claude', name: 'AI', render: () => <ClaudeConnect />, dot: !me?.demo && (me?.aiStatus?.attention?.length ?? 0) > 0 },
       { id: 'password', name: t('Password'), render: () => <PasswordSettings /> },
     ] },
     { name: p ? <span className="settings-nav-project"><ProjectBadge project={p} size={14} /> {p.name}</span> : t('Project'), items: [
@@ -79,6 +79,7 @@ export function Settings() {
                 <a key={s.id} href={`#${s.id}`} className={`nav-item${s === current ? ' active' : ''}`}
                   onClick={(e) => { e.preventDefault(); history.replaceState(null, '', `#${s.id}`); dispatchEvent(new HashChangeEvent('hashchange')); }}>
                   {s.name}
+                  {s.dot && <span className="nav-dot" role="img" aria-label={t('Needs attention')} />}
                 </a>
               ))}
             </div>
@@ -189,12 +190,11 @@ const SEARCH: SearchEntry[] = [
   { label: t('Browser notifications'), to: 'notifications', target: 'notif-push', keywords: ['push', 'powiadomienia', 'notifications', 'przegladarka'] },
   { label: 'Discord', to: 'notifications', target: 'notif-discord', keywords: ['channel', 'kanal', 'powiadomienia', 'notifications'] },
   { label: t('Only mentions and questions to me'), to: 'notifications', target: 'notif-important', keywords: ['mute', 'quiet', 'wycisz', 'wzmianki', 'mentions', 'pytania', 'questions', 'powiadomienia'] },
-  // Ty › Claude Code
-  { label: t('Connect AI'), to: 'claude', target: 'claude-connect', keywords: ['claude code', 'codex', 'mcp', 'wizard', 'ai', 'polacz'] },
+  // Ty › AI
+  { label: t('Connect AI'), to: 'claude', target: 'claude-connect', keywords: ['claude code', 'claude', 'codex', 'mcp', 'wizard', 'ai', 'polacz'] },
   { label: t('Connected AI clients'), to: 'claude', target: 'ai-clients', keywords: ['mcp', 'oauth', 'grants', 'dostep'] },
   { label: t('Your computers'), to: 'claude', target: 'your-computers', keywords: ['agent', 'pc', 'komputer', 'computer', 'runner'] },
-  { label: t('Tokens'), to: 'claude', target: 'tokens', keywords: ['api', 'key', 'klucz', 'token'] },
-  { label: t('Legacy installer (Windows script)'), to: 'claude', target: 'legacy-installer', keywords: ['install', 'powershell', 'instalator', 'windows'] },
+  { label: t('API keys'), to: 'claude', target: 'tokens', keywords: ['api', 'key', 'klucz', 'token', 'tokens'] },
   // Ty › Hasło
   { label: t('Password'), to: 'password', target: 'password-card', keywords: ['login', 'haslo', 'e-mail', 'email', 'konto', 'account'] },
   // Projekt › Ogólne
@@ -377,48 +377,40 @@ function Appearance() {
  * dodaje serwer MCP każdemu kontu Claude Code, instaluje plugin (skille, ślad pracy) i analizę w tle.
  * Po instalacji to samo polecenie bez tokenu tylko aktualizuje. Tokeny niżej, żeby dało się je unieważnić.
  */
+type UsageInfo = { runs: number; forOthers: number; costUsd: number; byRequester: { name: string; runs: number; costUsd: number }[] };
+/** Koszt przybliżony, w walucie z kodem (np. "~4,20 USD") w języku użytkownika. */
+const usd = (n: number) => '~' + new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD', currencyDisplay: 'code' }).format(n);
+const byRequesterText = (u: UsageInfo) => u.byRequester.map((b) => `${b.name} ${b.runs}`).join(' · ') || null;
+const LIMITS = [5, 10, 20, 50];
+
 const dmy = (iso: string) => { const d = new Date(iso); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`; };
 
 function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; lastError: string; lastErrorAt: string | null }[]>('/api/agents'), enabled: !!me && !me.demo && !!me.localAgentAt });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; lastError: string; lastErrorAt: string | null; maxForOthersPerDay: number | null; limitReached24h: boolean; forOthers24h: number; usage30d: UsageInfo; teamProjects: string[]; teamInvites: string[] }[]>('/api/agents'), enabled: !!me && !me.demo });
+  const projects = useProjects(!!me && !me.demo).data;
+  const projectOf = (k: string) => projects?.find((p) => p.key === k);
+  const refreshTeam = () => { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); };
   const grants = useQuery({ queryKey: ['connections'], queryFn: () => api<{ id: number; client: string; createdAt: string; lastUsedAt: string | null; firstMcpAt: string | null }[]>('/api/connections'), enabled: !!me && !me.demo });
   // Przełącznik "ten komputer ma agenta": tylko ta przeglądarka (localStorage), dla laptopów z dotykiem, gdzie wykrycie telefonu myli.
   const [, setTick] = useState(0);
   const here = agentHere(me);
   const toggleHere = () => { try { localStorage.setItem('tracker.agentHere', here ? '0' : '1'); } catch { /* prywatne okno */ } setTick((n) => n + 1); };
-  const [cmd, setCmd] = useState<string | null>(null);
   // Instalacja dzieje się w terminalu: po powrocie do karty odświeżamy status bez przeładowania.
   useEffect(() => {
     const f = () => { void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['tokens'] }); void qc.invalidateQueries({ queryKey: ['agents'] }); };
     window.addEventListener('focus', f);
     return () => window.removeEventListener('focus', f);
   }, [qc]);
-  const copy = (c: string) => copyText(c, t('Copied. Paste it into PowerShell.'));
-  const [token, setToken] = useState<string | null>(null);
-  // Do schowka idzie sam token, nie polecenie "irm … | iex": to drugie blokują filtry anty-ClickFix (np. uBlock Origin).
-  const createCmd = async () => {
-    const r = await api<{ token: string }>('/api/tokens', { method: 'POST', body: { name: t('Claude Code, {date}', { date: new Date().toLocaleDateString() }) } });
-    setToken(r.token);
-    setCmd(agentInstallCommand(r.token));
-    copyText(r.token, t('Token copied. Run the downloaded installer and paste it when asked.'));
-    void qc.invalidateQueries({ queryKey: ['tokens'] });
-  };
-  const download = (file: string) => (
-    <a className="btn" href={`/agent/${file}`} download>{file.startsWith('exponential-install') ? t('Download installer') : t('Download uninstaller')}</a>
-  );
   const demo = !!me?.demo;
-  const installed = !!me?.localAgentAt;
-  const update = agentInstallCommand();
   return (
     <>
-      <p className="hint settings-lead">{t('Connect Claude Code or Codex to Exponential: issue access, work log in issues and Analyze in the background.')}</p>
       <div className="s-card" id="claude-connect">
         <div className="s-row">
-          <span className="grow">{t('AI clients')}<div className="hint">{t('The wizard connects Claude Code or Codex, in VS Code, Cursor or the terminal.')}</div></span>
-          <button className="btn primary" onClick={() => openSetupWizard()}>{t('Connect AI')}</button>
+          <span className="grow">{t('AI clients')}</span>
+          <button className="btn primary" onClick={() => openSetupWizard()}>{t('Connect AI')}{!demo && me?.aiStatus?.attention?.includes('connect') && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 6 }} />}</button>
         </div>
       </div>
       {(grants.data?.length ?? 0) > 0 && (
@@ -435,58 +427,12 @@ function ClaudeConnect() {
           ))}
         </div>
       )}
-      <details id="legacy-installer" className="s-card settings-legacy">
-        <summary className="s-row">{t('Legacy installer (Windows script)')}</summary>
-        <div className="s-row">
-          <span className={`step-dot${installed ? ' done' : ''}`}>{installed ? <Icon.check size={12} /> : <Icon.sparkle size={12} />}</span>
-          <span className="grow">
-            <b>{installed ? t('Connected') : t('Not connected')}</b>{' '}
-            <span className="hint">{installed ? t('Installed {when}.', { when: timeAgo(me!.localAgentAt!) }) : t('Analyze only marks issues until this computer is connected.')}</span>
-          </span>
-          {installed
-            ? <button className="btn" disabled={demo} onClick={() => void createCmd()} title={demo ? t('Disabled in the demo') : t('A new computer, or Claude Code without the Exponential connection')}>{t('Connect another computer')}</button>
-            : <button className="btn primary" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void createCmd()}>{t('Create install command')}</button>}
-        </div>
-        {cmd && token && (
-          <div className="s-row" style={{ flexDirection: 'column', alignItems: 'stretch', flexWrap: 'nowrap' }}>
-            <span className="hint">{t("1. Download the installer and run it (double-click). 2. Paste this token when it asks; it is already in your clipboard. The token won't be shown again.")}</span>
-            <div className="token-box">{token}</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {download('exponential-install.cmd?first=1')}
-              <button className="btn" onClick={() => copyText(token, t('Token copied'))}><Icon.copy size={13} /> {t('Copy token')}</button>
-            </div>
-            <span className="hint">{t('Or paste this into PowerShell (select and copy it by hand if a blocker such as uBlock refuses the copy):')}</span>
-            <div className="token-box">{cmd}</div>
-          </div>
-        )}
-        {installed && (
-          <div className="s-row" style={{ flexDirection: 'column', alignItems: 'stretch', flexWrap: 'nowrap' }}>
-            {/* Skrypty na PC nie aktualizują się same (kod z serwera nie podmienia się po cichu): mówimy wprost, że trzeba. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
-              {/* Na wąskim ekranie opis zajmuje własną linię, a oba przyciski zawijają się razem (bez wychodzenia poza ekran). */}
-              <span className="hint" style={{ flex: '1 1 240px', minWidth: 0 }}>{me?.agentOutdated
-                ? <><span className="pill stalled">{t('Update needed')}</span> {t('Exponential has newer PC scripts. Run this on your computer.')}</>
-                : t('Update or new project/clone: run this again.')}</span>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {download('exponential-install.cmd')}
-                <span title={t('Removes it from this computer')} style={{ display: 'inline-flex' }}>{download('exponential-uninstall.cmd')}</span>
-              </div>
-            </div>
-            {/* Alternatywa dla terminala; kopiowanie może zablokować filtr anty-ClickFix, wtedy zaznacza się ręcznie. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
-              <span className="hint">{t('Or in PowerShell:')}</span>
-              {/* Polecenie się nie łamie, tylko przewija w poziomie wewnątrz pola: flex 1 1 200px i minWidth 0, żeby pole kurczyło się do ekranu. */}
-              <code className="input" title={t('Or paste this into PowerShell (select and copy it by hand if a blocker such as uBlock refuses the copy):')} style={{ display: 'flex', alignItems: 'center', height: 30, overflowX: 'auto', whiteSpace: 'nowrap', flex: '1 1 200px', minWidth: 0 }}>{update}</code>
-              <button className="btn" onClick={() => copy(update)}><Icon.copy size={13} /> {t('Copy')}</button>
-            </div>
-          </div>
-        )}
-      </details>
-      {installed && !demo && (
+      {(agentList.data?.length ?? 0) > 0 && !demo && (
         <div className="s-card" id="your-computers" style={{ marginTop: 12 }}>
-          <div className="s-row s-row-head"><b>{t('Your computers')}</b><span className="hint">{t('A computer with the agent picks up analyses requested from your phone.')}</span></div>
+          <div className="s-row s-row-head"><b>{t('Your computers')}</b></div>
           {(agentList.data ?? []).map((a) => (
-            <div key={a.id} className="s-row">
+            <Fragment key={a.id}>
+            <div className="s-row">
               <span className="grow">
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {/* Własna nazwa (jak login GitHub w Kontach): zapis po wyjściu z pola, pusta wraca do nazwy z Windowsa. */}
@@ -494,25 +440,60 @@ function ClaudeConnect() {
                     title={t('Your name for this computer. Empty: the Windows name.')}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                     onBlur={(e) => { const v = e.target.value.trim(); if (v !== a.label) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { label: v } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); }); }} />
-                  {a.outdated && <span className="pill stalled" title={t('Old version of the PC scripts. Run the update command above on this computer.')}>{t('Update needed')}</span>}
+                  {a.outdated && !a.legacy && <span className="pill stalled">{t('Update needed')}</span>}
+                  {a.legacy && <button className="btn sm" onClick={() => openSetupWizard(3, 3)}>{t('Switch to the new agent')}</button>}
+                  {a.limitReached24h && <span className="pill stalled">{t('Limit reached')}</span>}
+                  {(a.limitReached24h || a.lastError || a.legacy || (a.maxForOthersPerDay == null && a.forOthers24h >= 20)) && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />}
                 </span>
+                {a.teamProjects.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                    {a.teamProjects.map((k) => (
+                      <Tooltip key={k} text={t('Takes requests from teammates in {project}', { project: projectOf(k)?.name ?? k })}>
+                        <button className="pill ok" onClick={(e) => openMenu(e.currentTarget, { items: [{ key: 'leave', label: t('Leave queue'), onSelect: () => { void api(`/api/agents/${a.id}/team/${k}`, { method: 'DELETE' }).then(refreshTeam); } }] })}>{t('Queue: {project}', { project: k })}</button>
+                      </Tooltip>
+                    ))}
+                  </div>
+                )}
                 {a.label && a.computerName && <div className="hint">{t('Windows name: {name}', { name: a.computerName })}</div>}
-                {a.lastError && <div className="hint">{t('Last error {when}: {error}', { when: a.lastErrorAt ? timeAgo(a.lastErrorAt) : '', error: a.lastError })}</div>}</span>
+                {a.usage30d.runs > 0 && (
+                  <Tooltip text={byRequesterText(a.usage30d)}>
+                    <div className="hint">{t('30 days: {runs} · for others {others} · {cost}', { runs: a.usage30d.runs, others: a.usage30d.forOthers, cost: usd(a.usage30d.costUsd) })}</div>
+                  </Tooltip>
+                )}
+                {a.lastError && <Tooltip text={t('Last error {when}: {error}', { when: a.lastErrorAt ? timeAgo(a.lastErrorAt) : '', error: a.lastError.slice(0, 300) })}><span className="pill stalled">{t('Error')}</span></Tooltip>}</span>
+              <Tooltip text={t('Runs for other people on this computer in 24 hours. Your own are never limited.')}>
+                <select className="input" value={a.maxForOthersPerDay ?? ''} aria-label={t('Limit for others per day')}
+                  onChange={(e) => void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { maxForOthersPerDay: e.target.value === '' ? null : Number(e.target.value) } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); })}>
+                  <option value="">{t('No limit for others')}</option>
+                  {[...new Set([...LIMITS, ...(a.maxForOthersPerDay != null ? [a.maxForOthersPerDay] : [])])].sort((x, y) => x - y).map((n) => <option key={n} value={n}>{t('{n} for others / day', { n })}</option>)}
+                </select>
+              </Tooltip>
               <span className="hint">{a.online ? (a.busy ? t('running an analysis') : t('online')) : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>
               <button className="btn sm danger" onClick={() => void askConfirm({
                 title: t('Remove "{name}"?', { name: a.name || t('Unnamed computer') }), body: t('This computer stops picking up work until the install command is run on it again.'), action: t('Remove'), danger: true,
               }).then((ok) => { if (ok) void api(`/api/agents/${a.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['agents'] })); })}>{t('Remove')}</button>
             </div>
+            {a.teamInvites.map((k) => (
+              <div key={k} className="s-row invite">
+                <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />
+                <span className="grow">{t('Project {name} has a team queue', { name: projectOf(k)?.name ?? k })}</span>
+                <span className="hint">{t('Take requests')}</span>
+                <button className="switch" role="switch" aria-checked={false} aria-label={t('Take requests')} onClick={() => void api(`/api/agents/${a.id}/team/${k}`, { method: 'PUT' }).then(refreshTeam)} />
+                <button className="btn sm" onClick={() => { const pr = projectOf(k); if (pr) void api('/api/me/dismiss', { method: 'POST', body: { key: `team-invite:${pr.id}` } }).then(refreshTeam); }}>{t('Not now')}</button>
+              </div>
+            ))}
+            </Fragment>
           ))}
-          <div className="s-row">
-            <span className="grow">{t('This computer has the agent')}<div className="hint">{t('For laptops with a touch screen. Off: Analyze here only queues the request.')}</div></span>
+          {/* Tylko dla starego skryptu: link tracker:// z tej przeglądarki. Nowy agent bierze zlecenia z kolejki sam. */}
+          {(agentList.data ?? []).some((a) => a.legacy) && <div className="s-row">
+            <span className="grow"><Tooltip text={t('For laptops with a touch screen. Off: Analyze here only queues the request.')}><span>{t('This computer has the agent')}</span></Tooltip></span>
             <button className={`switch ${here ? 'on' : ''}`} role="switch" aria-checked={here} aria-label={t('This computer has the agent')} onClick={toggleHere} />
-          </div>
+          </div>}
         </div>
       )}
       {(tokens.data?.length ?? 0) > 0 && (
-        <div id="tokens" className="s-card" style={{ marginTop: 12 }}>
-          <div className="s-row s-row-head"><b>{t('Tokens')}</b><span className="hint">{t('One per connected computer. Revoke the one from a computer you no longer use.')}</span></div>
+        <details id="tokens" className="s-card settings-legacy">
+          <summary className="s-row"><Tooltip text={t('For scripts and integrations. AI clients and the agent connect by signing in.')}><b>{t('API keys')}</b></Tooltip></summary>
           {tokens.data!.map((tk) => (
             <div key={tk.id} className="s-row">
               <span className="grow">{tk.name}</span>
@@ -520,7 +501,7 @@ function ClaudeConnect() {
               <button className="btn sm danger" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void askConfirm({ title: t('Revoke "{name}"?', { name: tk.name }), body: t('Claude Code using this token stops working.'), action: t('Revoke') }).then((ok) => { if (ok) void api(`/api/tokens/${tk.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['tokens'] })); })}>{t('Revoke')}</button>
             </div>
           ))}
-        </div>
+        </details>
       )}
     </>
   );
@@ -1067,16 +1048,14 @@ function TeamQueue() {
   const c = useProject();
   const demo = !!useMe().data?.demo;
   const key = useProjectKey();
-  const online = useQuery({ queryKey: ['project-agents', key], queryFn: () => api<{ name: string; owner: string; busy: boolean }[]>(`/api/projects/${key}/agents`), enabled: !!c && !demo, refetchInterval: 30_000 });
+  const online = useQuery({ queryKey: ['project-agents', key], queryFn: () => api<{ name: string; owner: string; busy: boolean; joined: boolean; usage30d: UsageInfo }[]>(`/api/projects/${key}/agents`), enabled: !!c && !demo, refetchInterval: 30_000 });
   if (!c) return null;
   const { p, ro: roBase, patch } = c;
   const ro = roBase ?? (demo ? t('Disabled in the demo') : null);
   return (
     <div className="s-card" id="team-queue" style={{ marginTop: 12 }}>
       <div className="s-row">
-        <span className="grow">{t('Team queue')} · {p.name}
-          <div className="hint">{t("An online teammate's PC runs analyses for everyone in this project, on that person's Claude subscription limits. The prompt comes from the project template.")}</div>
-        </span>
+        <span className="grow"><Tooltip text={t('Lets members share their computers. Each member turns this on for their own.')}><span>{t('Team queue')} · {p.name}</span></Tooltip></span>
         <Tooltip text={ro}>
           <button className={`switch ${p.agentTeamQueue ? 'on' : ''}`} role="switch" aria-checked={p.agentTeamQueue} aria-label={t('Team queue')}
             disabled={!!ro} style={ro ? { opacity: 0.45, cursor: 'not-allowed' } : undefined} onClick={() => void patch({ agentTeamQueue: !p.agentTeamQueue })} />
@@ -1086,6 +1065,8 @@ function TeamQueue() {
         <div key={i} className="s-row">
           <span className="grow">{a.name || t('Unnamed computer')} · {a.owner}</span>
           {a.busy && <span className="hint">{t('running an analysis')}</span>}
+          <span className={a.joined ? 'pill ok' : 'pill ended'}>{a.joined ? t('takes requests') : t('not joined')}</span>
+          <Tooltip text={byRequesterText(a.usage30d)}><span className="hint">{t('30 days: {runs} · {cost}', { runs: a.usage30d.runs, cost: usd(a.usage30d.costUsd) })}</span></Tooltip>
         </div>
       ))}
       {!demo && !(online.data ?? []).length && <div className="s-row"><span className="hint">{t('No computer is online right now.')}</span></div>}

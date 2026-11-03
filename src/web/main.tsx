@@ -147,7 +147,7 @@ function Sidebar({ page }: { page: string }) {
         {/* Pytania do mnie: dzwonek (wszystkie projekty) i filtr "Asked to me" na tablicy, bez trzeciej pozycji tutaj. */}
         <RecentIssues onNavigate={() => setOpen(false)} />
         <div className="nav-section">{t('Project & account')}</div>
-        {item('/settings', 'settings', <Icon.settings size={15} />, t('Settings'), !me.demo && me.aiStatus && !me.aiStatus.client ? <span className="nav-dot" role="img" aria-label={t('AI is not connected')} title={t('AI is not connected')} /> : undefined)}
+        {item('/settings', 'settings', <Icon.settings size={15} />, t('Settings'), !me.demo && me.aiStatus?.attention?.length ? <span className="nav-dot" role="img" aria-label={t('Needs attention')} title={t('Needs attention')} /> : undefined)}
         <div style={{ marginTop: 'auto' }}><DeployStatus /></div>
         <div className="sidebar-bottom" style={{ marginTop: 0 }}>
           {/* Ja jak każda osoba w aplikacji: klik otwiera moją kartę (tagi, nad czym pracuję, moje issues). */}

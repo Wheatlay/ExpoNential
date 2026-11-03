@@ -180,9 +180,26 @@ export async function registerApi(app: FastifyInstance) {
       return ag.setAgentRepo(req.user!, req.params.id, body.project, body.path);
     });
     r.delete<{ Params: { id: string; project: string } }>('/api/agents/:id/repos/:project', async (req) => ag.removeAgentRepo(req.user!, req.params.id, req.params.project));
+    r.put<{ Params: { id: string; project: string } }>('/api/agents/:id/team/:project', async (req) => ag.joinTeamQueue(req.user!, req.params.id, req.params.project));
+    r.delete<{ Params: { id: string; project: string } }>('/api/agents/:id/team/:project', async (req) => ag.leaveTeamQueue(req.user!, req.params.id, req.params.project));
+    r.post('/api/me/dismiss', async (req) => ag.dismiss(req.user!, z.object({ key: z.string().min(1).max(100) }).parse(req.body).key));
     r.delete<{ Params: { id: string } }>('/api/agents/:id', async (req) => ag.removeAgent(req.user!, req.params.id));
-    r.patch<{ Params: { id: string } }>('/api/agents/:id', async (req) =>
-      ag.renameAgent(req.user!, req.params.id, z.object({ label: z.string().max(60) }).parse(req.body).label));
+    r.patch<{ Params: { id: string } }>('/api/agents/:id', async (req) => {
+      const b = z.object({ label: z.string().max(60).optional(), maxForOthersPerDay: z.number().int().min(0).max(1000).nullable().optional() }).parse(req.body);
+      if (b.label !== undefined) await ag.renameAgent(req.user!, req.params.id, b.label);
+      if (b.maxForOthersPerDay !== undefined) await ag.setAgentLimit(req.user!, req.params.id, b.maxForOthersPerDay);
+      return { ok: true };
+    });
+    // Przebieg agenta po zakończeniu (zużycie tokenów, zlecający).
+    r.post('/api/agent/runs', async (req) => {
+      const n = z.number().finite().optional();
+      const b = z.object({
+        deviceId: z.string().uuid(), key: z.string().max(40), kind: z.enum(['analyze', 'start']), engine: z.string().max(20).default(''), model: z.string().max(80).default(''),
+        startedAt: z.string().max(40).optional(), durationMs: z.number(), exitCode: z.number(),
+        usage: z.object({ inputTokens: n, outputTokens: n, cacheReadTokens: n, cacheWriteTokens: n, costUsd: n }).optional(),
+      }).parse(req.body);
+      return ag.recordRun(req.user!, b);
+    });
     // Instalator lokalnej analizy zgłasza się tu tokenem MCP, deinstalator kasuje znacznik.
     r.post('/api/me/local-agent', async (req) => { await db.update(users).set({ localAgentAt: new Date() }).where(eq(users.id, req.user!.id)); return { ok: true }; });
     r.put('/api/me/setup-done', async (req) => { await db.update(users).set({ setupDoneAt: new Date() }).where(eq(users.id, req.user!.id)); return { ok: true }; });

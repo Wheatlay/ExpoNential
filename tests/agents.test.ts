@@ -51,6 +51,8 @@ beforeAll(async () => {
   ]);
   // Każde urządzenie ma repo projektu (analizy trafiają tylko na komputery z mapowaniem).
   await db.insert(schema.agentRepos).values([DEV_A1, DEV_A2, DEV_B1, DEV_O1].map((agentId) => ({ agentId, projectId: P.id, path: 'C:/agt', source: 'manual' as const })));
+  // Zgoda na kolejkę zespołu: te testy sprawdzają resztę reguł, brak zgody testuje tests/teamqueue.test.ts.
+  await db.insert(schema.agentTeamProjects).values([DEV_A1, DEV_A2, DEV_B1, DEV_O1].map((agentId) => ({ agentId, projectId: P.id })));
 });
 afterAll(async () => { await dbmod?.sql.end(); });
 
@@ -469,13 +471,14 @@ describe('script version', () => {
 });
 
 describe('projectAgents', () => {
-  it('lists online computers of project members only', async () => {
+  it('lists computers of project members with a repo mapping (online or not), never outsiders', async () => {
     await dbmod.sql`update agents set last_seen_at = now() where id in (${DEV_A1}, ${DEV_O1})`;
     await dbmod.sql`update agents set last_seen_at = now() - interval '10 minutes' where id = ${DEV_B1}`;
     const list = await ag.projectAgents(P);
     expect(list.map((a) => a.name)).toContain('ALICE-PC');
     expect(list.map((a) => a.name)).not.toContain('OUT-PC');
-    expect(list.map((a) => a.name)).not.toContain('BOB-PC');
+    // Offline, ale z mapowaniem i zgodą: zostaje na liście (karta pokazuje "nie dołączył" / "bierze").
+    expect(list.find((a) => a.name === 'BOB-PC')).toMatchObject({ joined: true, busy: false });
     expect(list.find((a) => a.name === 'ALICE-PC')?.owner).toBe('Alice');
   });
 });
@@ -511,7 +514,7 @@ describe('start jobs', () => {
     const starts = async (u: { id: number }, dev: string) => (await ag.pendingWork(u, await agentOf(dev))).filter((j) => j.kind === 'start');
     expect(await starts(alice, DEV_A1)).toEqual([{ kind: 'start', id, key: `AGT-${n}` }]);
     expect(await starts(bob, DEV_B1)).toEqual([]);
-    await expect(ag.claimStartJob(alice, id, DEV_A1)).resolves.toEqual({ key: `AGT-${n}` });
+    await expect(ag.claimStartJob(alice, id, DEV_A1)).resolves.toMatchObject({ key: `AGT-${n}`, requester: { id: alice.id } });
     expect(await code(ag.claimStartJob(alice, id, DEV_A1))).toBe('conflict');
     expect(await starts(alice, DEV_A1)).toEqual([]);
 

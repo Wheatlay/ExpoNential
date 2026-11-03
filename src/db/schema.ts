@@ -1,5 +1,5 @@
 import {
-  pgTable, serial, integer, text, boolean, timestamp, jsonb, primaryKey, uniqueIndex, index, doublePrecision, bigint,
+  pgTable, serial, integer, text, boolean, timestamp, jsonb, primaryKey, uniqueIndex, index, doublePrecision, bigint, numeric,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -342,6 +342,15 @@ export const oauthDeviceCodes = pgTable('oauth_device_codes', {
   lastPollAt: timestamp('last_poll_at', { withTimezone: true }),
 });
 
+// Parowanie pobranego agenta: jednorazowy token wpisany w plik .exe, wymieniany na grant OAuth. W bazie tylko sha256.
+export const agentPairings = pgTable('agent_pairings', {
+  hash: text('hash').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+});
+
 export const settings = pgTable('settings', {
   key: text('key').primaryKey(),
   value: jsonb('value').notNull(),
@@ -470,8 +479,34 @@ export const agents = pgTable('agents', {
   lastError: text('last_error').notNull().default(''),
   lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+  // Limit zleceń dla innych osób na dobę (null = bez limitu). Własne zlecenia właściciela nigdy nie są limitowane.
+  maxForOthersPerDay: integer('max_for_others_per_day'),
+  // Kto zlecił to, co agent przejął jako ostatnie (claim analizy / Start). Analiza kasuje claim na zgłoszeniu, więc zapisujemy tu.
+  currentRequesterId: integer('current_requester_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Przebiegi agenta (analiza / Start) z zużyciem tokenów: statystyki i limity w Ustawieniach. */
+export const agentRuns = pgTable('agent_runs', {
+  id: serial('id').primaryKey(),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  ownerId: integer('owner_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  requesterId: integer('requester_id').references(() => users.id, { onDelete: 'set null' }),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  issueNumber: integer('issue_number'),
+  kind: text('kind').$type<'analyze' | 'start'>().notNull(),
+  engine: text('engine').notNull().default(''),
+  model: text('model').notNull().default(''),
+  startedAt: timestamp('started_at', { withTimezone: true }),
+  durationMs: integer('duration_ms'),
+  exitCode: integer('exit_code'),
+  inputTokens: integer('input_tokens'),
+  outputTokens: integer('output_tokens'),
+  cacheReadTokens: integer('cache_read_tokens'),
+  cacheWriteTokens: integer('cache_write_tokens'),
+  costUsd: numeric('cost_usd', { precision: 10, scale: 4 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('agent_runs_agent_idx').on(t.agentId, t.createdAt)]);
 
 /** Gdzie na danym komputerze leży repo projektu. Analizy trafiają tylko na komputery z działającym repo (status ok). */
 export const agentRepos = pgTable('agent_repos', {
@@ -483,6 +518,20 @@ export const agentRepos = pgTable('agent_repos', {
   error: text('error'),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.agentId, t.projectId] })]);
+
+/** Zgoda właściciela komputera na kolejkę zespołu w projekcie. Bez wiersza komputer bierze tylko własne zlecenia właściciela. */
+export const agentTeamProjects = pgTable('agent_team_projects', {
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.agentId, t.projectId] })]);
+
+/** Odrzucone podpowiedzi użytkownika (np. "team-invite:<projectId>"), żeby nie wracały. */
+export const userDismissals = pgTable('user_dismissals', {
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  key: text('key').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.userId, t.key] })]);
 
 /** Zlecenia dla agenta inne niż analiza (kind 'start': otwórz VS Code z poleceniem). Wygasają po godzinie. */
 export const agentJobs = pgTable('agent_jobs', {

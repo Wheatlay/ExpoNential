@@ -36,7 +36,7 @@ afterAll(async () => { await dbmod?.sql.end(); });
 
 describe('aiStatus', () => {
   it('starts with everything off', async () => {
-    expect(await ag.aiStatus(u)).toEqual({ client: false, clientName: null, clientAt: null, workTrace: false, agent: false });
+    expect(await ag.aiStatus(u)).toEqual({ attention: ['connect'], client: false, clientName: null, clientAt: null, workTrace: false, agent: false });
   });
 
   it('client turns on with the first MCP call of an OAuth grant, and off again when it is revoked', async () => {
@@ -63,6 +63,26 @@ describe('aiStatus', () => {
     const s = await ag.aiStatus(u);
     expect(s.client).toBe(true);
     expect(s.clientName).toBe('Claude Code');
+  });
+
+  it('a client not used for over 14 days does not count', async () => {
+    const { db } = dbmod;
+    const old = new Date(Date.now() - 15 * 864e5);
+    await db.update(schema.apiTokens).set({ lastUsedAt: old });
+    expect((await ag.aiStatus(u)).client).toBe(false);
+    await db.update(schema.apiTokens).set({ lastUsedAt: new Date(Date.now() - 13 * 864e5) });
+    expect((await ag.aiStatus(u)).client).toBe(true);
+    await db.insert(schema.oauthClients).values({ id: 'c2', name: 'Cursor', redirectUris: [] });
+    const [g] = await db.insert(schema.oauthGrants).values({
+      clientId: 'c2', userId: u.id, accessHash: 'a2', refreshHash: 'r2', accessExpiresAt: new Date(Date.now() + 1e6), refreshExpiresAt: new Date(Date.now() + 1e7),
+      firstMcpAt: old, lastUsedAt: old,
+    }).returning();
+    await db.update(schema.apiTokens).set({ lastUsedAt: old });
+    expect((await ag.aiStatus(u)).client).toBe(false);
+    await db.update(schema.oauthGrants).set({ lastUsedAt: new Date() }).where(dz(g.id));
+    expect((await ag.aiStatus(u)).clientName).toBe('Cursor');
+    await db.delete(schema.oauthGrants).where(dz(g.id));
+    await db.update(schema.apiTokens).set({ lastUsedAt: new Date() });
   });
 
   it('workTrace turns on with the first worklog written by the user', async () => {

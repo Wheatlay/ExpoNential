@@ -2,6 +2,16 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.2.0], Agent [0.2.0] - 03.11.2026
+
+- Agent rewritten in Go: about 10 MB instead of 80 MB, no console windows. Downloaded from Settings > AI with the server address and a one-time pairing code inside; double-click opens an Exponential-styled installer (Claude Code or Codex icon taken from this computer, progress, done), installs to `%LOCALAPPDATA%\Programs\Exponential`, appears in Apps & features, starts with Windows on request.
+- Tray icon: state, "analysis KEY-N for <person>", a notification when your computer works for someone else (can be switched off).
+- Usage per run (tokens, cost) is recorded; Settings shows 30-day usage per computer and per requester, and a daily limit for others. A dot on Settings marks what needs attention.
+- Team queue is opt-in per computer: the admin allows it for a project, each person joins with their own computer; members with the agent and the repo get a quiet invite.
+- Settings: "Claude Code" section renamed to "AI", tokens moved under "API keys", the legacy Windows script installer is hidden (removal plan in docs/plans/release-v1.md). The Connect AI window shows done steps as chips and one step at a time.
+- Analyze with the team queue on goes straight to the queue; otherwise the hint offers "Request anyway".
+- Reinstalling keeps the same computer entry; uninstalling removes it and its sign-in from the server.
+
 ## Server [1.1.2], Agent [0.1.4] - 28.10.2026
 
 - Security: API tokens (`trk_`, `exa_`) work only for MCP, the agent, the worklog hook and the legacy PowerShell installer; creating tokens and managing connections needs a browser session.

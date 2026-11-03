@@ -163,9 +163,10 @@ export function IssuePage({ number }: { number: number }) {
   const ai = me?.aiStatus;
   const aiMissing = !!ai && !local && (!ai.client || !ai.agent);
   const demo = !!me?.demo;
-  const analyze = async (deep = false, anchor?: HTMLElement) => {
+  const analyze = async (deep = false, anchor?: HTMLElement, anyway = false): Promise<void> => {
     if (demo) { await simulateAgent(number, 'analyze'); return; }
-    if (aiMissing && anchor) { openAiHint(anchor, 'analyze', 3); return; }
+    // Kolejka zespołu: zlecenie weźmie komputer kogoś z zespołu, więc bez podpowiedzi. Inaczej podpowiedź z możliwością zlecenia mimo to.
+    if (aiMissing && anchor && !anyway && !issue.teamQueue) { openAiHint(anchor, 'analyze', 3, () => void analyze(deep, undefined, true)); return; }
     // Na komputerze z agentem link tracker:// rusza od razu (local rezerwuje zlecenie dla tego PC na 60 s); gdzie indziej zlecenie czeka w kolejce.
     const here = agentHere(me);
     await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep, local: here } });

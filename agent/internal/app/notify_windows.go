@@ -1,0 +1,68 @@
+//go:build windows
+
+package app
+
+import (
+	"bytes"
+	"encoding/binary"
+	"os"
+	"path/filepath"
+	"sync"
+
+	toast "git.sr.ht/~jackmordaunt/go-toast/v2"
+)
+
+const toastAppID = "Exponential agent"
+
+var toastOnce sync.Once
+var toastIcon string
+
+// iconPNG pulls the largest PNG image out of the embedded .ico and stores it for the toast.
+func prepareToast() {
+	toastOnce.Do(func() {
+		if len(IconICO) > 22 {
+			n := int(binary.LittleEndian.Uint16(IconICO[4:]))
+			best, bo, bl := 0, 0, 0
+			for i := 0; i < n && 6+16*(i+1) <= len(IconICO); i++ {
+				e := IconICO[6+16*i:]
+				w := int(e[0])
+				if w == 0 {
+					w = 256
+				}
+				if w > best {
+					best, bl, bo = w, int(binary.LittleEndian.Uint32(e[8:])), int(binary.LittleEndian.Uint32(e[12:]))
+				}
+			}
+			if bo > 0 && bo+bl <= len(IconICO) && bytes.HasPrefix(IconICO[bo:], []byte("\x89PNG")) {
+				p := filepath.Join(dataDir(), "toast-icon.png")
+				_ = os.MkdirAll(dataDir(), 0o755)
+				if os.WriteFile(p, IconICO[bo:bo+bl], 0o644) == nil {
+					toastIcon = p
+				}
+			}
+		}
+		// Registers the AppUserModelID (name + icon) under HKCU\Software\Classes\AppUserModelId.
+		if err := toast.SetAppData(toast.AppData{AppID: toastAppID, GUID: "{7b1f3a52-6d0e-4c8b-9a2f-1e5d4c3b2a10}", IconPath: toastIcon}); err != nil {
+			logf("toast setup: %s", err)
+		}
+	})
+}
+
+// notifyOther shows "Analysis KEY for Name" when the toast is enabled.
+func notifyOther(key, name string) {
+	if !notifyOthersOn() {
+		return
+	}
+	go func() {
+		defer func() { _ = recover() }()
+		prepareToast()
+		title := "Analysis " + key + " for " + name
+		if uiLang() == "pl" {
+			title = "Analiza " + key + " dla " + name
+		}
+		n := toast.Notification{AppID: toastAppID, Title: title, Icon: toastIcon}
+		if err := n.Push(); err != nil {
+			logf("toast: %s", err)
+		}
+	}()
+}

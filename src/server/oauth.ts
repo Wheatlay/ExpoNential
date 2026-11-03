@@ -4,14 +4,16 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { and, desc, eq, gt, isNull, lt, notExists, or } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, notExists, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { oauthClients, oauthCodes, oauthDeviceCodes, oauthGrants, users } from '../db/schema.ts';
+import { agentPairings, oauthClients, oauthCodes, oauthDeviceCodes, oauthGrants, users } from '../db/schema.ts';
 import { requireUser, sha256, type SessionUser } from './auth.ts';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173';
 const isProd = process.env.NODE_ENV === 'production';
 const tmpCookie = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: isProd, maxAge: 600 };
+/** Logowania samego agenta (parowanie albo `exponential-agent login`) to nie klient AI: pomijane w liście połączeń i stanie AI. */
+export const NOT_AGENT_CLIENT = sql`${oauthClients.id} <> 'exponential-agent' and ${oauthClients.name} <> 'Exponential agent'`;
 const ACCESS_MS = 3600e3;
 const REFRESH_MS = 90 * 864e5;
 const CODE_MS = 600e3;
@@ -71,7 +73,7 @@ function pkceOk(verifier: string, challenge: string) {
   return /^[A-Za-z0-9\-._~]{43,128}$/.test(verifier) && createHash('sha256').update(verifier).digest('base64url') === challenge;
 }
 
-async function issueGrant(clientId: string, userId: number, scope: string) {
+export async function issueGrant(clientId: string, userId: number, scope: string) {
   const access = `exa_${randomBytes(32).toString('base64url')}`;
   const refresh = `exr_${randomBytes(32).toString('base64url')}`;
   await db.insert(oauthGrants).values({
@@ -156,6 +158,7 @@ const normCode = (s: string) => {
 /** Sprzątanie: grant odwołany albo po wygaśnięciu refresh (+1 doba), potem klienci bez grantów i kodów starsi niż doba. */
 export async function sweepOAuth() {
   const day = new Date(Date.now() - 864e5);
+  await db.delete(agentPairings).where(lt(agentPairings.expiresAt, day));
   await db.delete(oauthGrants).where(or(lt(oauthGrants.revokedAt, day), lt(oauthGrants.refreshExpiresAt, day)));
   await db.delete(oauthClients).where(and(
     lt(oauthClients.createdAt, day),
@@ -369,7 +372,7 @@ ${clientFacts(d.clientName, d.clientAt)}
       (await db.select({
         id: oauthGrants.id, client: oauthClients.name, createdAt: oauthGrants.createdAt, lastUsedAt: oauthGrants.lastUsedAt, firstMcpAt: oauthGrants.firstMcpAt,
       }).from(oauthGrants).innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
-        .where(and(eq(oauthGrants.userId, req.user!.id), isNull(oauthGrants.revokedAt), gt(oauthGrants.refreshExpiresAt, new Date())))
+        .where(and(eq(oauthGrants.userId, req.user!.id), isNull(oauthGrants.revokedAt), NOT_AGENT_CLIENT, gt(oauthGrants.refreshExpiresAt, new Date())))
         .orderBy(desc(oauthGrants.createdAt))));
 
     o.delete<{ Params: { id: string } }>('/api/connections/:id', { preHandler: requireUser }, async (req, reply) => {

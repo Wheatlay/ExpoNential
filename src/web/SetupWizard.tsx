@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, queryClient, useMe, useProjects, type Me } from './api.ts';
 import { Icon } from './icons.tsx';
 import { copyText, toast } from './toast.ts';
+import { Tooltip } from './menu.tsx';
 import { timeAgo } from './time.ts';
 import { t } from './i18n.ts';
 
@@ -12,9 +13,9 @@ import { t } from './i18n.ts';
  * i podpowiedź (openAiHint) przy funkcji AI bez podłączenia.
  */
 type Goal = 1 | 2 | 3;
-type Snap = { open: boolean; goal: Goal | null };
+type Snap = { open: boolean; goal: Goal | null; step: Goal | null };
 
-let snap: Snap = { open: false, goal: null };
+let snap: Snap = { open: false, goal: null, step: null };
 let subs: (() => void)[] = [];
 const set = (s: Snap) => { snap = s; subs.forEach((f) => f()); };
 const useSnap = () => useSyncExternalStore((fn) => { subs.push(fn); return () => { subs = subs.filter((s) => s !== fn); }; }, () => snap);
@@ -27,25 +28,26 @@ function defaultGoal(s?: Me['aiStatus']): Goal {
   return 2;
 }
 
-export function openSetupWizard(goal?: Goal) {
+/** step: krok rozwinięty od razu (np. 3 dla komputera ze starym instalatorem). */
+export function openSetupWizard(goal?: Goal, step?: Goal) {
   closeAiHint();
-  set({ open: true, goal: goal ?? null });
+  set({ open: true, goal: goal ?? null, step: step ?? null });
   // Świeży stan przed wyborem domyślnego celu (me jest cache'owane bez końca).
   void queryClient.fetchQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me'), staleTime: 0 }).then((me) => {
-    if (snap.open && snap.goal == null) set({ open: true, goal: defaultGoal(me.aiStatus) });
+    if (snap.open && snap.goal == null) set({ ...snap, goal: defaultGoal(me.aiStatus) });
   }, () => undefined);
 }
-function closeSetupWizard() { set({ open: false, goal: null }); }
+function closeSetupWizard() { set({ open: false, goal: null, step: null }); }
 
 /* ---------- podpowiedź przy funkcji AI bez podłączenia ---------- */
-type Hint = { rect: DOMRect; kind: 'analyze' | 'start'; goal: Goal } | null;
+type Hint = { rect: DOMRect; kind: 'analyze' | 'start'; goal: Goal; anyway?: () => void } | null;
 let hint: Hint = null;
 let hintSubs: (() => void)[] = [];
 const setHint = (h: Hint) => { hint = h; hintSubs.forEach((f) => f()); };
 function closeAiHint() { if (hint) setHint(null); }
 /** Popover pod przyciskiem Analyze / Deep / Start work, gdy AI nie jest podłączone. */
-export function openAiHint(anchor: HTMLElement, kind: 'analyze' | 'start', goal: Goal = 3) {
-  setHint({ rect: anchor.getBoundingClientRect(), kind, goal });
+export function openAiHint(anchor: HTMLElement, kind: 'analyze' | 'start', goal: Goal = 3, anyway?: () => void) {
+  setHint({ rect: anchor.getBoundingClientRect(), kind, goal, anyway });
 }
 
 function AiHint() {
@@ -62,12 +64,14 @@ function AiHint() {
   const left = Math.max(8, Math.min(h.rect.left, window.innerWidth - 328));
   return (
     <div className="ai-hint" role="dialog" aria-label={t('Connect AI')} style={{ left, top: h.rect.bottom + 6 }}>
-      <div className="ai-hint-title">{h.kind === 'analyze' ? t('Analysis is done by AI on your computer') : t('Work starts in your AI client')}</div>
-      <div className="hint">{h.kind === 'analyze'
+      <Tooltip text={h.kind === 'analyze'
         ? t('Connect AI once and Analyze runs on your computer. Until then the request has nothing to pick it up.')
-        : t('Connect AI once so your client can read this issue and report back.')}</div>
+        : t('Connect AI once so your client can read this issue and report back.')}>
+        <div className="ai-hint-title">{h.kind === 'analyze' ? t('Analysis is done by AI on your computer') : t('Work starts in your AI client')}</div>
+      </Tooltip>
       <div className="ai-hint-actions">
         <button className="btn primary sm" autoFocus onClick={() => openSetupWizard(h.goal)}>{t('Connect AI')}</button>
+        {h.anyway && <button className="btn sm" onClick={() => { const f = h.anyway; closeAiHint(); f?.(); }}>{t('Request anyway')}</button>}
         <button className="btn sm" onClick={closeAiHint}>{t('Not now')}</button>
       </div>
     </div>
@@ -80,7 +84,6 @@ type Where = 'VS Code' | 'Cursor' | 'Terminal';
 type AgentRepo = { project: string; path: string; source?: string; status?: string; error?: string | null };
 type AgentRow = { id: string; name: string; computerName: string; label: string; online: boolean; outdated?: boolean; lastSeenAt: string | null; repos?: AgentRepo[] };
 
-const AGENT_EXE = 'https://github.com/Wheatlay/ExpoNential/releases/latest/download/exponential-agent.exe';
 const BASE = () => location.origin;
 const claudeCmd = () => `claude mcp add --transport http --scope user tracker ${BASE()}/mcp`;
 const codexCmds = () => [`codex mcp add tracker --url ${BASE()}/mcp`, 'codex mcp login tracker'];
@@ -101,10 +104,10 @@ function Cmd({ lines }: { lines: string[] }) {
 
 function Wait({ text, hintText, slow }: { text: string; hintText: string; slow: boolean }) {
   return (
-    <>
-      <span className="wiz-wait"><span className="wiz-pulse" aria-hidden="true" />{text}</span>
-      {slow && <span className="hint">{t('Not working?')} {hintText}</span>}
-    </>
+    <span className="wiz-wait">
+      <span className="wiz-pulse" aria-hidden="true" />{text}
+      {slow && <Tooltip text={`${t('Not working?')} ${hintText}`}><span className="wiz-info" tabIndex={0} role="img" aria-label={t('Not working?')}><Icon.question size={13} /></span></Tooltip>}
+    </span>
   );
 }
 
@@ -120,7 +123,7 @@ const GOALS: { n: Goal; title: () => string; sub: () => string }[] = [
 ];
 
 export function SetupWizardHost() {
-  const { open, goal: picked } = useSnap();
+  const { open, goal: picked, step: pickedStep } = useSnap();
   const meNow = useMe().data;
   const qc = useQueryClient();
   const narrow = useNarrow();
@@ -135,6 +138,7 @@ export function SetupWizardHost() {
   const [slow, setSlow] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [path, setPath] = useState('');
+  const [terminal, setTerminal] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -153,7 +157,7 @@ export function SetupWizardHost() {
   const doneCount = needed.filter((n) => done[n]).length;
   const current = needed.find((n) => !done[n]) ?? null;
   // Kliknięty krok (np. agent przed śladem pracy albo drugi klient po pierwszym) wygrywa z bieżącym.
-  const [pickedStep, setPickedStep] = useState<Goal | null>(null);
+  const setStep = (n: Goal | null) => set({ ...snap, step: n });
   const openStep = pickedStep && needed.includes(pickedStep) ? pickedStep : current;
   const full = doneCount === needed.length;
 
@@ -207,7 +211,6 @@ export function SetupWizardHost() {
   const step2 = (
     <>
       <Cmd lines={pluginCmds()} />
-      <span className="hint">{t('Restart Claude Code after installing, then work on an issue.')}</span>
       <Wait text={t('Waiting for the first session with an issue number…')} hintText={t('Restart Claude Code and start work on any issue; the plugin loads on start.')} slow={slow} />
     </>
   );
@@ -233,10 +236,13 @@ export function SetupWizardHost() {
   const step3 = (
     <>
       <div className="wiz-line">
-        <a className="btn primary" href={AGENT_EXE} download><Icon.download size={13} /> {t('Download exponential-agent.exe')}</a>
+        <a className="btn primary" href={`/agent/download?engine=${client === 'Codex' ? 'codex' : 'claude'}`}><Icon.download size={13} /> {t('Download and run')}</a>
+        <Tooltip text={t('Windows may warn about an unsigned file: More info, then Run anyway.')}>
+          <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Windows may warn about an unsigned file: More info, then Run anyway.')}><Icon.question size={14} /></span>
+        </Tooltip>
+        <button type="button" className="wiz-link" aria-expanded={terminal} onClick={() => setTerminal(!terminal)}>{t('Use the terminal')}</button>
       </div>
-      <span className="wiz-warn">{t('Windows may warn about an unsigned file: choose More info, then Run anyway.')}</span>
-      <Cmd lines={agentCmds()} />
+      {terminal && <Cmd lines={agentCmds()} />}
       {(agents.data ?? []).map((a) => (
         <div key={a.id} className="wiz-computer">
           <div className="wiz-line">
@@ -251,6 +257,8 @@ export function SetupWizardHost() {
   );
   const bodies: Record<Goal, ReactNode> = { 1: step1, 2: step2, 3: step3 };
 
+  const chips = needed.filter((n) => done[n] && n !== openStep);
+  const chipText: Record<Goal, string> = { 1: ai?.clientName ?? t('Client'), 2: t('Work trace'), 3: t('Agent') };
   const level = (n: Goal) => ([1, 2, 3] as Goal[]).filter((x) => x <= n).every((x) => done[x]);
 
   return (
@@ -285,34 +293,31 @@ export function SetupWizardHost() {
                   <legend className="wiz-label">{t('What do you want AI for?')}</legend>
                   {GOALS.map((g) => (
                     <label key={g.n} className={`wiz-goal${goal === g.n ? ' on' : ''}`}>
-                      <input type="radio" name="wiz-goal" checked={goal === g.n} onChange={() => set({ open: true, goal: g.n })} />
+                      <input type="radio" name="wiz-goal" checked={goal === g.n} onChange={() => set({ ...snap, open: true, goal: g.n })} />
                       <span className="grow"><span className="wiz-goal-title">{g.title()}</span><span className="hint">{g.sub()}</span></span>
                     </label>
                   ))}
                 </fieldset>
-                <ol className="wiz-ladder">
-                  {([1, 2, 3] as Goal[]).map((n) => {
-                    const beyond = n > goal;
-                    const disabled = beyond || (n === 2 && off2);
-                    const isDone = done[n];
-                    const isCur = openStep === n;
-                    const reason = beyond ? t('Not needed for this goal') : t('Claude Code only');
-                    return (
-                      <li key={n} className={`wiz-step${isDone ? ' done' : ''}${isCur ? ' cur' : ''}${disabled && !isDone ? ' off' : ''}`}>
-                        <span className="wiz-mark" aria-hidden="true">{isDone && <Icon.check size={12} />}</span>
-                        <div className="wiz-step-main">
-                          <div className="wiz-step-head">
-                            {disabled ? <b>{stepTitle[n]}</b>
-                              : <button type="button" className="wiz-step-toggle" aria-expanded={isCur} onClick={() => setPickedStep(isCur ? null : n)}>{stepTitle[n]}</button>}
-                            {isDone && <span className="wiz-ok">{doneText[n]}</span>}
-                            {!isDone && disabled && <span className="hint">{reason}</span>}
-                          </div>
-                          {isCur && <div className="wiz-step-body">{bodies[n]}</div>}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ol>
+                <div className="wiz-steps">
+                  {chips.length > 0 && (
+                    <div className="wiz-chips">
+                      {chips.map((n) => (
+                        <button key={n} type="button" className="wiz-chip" title={doneText[n]} onClick={() => setStep(n)}>
+                          <span className="wiz-chip-check"><Icon.check size={12} /></span>{chipText[n]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {openStep && (
+                    <section className="wiz-block" aria-label={stepTitle[openStep]}>
+                      <div className="wiz-block-head">
+                        <span className={`wiz-mark${done[openStep] ? ' done' : ' cur'}`} aria-hidden="true">{done[openStep] ? <Icon.check size={12} /> : openStep}</span>
+                        <b>{stepTitle[openStep]}</b>
+                      </div>
+                      <div className="wiz-step-body">{bodies[openStep]}</div>
+                    </section>
+                  )}
+                </div>
               </>
             )}
           </div>

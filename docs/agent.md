@@ -13,11 +13,13 @@ Three optional layers. Install only what you need.
 - Contains thin skills and the worklog hook.
 
 ### 3. exponential-agent (runs analyses on this computer)
-Data folder `%LOCALAPPDATA%\exponential-agent` (fallback `~/.local/share/exponential-agent`):
-- `config.json` (URL, tokens, device id, engine, repo map), `log.txt` / `log.old.txt`
-- `start-hidden.vbs` (starts the agent without a window), `repos/` (clones made by the agent)
-- Codex runs use temporary worktrees under `tmp/` in the data folder (removed afterwards).
-- Registry value `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ExponentialAgent`, only after `exponential-agent autostart on`.
+Installed by double-clicking the file downloaded from Settings > AI (it carries the server address and a one-time pairing code).
+- Program: `%LOCALAPPDATA%\Programs\Exponential\exponential-agent.exe`
+- Data folder `%LOCALAPPDATA%\exponential-agent` (fallback `~/.local/share/exponential-agent`): `config.json` (URL, tokens, device id, engine, repo map), `log.txt`, `plugin-<version>/` (bundled Claude plugin), `toast-icon.png`, `repos/` (clones made by the agent). Codex runs use temporary worktrees there.
+- Registry (current user only):
+  - `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ExponentialAgent` (Apps & features entry)
+  - `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ExponentialAgent` (starts with Windows; not written when unchecked in the installer)
+  - `HKCU\Software\Classes\AppUserModelId\Exponential agent` (name and icon of its notifications)
 - Hook state in `<temp>/claude-tracker/`.
 
 Details: [agent/README.md](../agent/README.md).
@@ -29,8 +31,8 @@ Details: [agent/README.md](../agent/README.md).
 | MCP (Claude Code) | `claude mcp remove tracker` |
 | MCP (Codex) | `codex mcp remove tracker` |
 | Plugin | `claude plugin uninstall tracker@tracker` |
-| Agent | `exponential-agent uninstall --yes`, then delete the exe |
-| Server-side access | Settings > Claude Code > Connected AI clients: Revoke |
+| Agent | Windows Settings > Apps > Exponential agent > Uninstall (or `exponential-agent uninstall --yes`); also removes this computer and its sign-in from the server |
+| Server-side access | Settings > AI > Connected AI clients: Revoke |
 
 ## Legacy PowerShell installer
 
