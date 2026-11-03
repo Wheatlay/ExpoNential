@@ -903,6 +903,8 @@ a.sub-row > button { display: inline-flex; }
 .poll-cell { border-left: 1px solid var(--border-primary); height: 100%; display: flex; flex-direction: column; justify-content: center; }
 .poll-row.mine .poll-cell { flex-direction: row; align-items: center; }
 .poll-row.mine .poll-cell .input { width: 100%; }
+/* Powód "Maybe": rośnie w dół razem z tekstem zamiast go ucinać. */
+.vote-note { height: auto; min-height: var(--control-md); field-sizing: content; resize: none; padding: 6px 10px; line-height: 1.4; }
 /* Głosy po wyborze terminu: tabela na szerokim ekranie, lista terminów na telefonie (patrz @media niżej). */
 .poll-list { display: none; flex-direction: column; gap: 8px; }
 .poll-list-slot { border: 1px solid var(--border-secondary); border-radius: var(--radius-lg); padding: 10px; display: flex; flex-direction: column; gap: 6px; }

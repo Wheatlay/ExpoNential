@@ -371,8 +371,8 @@ function PollDialog({ m }: { m: Meeting }) {
                     ))}
                   </div>
                   {myVote(s) === 'maybe' && (
-                    <input className="input" placeholder={t('Why? (optional)')} aria-label={t('Why maybe')} autoFocus={!myNote(s)} defaultValue={myNote(s)}
-                      onBlur={(e) => saveNote(s, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
+                    <textarea className="input vote-note" rows={1} placeholder={t('Why? (optional)')} aria-label={t('Why maybe')} autoFocus={!myNote(s)} defaultValue={myNote(s)}
+                      onBlur={(e) => saveNote(s, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }} />
                   )}
                 </div>
               </Tooltip>
