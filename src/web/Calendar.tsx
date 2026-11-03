@@ -31,6 +31,8 @@ const OTHER_COLOR = 'var(--text-quaternary)';
 type Item ={ key: string; meeting: Meeting; startsAt: Date; endsAt: Date; option: boolean };
 
 /** Na dany dzień: zaplanowane spotkania i terminy z trwających ankiet ("option"). */
+const minuteOfDay = (d: Date) => d.getHours() * 60 + d.getMinutes();
+
 function itemsOn(meetings: Meeting[], day: Date): Item[] {
   const out: Item[] = [];
   for (const m of meetings) {
@@ -104,13 +106,27 @@ export function Calendar() {
     toast(t('Calendar link copied. Add it in Google Calendar or Outlook as "From URL".'));
   };
 
+  // Wiersze tygodnia: każda godzina startu z widocznych dni to jeden wiersz wspólny dla wszystkich kolumn.
+  // Ta sama godzina stoi na tej samej wysokości, późniejsza niżej, ale bez pustych godzin pomiędzy.
+  const slotRows = [...new Set([...days, ...nextDays].flatMap((d) => itemsOn(meetings, d).map((it) => minuteOfDay(it.startsAt))))].sort((a, b) => a - b);
   const column = (day: Date, nextWeek = false) => {
     const today = sameDay(day, now);
     return (
       <div key={day.toISOString()} className={`cal-day ${today ? 'today' : ''} ${nextWeek ? 'next' : ''}`}
         onDoubleClick={(e) => { if (e.target === e.currentTarget) openNewMeeting(day); }}>
         <div className="cal-day-head">{fmtDay(day)} {today ? <span className="hint">{t('today')}</span> : nextWeek ? <span className="hint">{t('next week')}</span> : null}</div>
-        {itemsOn(meetings, day).map((it) => <CalendarCard key={it.key} item={it} users={meta?.users ?? []} meId={me?.id} />)}
+        {/* "+" od razu pod nagłówkiem dnia: zawsze w tym samym miejscu, niezależnie od liczby spotkań. */}
+        <button className="cell-add" aria-label={t('New meeting on {day}', { day: fmtDay(day) })} title={t('New meeting on {day}', { day: fmtDay(day) })} onClick={() => openNewMeeting(day)}>
+          <Icon.plus size={14} />
+        </button>
+        {slotRows.map((min, r) => {
+          const items = itemsOn(meetings, day).filter((it) => minuteOfDay(it.startsAt) === min);
+          return items.length ? (
+            <div key={min} className="cal-slot" style={{ gridRow: r + 3 }}>
+              {items.map((it) => <CalendarCard key={it.key} item={it} users={meta?.users ?? []} meId={me?.id} />)}
+            </div>
+          ) : null;
+        })}
       </div>
     );
   };
@@ -151,7 +167,7 @@ export function Calendar() {
           <button className="btn sm primary" onClick={() => openNewMeeting()}><Icon.plus size={12} /> {t('New meeting')}</button>
         </div>
         {view === 'week' ? (
-          <div className="cal-grid">
+          <div className="cal-grid" style={{ gridTemplateRows: `auto auto repeat(${slotRows.length}, auto) 1fr` }}>
             {days.map((d) => column(d))}
             <div className="cal-sep" />
             {nextDays.map((d) => column(d, true))}
@@ -265,6 +281,10 @@ function MonthGrid({ month, meetings, now, onOpenWeek, meId }: { month: Date; me
           <div key={day.toISOString()} className={`cal-month-day ${out ? 'out' : ''} ${sameDay(day, now) ? 'today' : ''} ${day.getDay() % 6 === 0 ? 'weekend' : ''}`}
             title={t('Double-click to plan a meeting')} onDoubleClick={(e) => { if (e.target === e.currentTarget) openNewMeeting(day); }}>
             <button className="cal-month-num" title={t('Open this week')} onClick={() => onOpenWeek(day)}>{day.getDate()}</button>
+            <button className="cell-add" aria-label={t('New meeting on {day}', { day: fmtDay(day) })} title={t('New meeting on {day}', { day: fmtDay(day) })}
+              onClick={(e) => { e.stopPropagation(); openNewMeeting(day); }}>
+              <Icon.plus size={14} />
+            </button>
             {items.slice(0, 3).map((it) => (
               <button key={it.key} className={`cal-month-item ${it.option ? 'option' : ''} ${it.meeting.kind === 'sprint_review' ? 'is-review' : ''} ${isInvited(it.meeting, meId) ? '' : 'other'}`}
                 style={{ '--kind': !isInvited(it.meeting, meId) ? OTHER_COLOR : meetingColor(it.meeting) } as React.CSSProperties}

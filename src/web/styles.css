@@ -457,6 +457,8 @@ textarea.md-edit {
 .input {
   height: var(--control-md); background: var(--bg-primary); border: 1px solid var(--border-secondary); border-radius: var(--radius-md); padding: 0 10px; outline: 0;
 }
+/* Wpis, którego nie da się odczytać (data, godzina): ramka danger już w trakcie pisania. */
+.input.invalid, .input.invalid:focus { border-color: var(--danger); }
 .input:focus { border-color: var(--accent); }
 .seg { display: inline-flex; background: var(--bg-tertiary); border-radius: var(--radius-lg); padding: 2px; border: 1px solid var(--border-secondary); }
 .seg button { height: var(--control-sm); padding: 0 12px; border-radius: var(--radius-md); color: var(--text-secondary); font-weight: 500; }
@@ -567,7 +569,9 @@ textarea.md-edit {
   align-items: center; justify-content: center; background: var(--bg-card); flex-shrink: 0;
 }
 .cell-add:hover { color: var(--text-primary); background: var(--bg-card-hover); }
-.col:hover .cell-add { visibility: visible; }
+.col:hover .cell-add, .cal-day:hover .cell-add, .cal-month-day:hover .cell-add { visibility: visible; }
+/* Dotyk nie ma najechania: w kalendarzu "+" widoczny zawsze, inaczej tylko zajmuje miejsce. */
+@media (hover: none) { .cal-day .cell-add, .cal-month-day .cell-add { visibility: visible; } }
 .col:hover .cell-add[aria-disabled='true'] { opacity: 0.4; cursor: not-allowed; }
 
 /* ---------- panel Display ---------- */
@@ -841,7 +845,10 @@ a.sub-row > button { display: inline-flex; }
 .calendar-page { flex: 1; display: flex; min-height: 0; }
 .calendar-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .cal-grid { flex: 1; min-height: 0; padding: 0 14px 14px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) 1px repeat(2, minmax(0, 1fr)); gap: 8px; overflow-y: auto; }
-.cal-day { background: var(--bg-column); border-radius: var(--radius-lg); padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* Dni dzielą wiersze siatki (subgrid): nagłówek, "+", potem jeden wiersz na każdą godzinę startu w tygodniu. */
+.cal-day { background: var(--bg-column); border-radius: var(--radius-lg); padding: 10px; display: grid; grid-row: 1 / -1; grid-template-rows: subgrid; align-content: start; min-width: 0; }
+.cal-slot { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.cal-sep { grid-row: 1 / -1; }
 .cal-day.today { background: color-mix(in srgb, var(--accent) 7%, var(--bg-column)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent); }
 .cal-day.next { opacity: 0.85; }
 .cal-day-head { font-weight: 600; }
@@ -878,7 +885,8 @@ a.sub-row > button { display: inline-flex; }
 .meeting-modal { display: flex; flex-direction: column; max-height: 86vh; overflow-y: auto; }
 .meeting-form { display: flex; flex-direction: column; gap: 8px; }
 .meeting-label { font-weight: 600; }
-.slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+/* Termin ma swoją naturalną szerokość (dzień, od – do), kolejne zawijają się do nowego wiersza. */
+.slot-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .slot-edit { display: flex; gap: 6px; align-items: center; border: 1px solid var(--border-secondary); border-radius: var(--radius-lg); padding: 8px; background: var(--bg-secondary); }
 .slot-edit .input[type='date'] { flex: 1; min-width: 0; }
 .slot-edit .input[type='time'] { width: 92px; }
@@ -891,6 +899,16 @@ a.sub-row > button { display: inline-flex; }
 .poll-row.mine { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .poll-cell { border-left: 1px solid var(--border-primary); height: 100%; display: flex; flex-direction: column; justify-content: center; }
 .poll-row.mine .poll-cell { flex-direction: row; align-items: center; }
+/* Głosy po wyborze terminu: tabela na szerokim ekranie, lista terminów na telefonie (patrz @media niżej). */
+.poll-list { display: none; flex-direction: column; gap: 8px; }
+.poll-list-slot { border: 1px solid var(--border-secondary); border-radius: var(--radius-lg); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.poll-list-slot.target { border-color: var(--accent); }
+/* Imię nigdy się nie ściska; głos albo powód "Może" bierze resztę wiersza i zawija się w niej (do prawej). */
+.poll-list-vote { display: flex; gap: 8px; align-items: flex-start; }
+.poll-list-vote .grow { flex: 0 0 auto; }
+.poll-list-vote .grow + span { flex: 1; min-width: 0; text-align: right; overflow-wrap: anywhere; }
+/* Długi powód "Może": najwyżej 2 linie, cały w dymku (title), żeby jeden wpis nie rozpychał wiersza. */
+.poll-note { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .poll-time { text-align: left; color: var(--text-primary); }
 .poll-time:disabled { cursor: default; }
 .poll-time.best { background: color-mix(in srgb, var(--success) 10%, transparent); box-shadow: inset 0 -2px 0 var(--success); }
@@ -910,8 +928,14 @@ a.sub-row > button { display: inline-flex; }
 .nav-item .count.orange { background: var(--warning); color: var(--on-warning); border-radius: var(--radius-full); padding: 0 7px; font-weight: 600; }
 @media (max-width: 900px) {
   .calendar-page { flex-direction: column; overflow-y: auto; }
-  .cal-grid { grid-template-columns: 1fr; overflow: visible; }
-  .cal-sep { height: 1px; }
+  .cal-grid { grid-template-columns: 1fr; grid-template-rows: none !important; overflow: visible; }
+  /* Dni jeden pod drugim: wspólne wiersze nie mają sensu, każdy dzień to zwykła lista. */
+  /* Ramka, bo na czarnym (OLED) tło dnia zlewa się z tłem strony. */
+  .cal-day { display: flex; flex-direction: column; gap: 8px; grid-row: auto; border: 1px solid var(--border-secondary); }
+  .poll-votes .poll-table { display: none; }
+  .poll-votes .poll-list { display: flex; }
+  .cal-slot { grid-row: auto !important; }
+  .cal-sep { height: 1px; grid-row: auto; }
   .calendar-panel { width: auto; border-left: 0; border-top: 1px solid var(--border-primary); }
 }
 .calendar-main .toolbar { white-space: nowrap; overflow-x: auto; }
@@ -1005,21 +1029,21 @@ a.sub-row > button { display: inline-flex; }
   background: var(--bg-popover); border-radius: var(--radius-lg); box-shadow: var(--shadow-popover); padding: 4px;
 }
 .time-list { box-sizing: content-box; height: 210px; }
-/* Obie kolumny identyczne i przewijane o pełny wiersz (snap), żeby wiersze godzin i minut zawsze stały na tej samej wysokości. */
-.time-col { width: 56px; height: 210px; overflow-y: auto; display: flex; flex-direction: column; scrollbar-width: none; scroll-snap-type: y mandatory; scroll-padding-top: 90px; padding: 90px 0; box-sizing: border-box; }
+/* Dwie kolumny przewijane swobodnie (kółko, przeciąganie, palec); wybrana wartość podświetlona i stawiana na środku. */
+/* Snap przeglądarki (proximity): dociąga do wiersza płynnie, w tej samej animacji co przewijanie. Przy przeciąganiu myszą wyłączony (.dragging). */
+.time-col { width: 56px; height: 210px; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; scrollbar-width: none; padding: 90px 0; box-sizing: border-box; user-select: none; scroll-snap-type: y proximity; scroll-padding-top: 90px; }
+.time-col.dragging { scroll-snap-type: none; }
+.time-col button { scroll-snap-align: start; }
 .time-col::-webkit-scrollbar { display: none; }
 .time-col + .time-col { box-shadow: inset 1px 0 0 var(--border-secondary); }
-.time-col button { scroll-snap-align: start; padding: 0; line-height: 30px; }
-.time-col button { height: 30px; flex-shrink: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; font-variant-numeric: tabular-nums; border-radius: var(--radius-md); cursor: pointer; }
+.time-col button { height: 30px; flex-shrink: 0; padding: 0; line-height: 30px; border: 0; background: none; color: var(--text-secondary); font: inherit; font-variant-numeric: tabular-nums; border-radius: var(--radius-md); cursor: pointer; }
 .time-col button:hover { background: var(--bg-hover); color: var(--text-primary); }
-.time-col button.on { background: var(--bg-active); color: var(--text-primary); font-weight: 600; }
-/* Pas wyboru na środku listy godzin (jak kółko w telefonie): to, co w nim stoi, jest wybrane. */
+/* Pas wyboru stoi na środku na stałe: to, co w nim jest, wybierze się po zatrzymaniu (nie podświetlamy starej wartości). */
 .time-list::before {
   content: ''; position: absolute; left: 4px; right: 4px; top: 94px; height: 30px; border-radius: var(--radius-md);
   background: var(--bg-active); pointer-events: none;
 }
 .time-col { position: relative; }
-.time-col button.on { background: none; }
 /* Deploy: status kolorem ramki i kropki zamiast słowa. */
 .deploy-status.finished { border-color: color-mix(in srgb, var(--success) 45%, var(--border-secondary)); }
 .deploy-status.failed { border-color: color-mix(in srgb, var(--danger) 60%, var(--border-secondary)); background: color-mix(in srgb, var(--danger) 8%, var(--bg-secondary)); }
