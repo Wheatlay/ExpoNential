@@ -74,8 +74,6 @@ export const pl: Record<string, string> = {
   'Settings': 'Ustawienia',
   'New issue (C)': 'Nowe zgłoszenie (C)',
   'Polls waiting for your vote': 'Ankiety czekające na twój głos',
-  'Issues where someone is waiting for your answer': 'Zgłoszenia, w których ktoś czeka na twoją odpowiedź',
-  'Someone is waiting for your answer in {name}': 'Ktoś czeka na twoją odpowiedź w {name}',
   'Asked to me': 'Pytania do mnie',
   'Project & account': 'Projekt i konto',
   'Log out': 'Wyloguj',

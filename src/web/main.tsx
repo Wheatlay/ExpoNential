@@ -6,7 +6,7 @@ import { About } from './About.tsx';
 import { Landing } from './Landing.tsx';
 import { DemoBanner } from './DemoBanner.tsx';
 import { DemoTour } from './DemoTour.tsx';
-import { ApiError, api, awaitsMyVote, isAskedTo, markDemoSession, queryClient, useConfig, useMeetings, useIssue, useIssues, useLiveUpdates, useMe, useMeta, useProjects, useSprints } from './api.ts';
+import { ApiError, api, awaitsMyVote, markDemoSession, queryClient, useConfig, useMeetings, useIssue, useIssues, useLiveUpdates, useMe, useMeta, useProjects, useSprints } from './api.ts';
 import { Board } from './Board.tsx';
 import { IssuePage } from './IssuePage.tsx';
 import { SprintReview } from './SprintReview.tsx';
@@ -22,7 +22,6 @@ import { DoneGuardHost } from './DoneGuard.tsx';
 import { ConfirmHost } from './Confirm.tsx';
 import { SetupWizardHost } from './SetupWizard.tsx';
 import { DeployStatus, RecentIssues } from './SidebarExtras.tsx';
-import { requestQuestionsScope } from './Board.tsx';
 import { Avatar, Icon } from './icons.tsx';
 import { linkProps, usePath } from './router.ts';
 import { onToast, toast } from './toast.ts';
@@ -129,11 +128,6 @@ function Sidebar({ page }: { page: string }) {
   const [open, setOpen] = useState(false);
   toggleSidebar = () => setOpen((o) => !o);
   const toReview = sprints.some((s) => s.status === 'ended');
-  const me2 = useMe().data;
-  const tags = useMeta().data?.tags;
-  const askedMe = issues.filter((i) => isAskedTo(i, me2?.id, tags)).length;
-  const projectKey = useProjectKey();
-  const otherAsks = (useProjects().data ?? []).filter((x) => x.key !== projectKey && x.askedMe > 0);
   const votes = (useMeetings().data ?? []).filter((m) => awaitsMyVote(m, me.id)).length;
   const item = (to: string, key: string, icon: React.ReactNode, label: string, extra?: React.ReactNode) => (
     <a className={`nav-item ${page === key ? 'active' : ''}`} {...linkProps(to)} onClickCapture={() => setOpen(false)} title={label}>{icon}<span className="nav-label">{label}</span>{extra}</a>
@@ -150,17 +144,7 @@ function Sidebar({ page }: { page: string }) {
         {item('/', 'board', <Icon.board size={15} />, t('Issues'), <span className="count">{issues.filter((i) => !i.completedAt).length || ''}</span>)}
         {item('/calendar', 'calendar', <Icon.calendar size={15} />, t('Calendar'), votes ? <span className="count orange" title={t('Polls waiting for your vote')}>{votes}</span> : null)}
         {item('/review', 'review', <Icon.sprint size={15} />, t('Sprint review'), toReview ? <span className="count" style={{ color: 'var(--warning-text)' }}>●</span> : null)}
-        {askedMe > 0 && (
-          <a className="nav-item ask-nav" {...linkProps('/')} onClickCapture={() => { setOpen(false); requestQuestionsScope(); }} title={t('Issues where someone is waiting for your answer')}>
-            <Icon.question size={15} /> <span className="nav-label">{t('Asked to me')}</span> <span className="count">{askedMe}</span>
-          </a>
-        )}
-        {otherAsks.map((x) => (
-          <a key={x.key} className="nav-item ask-nav" {...linkProps(`/?project=${x.key}`)} onClickCapture={() => { setOpen(false); requestQuestionsScope(); }}
-            title={t('Someone is waiting for your answer in {name}', { name: x.name })}>
-            <Icon.question size={15} /> <span className="nav-label">{t('Asked to me')} · {x.key}</span> <span className="count">{x.askedMe}</span>
-          </a>
-        ))}
+        {/* Pytania do mnie: dzwonek (wszystkie projekty) i filtr "Asked to me" na tablicy, bez trzeciej pozycji tutaj. */}
         <RecentIssues onNavigate={() => setOpen(false)} />
         <div className="nav-section">{t('Project & account')}</div>
         {item('/settings', 'settings', <Icon.settings size={15} />, t('Settings'), !me.demo && me.aiStatus && !me.aiStatus.client ? <span className="nav-dot" role="img" aria-label={t('AI is not connected')} title={t('AI is not connected')} /> : undefined)}
