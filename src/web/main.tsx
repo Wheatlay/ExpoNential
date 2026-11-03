@@ -128,7 +128,8 @@ function Sidebar({ page }: { page: string }) {
   toggleSidebar = () => setOpen((o) => !o);
   const toReview = sprints.some((s) => s.status === 'ended');
   const me2 = useMe().data;
-  const askedMe = issues.filter((i) => isAskedTo(i, me2?.id)).length;
+  const tags = useMeta().data?.tags;
+  const askedMe = issues.filter((i) => isAskedTo(i, me2?.id, tags)).length;
   const projectKey = useProjectKey();
   const otherAsks = (useProjects().data ?? []).filter((x) => x.key !== projectKey && x.askedMe > 0);
   const votes = (useMeetings().data ?? []).filter((m) => awaitsMyVote(m, me.id)).length;

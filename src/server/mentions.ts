@@ -63,7 +63,7 @@ export async function notifyMentions(
   p: Project,
   actor: Actor,
   issue: { id: number; number: number; title: string },
-  opts: { body: string; previousBody?: string; commentId?: number | null; questionFor?: number | null },
+  opts: { body: string; previousBody?: string; commentId?: number | null; questionFor?: number | null; questionForTag?: number | null },
   log?: Log,
 ) {
   try {
@@ -79,12 +79,19 @@ export async function notifyMentions(
     const memberIds = new Set(members.map((m) => m.id));
     const self = actor?.id;
     const ask = opts.questionFor ?? null;
+    // Pytanie do #tagu: wszyscy aktywni członkowie projektu z tego taga (bez pytającego) dostają wiersz 'question'.
+    const askTagRow = opts.questionForTag != null ? tags.find((t) => t.id === opts.questionForTag) : undefined;
+    const askTagIds = askTagRow
+      ? (await db.select().from(userTagMembers).where(eq(userTagMembers.tagId, askTagRow.id))).map((r) => r.userId).filter((id) => id !== self && memberIds.has(id))
+      : [];
 
     const direct = newUsers.filter((id) => id !== self && id !== ask && memberIds.has(id));
     const reached = new Set<number>(direct);
     if (ask != null) reached.add(ask);
+    askTagIds.forEach((id) => reached.add(id));
     const groups: { kind: 'mention' | 'tag' | 'question'; tagName: string | null; ids: number[] }[] = [];
     if (ask != null && ask !== self && memberIds.has(ask)) groups.push({ kind: 'question', tagName: null, ids: [ask] });
+    if (askTagIds.length) groups.push({ kind: 'question', tagName: askTagRow!.name, ids: askTagIds });
     if (direct.length) groups.push({ kind: 'mention', tagName: null, ids: direct });
 
     const newTagRows = tags.filter((t) => newTags.includes(t.id));
@@ -109,7 +116,7 @@ export async function notifyMentions(
     const who = actor?.name ?? 'Someone';
     const ref = `${p.key}-${issue.number}`;
     for (const g of groups) {
-      const title = g.kind === 'question' ? `${who} asks you` : g.kind === 'mention' ? `${who} mentioned you` : `${who} mentioned #${g.tagName}`;
+      const title = g.kind === 'question' ? (g.tagName ? `${who} asks #${g.tagName}` : `${who} asks you`) : g.kind === 'mention' ? `${who} mentioned you` : `${who} mentioned #${g.tagName}`;
       await sendPush(g.ids, { title, body: `${ref} ${issue.title}: ${text}`, url: `/issue/${ref}`, tag: `issue-${ref}` }, log, { important: true });
     }
   } catch (e) {

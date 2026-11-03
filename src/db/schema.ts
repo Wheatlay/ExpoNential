@@ -151,6 +151,8 @@ export const issues = pgTable('issues', {
   changeAi: text('change_ai').notNull().default(''),
   // Need Info: kogo pytamy i o co. Czyszczone, gdy zadanie wychodzi z Need Info.
   infoFromId: integer('info_from_id').references(() => users.id, { onDelete: 'set null' }),
+  // Pytanie do #tagu zamiast osoby: odpowiada każdy członek taga. Po usunięciu taga adresat znika (pytanie wisi jak "do każdego").
+  infoTagId: integer('info_tag_id').references(() => userTags.id, { onDelete: 'set null' }),
   infoQuestion: text('info_question').notNull().default(''),
   // Kto zapytał; pytanie "do każdego" (infoFromId = null) widzą wszyscy poza nim.
   infoById: integer('info_by_id').references(() => users.id, { onDelete: 'set null' }),

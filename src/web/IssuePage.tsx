@@ -215,10 +215,11 @@ export function IssuePage({ number }: { number: number }) {
             )}
           </div>
           {startOpen && <DemoStartModal number={number} onClose={() => setStartOpen(false)} />}
-          {issue.infoQuestion && (() => {
+          {/* Pytanie pokazuje jego komentarz (QuestionFooter); baner tylko dla starych pytań bez komentarza. */}
+          {issue.infoQuestion && !issue.comments.some((c) => c.id === issue.infoCommentId) && (() => {
             const asked = meta.users.find((u) => u.id === issue.infoFromId);
             const by = meta.users.find((u) => u.id === issue.infoById);
-            const mine = isAskedTo(issue, me?.id);
+            const mine = isAskedTo(issue, me?.id, meta.tags);
             return (
               <div className={`question-banner ${mine ? 'me' : ''}`}>
                 <Icon.question size={16} />
@@ -504,7 +505,8 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
 
   type Entry = { at: string; kind: 'event'; e: IssueDetail['activity'][number] } | { at: string; kind: 'comment'; c: IssueDetail['comments'][number] };
   const entries: Entry[] = [
-    ...issue.activity.filter((e) => e.payload.kind !== 'field' || showAll).map((e) => ({ at: e.createdAt, kind: 'event' as const, e })),
+    // Pytanie widać w komentarzu, więc wpis "asked X: …" w historii tylko by je dublował.
+    ...issue.activity.filter((e) => (e.payload.kind !== 'field' || showAll) && e.payload.kind !== 'question').map((e) => ({ at: e.createdAt, kind: 'event' as const, e })),
     ...issue.comments.filter((c) => !c.replyToId).map((c) => ({ at: c.createdAt, kind: 'comment' as const, c })),
   ].sort((a, b) => a.at.localeCompare(b.at));
   const hiddenEdits = issue.activity.filter((e) => e.payload.kind === 'field').length;
@@ -567,7 +569,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
                 </div>
               );
             })}
-            {issue.infoCommentId === c.id && issue.infoQuestion && <div className="reply waiting"><span className="badge req">{t('Waiting for answer')}</span></div>}
+            {issue.infoCommentId === c.id && issue.infoQuestion && <QuestionFooter issue={issue} meId={meId} />}
           </div>
         );
       })}
@@ -700,7 +702,22 @@ function FoldBar({ id, tour, badge, name, preview, meta, required, tools, childr
   );
 }
 
-/** Odpowiedź na pytanie z Need Info prosto z banera: komentarz zamyka pytanie i przywraca status. */
+/** Otwarte pytanie żyje tylko w swoim komentarzu: pytany (osoba albo ktoś z #tagu) odpowiada tutaj, reszta może je zamknąć bez odpowiedzi. */
+function QuestionFooter({ issue, meId }: { issue: IssueDetail; meId?: number }) {
+  const qc = useQueryClient();
+  const mine = isAskedTo(issue, meId, useMeta().data?.tags);
+  const close = () => void api(`/api/issues/${ident(issue.number)}`, { method: 'PATCH', body: { infoFromId: null } })
+    .then(() => { void qc.invalidateQueries({ queryKey: ['issue', issue.number] }); void qc.invalidateQueries({ queryKey: ['issues'] }); });
+  return (
+    <div className="reply waiting">
+      <span className="badge req">{mine ? t('Question for you') : t('Waiting for answer')}</span>
+      {mine ? <AnswerBox number={issue.number} />
+        : <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={close} title={t('Close the question without an answer')}>{t('Close question')}</button>}
+    </div>
+  );
+}
+
+/** Odpowiedź na pytanie z Need Info: komentarz zamyka pytanie i przywraca status. */
 function AnswerBox({ number }: { number: number }) {
   const [v, setV] = useState('');
   const qc = useQueryClient();

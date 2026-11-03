@@ -126,4 +126,75 @@ describe('notifications', () => {
     // Autor nigdy nie dostaje własnych powiadomień.
     expect(r.some((x) => x.userId === a.id)).toBe(false);
   });
+
+  it('asks a tag: question rows for its members, a member answers', async () => {
+    const { users, projectMembers, userTags, userTagMembers, inboxItems, comments, issues } = await import('../src/db/schema.ts');
+    const { eq, and } = await import('drizzle-orm');
+    const projects = await import('../src/server/projects.ts');
+    const db = dbmod.db;
+    const [a, b, c, d] = await db.insert(users).values([
+      { login: 'tq-asker', name: 'Asker' }, { login: 'tq-b', name: 'Bee' }, { login: 'tq-c', name: 'Cee' }, { login: 'tq-d', name: 'Dee' },
+    ]).returning();
+    const P = await projects.createProject(a.id, { key: 'TQ', name: 'Tag question' });
+    await db.insert(projectMembers).values([b, c, d].map((u) => ({ projectId: P.id, userId: u.id, role: 'member' as const }))).onConflictDoNothing();
+    const [tag] = await db.insert(userTags).values({ projectId: P.id, name: 'ops', color: 'teal', createdBy: a.id }).returning();
+    await db.insert(userTagMembers).values([a, b, c].map((u) => ({ tagId: tag.id, userId: u.id })));
+    const actor = { id: a.id, name: a.name };
+    const issue = await svc.createIssue(P, actor, { title: 'Who knows' });
+    const need = (await svc.getMeta(P)).statuses.find((x) => x.name === 'Need Info')!;
+    await svc.updateIssue(P, actor, issue.number, { statusId: need.id, infoTagId: tag.id, infoQuestion: 'is it live?' });
+
+    const rows = await db.select().from(inboxItems).where(eq(inboxItems.issueId, issue.id));
+    expect(rows.filter((x) => x.kind === 'question').map((x) => x.userId).sort()).toEqual([b.id, c.id].sort());
+    expect(rows.some((x) => x.userId === a.id || x.userId === d.id)).toBe(false);
+    const [qc] = await db.select().from(comments).where(eq(comments.issueId, issue.id));
+    expect(qc.body.startsWith('**Question for #')).toBe(true);
+    const [asked] = await db.select().from(issues).where(eq(issues.id, issue.id));
+    expect(asked.infoTagId).toBe(tag.id);
+
+    // Ktoś spoza taga nie odpowiada, członek taga tak.
+    await svc.addComment(P, { id: d.id, name: d.name }, issue.number, 'no idea');
+    expect((await db.select().from(issues).where(eq(issues.id, issue.id)))[0].infoQuestion).not.toBe('');
+    await svc.addComment(P, { id: c.id, name: c.name }, issue.number, 'yes, live');
+    const [done] = await db.select().from(issues).where(and(eq(issues.id, issue.id)));
+    expect(done.infoQuestion).toBe('');
+    expect(done.infoTagId).toBeNull();
+  });
+
+  it('deleting a tag: forbidden for a member who is not the creator or an admin', async () => {
+    const { users, projectMembers, userTags, sessions } = await import('../src/db/schema.ts');
+    const { eq } = await import('drizzle-orm');
+    const { randomBytes } = await import('node:crypto');
+    const projects = await import('../src/server/projects.ts');
+    const auth = await import('../src/server/auth.ts');
+    const db = dbmod.db;
+    const [a, b] = await db.insert(users).values([{ login: 'td-owner', name: 'Owner' }, { login: 'td-member', name: 'Member' }]).returning();
+    const P = await projects.createProject(a.id, { key: 'TD', name: 'Tag delete' });
+    await db.insert(projectMembers).values({ projectId: P.id, userId: b.id, role: 'member' }).onConflictDoNothing();
+    const [mine] = await db.insert(userTags).values({ projectId: P.id, name: 'mine', color: 'pink', createdBy: a.id }).returning();
+    const [theirs] = await db.insert(userTags).values({ projectId: P.id, name: 'theirs', color: 'blue', createdBy: b.id }).returning();
+    const Fastify = (await import('fastify')).default;
+    const { registerApi } = await import('../src/server/api.ts');
+    const app = Fastify();
+    await app.register((await import('@fastify/cookie')).default);
+    await auth.registerAuth(app);
+    await registerApi(app);
+    // Sesja jak w przeglądarce (tokeny trk_ są tylko dla AI i agenta).
+    const session = async (userId: number) => {
+      const raw = randomBytes(16).toString('base64url');
+      await db.insert(sessions).values({ id: auth.sha256(raw), userId, expiresAt: new Date(Date.now() + 864e5) });
+      return `tracker_session=${raw}`;
+    };
+    const tb = await session(b.id);
+    const ta = await session(a.id);
+    const del = (id: number, token: string) => app.inject({ method: 'DELETE', url: `/api/tags/${id}`, headers: { cookie: token, 'x-project': 'TD' } });
+    const denied = await del(mine.id, tb);
+    expect(denied.statusCode, denied.body).toBe(403);
+    expect((await db.select().from(userTags).where(eq(userTags.id, mine.id)))).toHaveLength(1);
+    const own = await del(theirs.id, tb);
+    expect(own.statusCode, own.body).toBe(200); // twórca
+    expect((await del(mine.id, ta)).statusCode).toBe(200); // admin projektu (założyciel)
+    expect((await db.select().from(userTags).where(eq(userTags.projectId, P.id)))).toHaveLength(0);
+    await app.close();
+  });
 });

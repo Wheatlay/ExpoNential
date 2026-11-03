@@ -100,7 +100,11 @@ async function presentIssue(p: Project, number: number) {
     blocking: d.relations.blocking.map((x) => ({ id: identifier(x.number), title: x.title, open: x.open })),
     relatedTo: d.relations.related.map((x) => ({ id: identifier(x.number), title: x.title })),
     subIssues: d.children.map((c) => ({ id: identifier(c.number), title: c.title, status: r.meta.statuses.find((s) => s.id === c.statusId)?.name })),
-    question: d.infoQuestion ? { for: userName(d.infoFromId) ?? 'anyone', by: userName(d.infoById), text: d.infoQuestion } : null,
+    // Pytanie do osoby, do #tagu (wszyscy z tagiem) albo do kogokolwiek.
+    question: d.infoQuestion ? {
+      for: userName(d.infoFromId) ?? (d.infoTagId != null ? `#${r.meta.tags.find((x) => x.id === d.infoTagId)?.name ?? '?'}` : 'anyone'),
+      by: userName(d.infoById), text: d.infoQuestion,
+    } : null,
     analysis: d.analysis,
     analysisRequested: !!d.analysisRequestedAt,
     changeHuman: d.changeHuman,
@@ -201,12 +205,19 @@ function buildServer(user: SessionUser) {
     priority: z.union([z.number().int().min(0).max(4), z.string()]).optional().describe('0 none, 1 urgent, 2 high, 3 medium, 4 low'),
     labels: z.array(z.string()).optional(),
     parentId: z.string().nullable().optional().describe('Parent issue identifier, null to detach'),
-    askUser: z.string().optional().describe('With question: who should answer (name, login, "me" or "anyone"); use with status "Need Info"'),
+    askUser: z.string().optional().describe('With question: who should answer (name, login, "me", "#tag" for everyone with that people tag, or "anyone"); use with status "Need Info"'),
     question: z.string().optional(),
   }, async (a) => {
     const target = a.id ? await ref(me, a.id) : { p: await projectOf(me, a.project), n: 0 };
     const p = target.p;
     const r = await resolver(p);
+    // "#backend" = pytanie do wszystkich z tagiem osób.
+    const askTag = a.askUser?.startsWith('#') ? a.askUser.slice(1).toLowerCase() : null;
+    const tagId = (name: string) => {
+      const tag = r.meta.tags.find((x) => x.name === name);
+      if (!tag) throw new RuleError(`Unknown tag #${name}. Tags: ${r.meta.tags.map((x) => '#' + x.name).join(', ') || 'none'}`, 'invalid');
+      return tag.id;
+    };
     const input: svc.IssueInput = {
       title: a.title,
       description: a.description,
@@ -215,7 +226,8 @@ function buildServer(user: SessionUser) {
       priority: a.priority === undefined ? undefined : r.priority(a.priority),
       labelIds: a.labels?.map((l) => r.label(l)),
       parentNumber: a.parentId === undefined ? undefined : a.parentId === null ? null : numIn(p, a.parentId),
-      infoFromId: a.askUser && a.askUser.toLowerCase() !== 'anyone' ? r.user(a.askUser, me) : a.question ? null : undefined,
+      infoFromId: askTag ? null : a.askUser && a.askUser.toLowerCase() !== 'anyone' ? r.user(a.askUser, me) : a.question ? null : undefined,
+      infoTagId: askTag ? tagId(askTag) : a.question ? null : undefined,
       infoQuestion: a.question,
     };
     if (a.id) {

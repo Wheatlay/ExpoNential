@@ -64,7 +64,7 @@ export function InboxBell() {
 
   const title = (i: InboxItem) => {
     const name = i.actorName ?? t('Someone');
-    if (i.kind === 'question') return t('{name} asks you', { name });
+    if (i.kind === 'question') return i.tagName ? t('{name} asks #{tag}', { name, tag: i.tagName }) : t('{name} asks you', { name });
     if (i.kind === 'tag') {
       const tag = meta?.tags?.find((x) => x.name === i.tagName);
       return <>{t('{name} mentioned', { name })} <span className="inbox-tag" style={tag ? { '--tag': `var(--tag-${tag.color})` } as React.CSSProperties : undefined}>#{i.tagName}</span></>;

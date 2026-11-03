@@ -3,6 +3,8 @@ export const LOCALE: 'en' | 'pl' = process.env.APP_LOCALE === 'pl' ? 'pl' : 'en'
 
 /** Klucze angielskie -> polskie. Brak wpisu = ten sam tekst (push po angielsku zostaje po angielsku). */
 const pl: Record<string, string> = {
+  // pytanie z Need Info (komentarz)
+  'Question for {who}': 'Pytanie do {who}', 'anyone': 'kogokolwiek',
   // analiza AI (analysis.ts render)
   'Type': 'Typ', 'bug': 'błąd', 'feature': 'funkcja', 'to investigate': 'do zbadania',
   'Does it happen': 'Czy występuje', 'How to reproduce': 'Jak odtworzyć', 'Current state': 'Stan obecny', 'Answer': 'Odpowiedź',

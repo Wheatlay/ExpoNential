@@ -177,7 +177,7 @@ export function Board() {
   const activeSprint = sprints.find((s) => s.status === 'active');
   const narrow = useNarrow();
   const presence = usePresence();
-  const askedMe = (issues ?? []).filter((i) => isAskedTo(i, me?.id)).length;
+  const askedMe = (issues ?? []).filter((i) => isAskedTo(i, me?.id, meta?.tags)).length;
   const unreadCount = (issues ?? []).filter((i) => i.unreadComments > 0).length;
   // Przechył kopii karty zależny od prędkości ruchu (jak podniesiona kartka).
   const [tilt, setTilt] = useState(0);
@@ -243,7 +243,7 @@ export function Board() {
       if ((st.type === 'completed' || st.type === 'canceled' || st.type === 'duplicate') && i.completedAt
         && now - new Date(i.completedAt).getTime() > COMPLETED_MS[display.completed]) return false;
       if (filters.scope === 'sprint' && i.sprintId !== activeSprint?.id) return false;
-      if (filters.scope === 'questions' && !isAskedTo(i, me?.id)) return false;
+      if (filters.scope === 'questions' && !isAskedTo(i, me?.id, meta.tags)) return false;
       if (filters.scope === 'unread' && !i.unreadComments) return false;
       if (filters.labelIds.length && !filters.labelIds.some((l) => i.labelIds.includes(l))) return false;
       if (filters.assigneeIds.length && !filters.assigneeIds.includes(i.assigneeId)) return false;
@@ -696,7 +696,8 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
   const act = useContext(CardActionsContext);
   const me = useMe().data;
   const askedUser = issue.infoFromId ? meta.users.find((u) => u.id === issue.infoFromId) : null;
-  const askedMe = isAskedTo(issue, me?.id);
+  const askedTag = issue.infoTagId ? meta.tags?.find((x) => x.id === issue.infoTagId) : null;
+  const askedMe = isAskedTo(issue, me?.id, meta.tags);
   const open = st && ['backlog', 'unstarted', 'started'].includes(st.type);
   const idleDays = Math.floor((Date.now() - new Date(issue.updatedAt).getTime()) / 864e5);
   const stale = open && idleDays >= 7;
@@ -727,7 +728,9 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
         )}
         {issue.infoQuestion && (
           <span className={`pill question ${askedMe ? 'me' : ''}`} title={issue.infoQuestion}>
-            <Icon.question size={12} /> {askedMe ? (askedUser ? t('Asked you') : t('Asked everyone')) : t('Asking {name}', { name: askedUser?.name ?? t('anyone') })}
+            <Icon.question size={12} /> {askedTag
+              ? (askedMe ? t('Asked your #{tag}', { tag: askedTag.name }) : t('Asking #{tag}', { tag: askedTag.name }))
+              : askedMe ? (askedUser ? t('Asked you') : t('Asked everyone')) : t('Asking {name}', { name: askedUser?.name ?? t('anyone') })}
           </span>
         )}
         {show.priority && <span className="pill icon-only" title={t(meta.priorities[issue.priority])} {...pillProps('priority')}><PriorityIcon priority={issue.priority} /></span>}

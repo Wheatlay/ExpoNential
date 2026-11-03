@@ -1,0 +1,2 @@
+ALTER TABLE "issues" ADD COLUMN "info_tag_id" integer;--> statement-breakpoint
+ALTER TABLE "issues" ADD CONSTRAINT "issues_info_tag_id_user_tags_id_fk" FOREIGN KEY ("info_tag_id") REFERENCES "public"."user_tags"("id") ON DELETE set null ON UPDATE no action;

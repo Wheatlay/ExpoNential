@@ -6,7 +6,7 @@ import { api, useMe, useMeta, useSprints, type User } from './api.ts';
 import { useProjectKey } from './project.ts';
 import { ProjectBadge } from './ProjectSwitcher.tsx';
 import { NotificationSettings } from './Notifications.tsx';
-import { ProfileTags } from './ProfileTags.tsx';
+import { ProjectTags } from './ProjectTags.tsx';
 import { PersonLink } from './PersonCard.tsx';
 import { Avatar, Icon, StatusIcon, startedFraction } from './icons.tsx';
 import { copyText, toast } from './toast.ts';
@@ -46,7 +46,6 @@ export function Settings() {
   const groups: { name: ReactNode; items: Section[] }[] = [
     { name: t('You'), items: [
       { id: 'appearance', name: t('Appearance'), render: () => <Appearance /> },
-      { id: 'profile', name: t('Profile and tags'), render: () => <ProfileTags /> },
       { id: 'notifications', name: t('Notifications'), render: () => <NotificationSettings /> },
       { id: 'claude', name: 'Claude Code', render: () => <ClaudeConnect /> },
       { id: 'password', name: t('Password'), render: () => <PasswordSettings /> },
@@ -54,6 +53,7 @@ export function Settings() {
     { name: p ? <span className="settings-nav-project"><ProjectBadge project={p} size={14} /> {p.name}</span> : t('Project'), items: [
       { id: 'project', name: t('General'), render: () => <ProjectGeneral /> },
       { id: 'people', name: t('People'), render: () => <ProjectPeople /> },
+      { id: 'tags', name: t('Tags'), render: () => <ProjectTags /> },
       { id: 'labels', name: t('Labels and statuses'), render: () => <ProjectLabelsStatuses /> },
       { id: 'integrations', name: t('Integrations'), render: () => <ProjectIntegrations /> },
       { id: 'prompts', name: t('AI agent'), render: () => <ProjectPrompts /> },
@@ -108,11 +108,17 @@ const HINTS: Record<string, Hint[]> = {
   ],
   notifications: [
     { label: t('Project Discord channel'), to: 'integrations', target: 'discord' },
-    { label: t('Your tags'), to: 'profile', target: 'my-tags' },
+    { label: t('Tags'), to: 'tags', target: 'project-tags' },
   ],
-  profile: [{ label: t('Your notifications'), to: 'notifications' }],
+  tags: [
+    { label: t('People'), to: 'people' },
+    { label: t('Your notifications'), to: 'notifications' },
+  ],
   integrations: [{ label: t('Your notifications'), to: 'notifications' }],
-  people: [{ label: t('Who can log in to the workspace'), to: 'accounts', adminOnly: true }],
+  people: [
+    { label: t('Tags'), to: 'tags' },
+    { label: t('Who can log in to the workspace'), to: 'accounts', adminOnly: true },
+  ],
 };
 
 type Groups = { name: ReactNode; items: Section[] }[];
@@ -131,7 +137,8 @@ function goToSetting(h: Hint) {
   if (!h.target) return;
   // Po przełączeniu sekcji karta jest w DOM w następnej klatce.
   setTimeout(() => {
-    const el = document.getElementById(h.target!);
+    // Wiersz bywa niewyrenderowany (np. Prod bez źródła deployów): wtedy podświetlamy pierwszą kartę sekcji.
+    const el = document.getElementById(h.target!) ?? document.querySelector<HTMLElement>('.settings-inner .s-card');
     if (!el) return;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     el.classList.add('flash');
@@ -160,39 +167,59 @@ function SettingsHints({ current, groups, isAdmin }: { current: string; groups: 
   );
 }
 
+// Nowe ustawienie = nowy wpis w SEARCH (tests/settings-search.test.ts to sprawdza).
 /**
  * Wyszukiwarka ustawień (nad menu): lista wszystkich kart i wierszy z sekcjami. Wynik przenosi do sekcji i podświetla cel
  * tak jak "Szukasz może?". Nowe ustawienie = nowy wpis tutaj (cel to id karty/wiersza w kodzie).
  */
 type SearchEntry = Hint & { keywords?: string[] };
 const SEARCH: SearchEntry[] = [
-  { label: t('Theme'), to: 'appearance', target: 'theme', keywords: ['dark', 'light', 'oled', 'motyw', 'ciemny', 'jasny'] },
-  { label: t('Language'), to: 'appearance', target: 'language', keywords: ['polski', 'english', 'jezyk'] },
-  { label: t('My tags'), to: 'profile', target: 'my-tags', keywords: ['tag', 'team', 'group', 'zespol', 'grupa'] },
-  { label: t('In Exponential'), to: 'notifications', target: 'notif-app', keywords: ['bell', 'banner', 'dzwonek', 'powiadomienia'] },
-  { label: t('Browser notifications'), to: 'notifications', target: 'notif-push', keywords: ['push', 'powiadomienia'] },
-  { label: 'Discord', to: 'notifications', target: 'notif-discord', keywords: ['channel', 'kanal'] },
-  { label: t('Only mentions and questions to me'), to: 'notifications', target: 'notif-important', keywords: ['mute', 'quiet', 'wycisz'] },
-  { label: t('Connect AI'), to: 'claude', target: 'claude-connect', keywords: ['claude code', 'codex', 'mcp', 'wizard'] },
-  { label: t('Connected AI clients'), to: 'claude', target: 'ai-clients', keywords: ['mcp'] },
-  { label: t('Your computers'), to: 'claude', target: 'your-computers', keywords: ['agent', 'pc', 'komputer'] },
-  { label: t('Tokens'), to: 'claude', target: 'tokens', keywords: ['api', 'key', 'klucz'] },
-  { label: t('Legacy installer (Windows script)'), to: 'claude', target: 'legacy-installer', keywords: ['install', 'powershell'] },
-  { label: t('Password'), to: 'password', target: 'password-card', keywords: ['login', 'haslo'] },
-  { label: t('Name'), to: 'project', target: 'project-name', keywords: ['project', 'projekt'] },
-  { label: t('Sprint length'), to: 'project', target: 'sprint-length', keywords: ['days', 'dni'] },
-  { label: t('Sprint review'), to: 'project', target: 'sprint-review', keywords: ['meeting', 'spotkanie'] },
-  { label: t('GitHub login or e-mail to add'), to: 'people', target: 'add-member', keywords: ['member', 'invite', 'czlonek', 'dodaj'] },
-  { label: t('Invite link'), to: 'people', target: 'invites', keywords: ['zaproszenie'] },
-  { label: t('Labels'), to: 'labels', target: 'labels', keywords: ['etykiety'] },
-  { label: t('Statuses'), to: 'labels', target: 'statuses', keywords: ['columns', 'kolumny'] },
-  { label: t('GitHub repo'), to: 'integrations', target: 'github-repo', keywords: ['commit'] },
-  { label: t('Deploys'), to: 'integrations', target: 'deploys', keywords: ['branch', 'wdrozenia'] },
-  { label: 'Discord webhook', to: 'integrations', target: 'discord', keywords: ['channel'] },
-  { label: t('Meeting place'), to: 'integrations', target: 'meeting-place', keywords: ['teams', 'meet', 'link'] },
-  { label: t('Analysis models'), to: 'prompts', target: 'agent-prompts', keywords: ['prompt', 'model', 'claude'] },
-  { label: t('Team queue'), to: 'prompts', target: 'team-queue', keywords: ['analysis', 'analiza'] },
-  { label: t('Who can log in to the workspace'), to: 'accounts', target: 'accounts-card', adminOnly: true, keywords: ['accounts', 'konta', 'admin'] },
+  // Ty › Wygląd
+  { label: t('Theme'), to: 'appearance', target: 'theme', keywords: ['dark', 'light', 'oled', 'motyw', 'ciemny', 'jasny', 'wyglad', 'appearance'] },
+  { label: t('Language'), to: 'appearance', target: 'language', keywords: ['polski', 'english', 'jezyk', 'pl', 'en'] },
+  // Ty › Powiadomienia
+  { label: t('In Exponential'), to: 'notifications', target: 'notif-app', keywords: ['bell', 'banner', 'dzwonek', 'powiadomienia', 'notifications', 'inbox', 'skrzynka'] },
+  { label: t('Browser notifications'), to: 'notifications', target: 'notif-push', keywords: ['push', 'powiadomienia', 'notifications', 'przegladarka'] },
+  { label: 'Discord', to: 'notifications', target: 'notif-discord', keywords: ['channel', 'kanal', 'powiadomienia', 'notifications'] },
+  { label: t('Only mentions and questions to me'), to: 'notifications', target: 'notif-important', keywords: ['mute', 'quiet', 'wycisz', 'wzmianki', 'mentions', 'pytania', 'questions', 'powiadomienia'] },
+  // Ty › Claude Code
+  { label: t('Connect AI'), to: 'claude', target: 'claude-connect', keywords: ['claude code', 'codex', 'mcp', 'wizard', 'ai', 'polacz'] },
+  { label: t('Connected AI clients'), to: 'claude', target: 'ai-clients', keywords: ['mcp', 'oauth', 'grants', 'dostep'] },
+  { label: t('Your computers'), to: 'claude', target: 'your-computers', keywords: ['agent', 'pc', 'komputer', 'computer', 'runner'] },
+  { label: t('Tokens'), to: 'claude', target: 'tokens', keywords: ['api', 'key', 'klucz', 'token'] },
+  { label: t('Legacy installer (Windows script)'), to: 'claude', target: 'legacy-installer', keywords: ['install', 'powershell', 'instalator', 'windows'] },
+  // Ty › Hasło
+  { label: t('Password'), to: 'password', target: 'password-card', keywords: ['login', 'haslo', 'e-mail', 'email', 'konto', 'account'] },
+  // Projekt › Ogólne
+  { label: t('Name'), to: 'project', target: 'project-name', keywords: ['project', 'projekt', 'nazwa', 'rename'] },
+  { label: t('Project color'), to: 'project', target: 'project-name', keywords: ['kolor', 'color', 'project', 'projekt'] },
+  { label: t('Sprint length'), to: 'project', target: 'sprint-length', keywords: ['days', 'dni', 'sprint', 'dlugosc', 'length'] },
+  { label: t('Sprint review'), to: 'project', target: 'sprint-review', keywords: ['meeting', 'spotkanie', 'przeglad', 'review', 'kalendarz', 'calendar'] },
+  { label: t('Sprint review time'), to: 'project', target: 'sprint-review', keywords: ['godzina', 'hour', 'time', 'meeting', 'spotkanie', 'minuty', 'minutes'] },
+  // Projekt › Ludzie
+  { label: t('GitHub login or e-mail to add'), to: 'people', target: 'add-member', keywords: ['member', 'members', 'invite', 'czlonek', 'czlonkowie', 'dodaj', 'add', 'ludzie', 'people', 'remove', 'usun'] },
+  { label: t('Role'), to: 'people', target: 'add-member', keywords: ['admin', 'member', 'rola', 'czlonek', 'uprawnienia', 'permissions'] },
+  { label: t('Invite link'), to: 'people', target: 'invites', keywords: ['zaproszenie', 'invite', 'link', 'join', 'dolacz'] },
+  // Projekt › Tagi
+  { label: t('Tags'), to: 'tags', target: 'project-tags', keywords: ['tag', '#', 'team', 'group', 'zespol', 'grupa', 'mention', 'wzmianka', 'join', 'dolacz', 'leave', 'opusc'] },
+  { label: t('New tag'), to: 'tags', target: 'project-tags', keywords: ['create', 'utworz', 'tag', 'nowy', 'color', 'kolor'] },
+  // Projekt › Etykiety i statusy
+  { label: t('Labels'), to: 'labels', target: 'labels', keywords: ['etykiety', 'label', 'labels', 'kolor', 'color'] },
+  { label: t('Statuses'), to: 'labels', target: 'statuses', keywords: ['columns', 'kolumny', 'status', 'board', 'tablica', 'workflow'] },
+  // Projekt › Integracje
+  { label: t('GitHub repo'), to: 'integrations', target: 'github-repo', keywords: ['commit', 'repo', 'github', 'repozytorium'] },
+  { label: t('Deploys'), to: 'integrations', target: 'deploys', keywords: ['branch', 'wdrozenia', 'deploy', 'source', 'zrodlo', 'webhook', 'coolify', 'github deployments'] },
+  { label: t('Prod'), to: 'integrations', target: 'deploy-prod', keywords: ['production', 'produkcja', 'coolify', 'app', 'deploy', 'uuid', 'environment'] },
+  { label: t('Stage'), to: 'integrations', target: 'deploy-stage', keywords: ['staging', 'test', 'coolify', 'app', 'deploy', 'uuid', 'environment'] },
+  { label: 'Discord webhook', to: 'integrations', target: 'discord', keywords: ['channel', 'kanal', 'webhook', 'powiadomienia', 'notifications'] },
+  { label: t('Meeting place'), to: 'integrations', target: 'meeting-place', keywords: ['teams', 'meet', 'link', 'spotkanie', 'meeting', 'miejsce'] },
+  // Projekt › Agent AI
+  { label: t('Analyze'), to: 'prompts', target: 'agent-analyze', keywords: ['model', 'claude', 'sonnet', 'opus', 'haiku', 'analiza', 'analysis', 'prompt'] },
+  { label: t('Deep'), to: 'prompts', target: 'agent-deep', keywords: ['model', 'claude', 'sonnet', 'opus', 'haiku', 'analiza', 'analysis', 'prompt', 'gleboka'] },
+  { label: t('Analysis models'), to: 'prompts', target: 'agent-prompts', keywords: ['prompt', 'model', 'claude', 'agent', 'ai'] },
+  { label: t('Team queue'), to: 'prompts', target: 'team-queue', keywords: ['analysis', 'analiza', 'kolejka', 'queue', 'zespol', 'team', 'agent'] },
+  // Workspace › Konta
+  { label: t('Who can log in to the workspace'), to: 'accounts', target: 'accounts-card', adminOnly: true, keywords: ['accounts', 'konta', 'admin', 'login', 'github', 'google', 'allow', 'zezwol'] },
 ];
 
 // Bez wielkości liter i polskich znaków, znak po znaku (długość się nie zmienia, więc indeksy pasują do oryginału).
@@ -558,7 +585,7 @@ function ProjectIntegrations() {
         const field = env === 'prod' ? 'deploySourceRef' : 'stageSourceRef';
         const ph = p.deploySource === 'coolify' ? t('Coolify application UUID') : env === 'prod' ? t('Environment (optional)') : t('Environment');
         return (
-          <div key={env} className="s-row">
+          <div key={env} id={env === 'prod' ? 'deploy-prod' : 'deploy-stage'} className="s-row">
             <span className="s-label">{env === 'prod' ? t('Prod') : t('Stage')}</span>
             {p.deploySource === 'webhook'
               ? <code className="hint">{`curl -X POST ${location.origin}/hooks/deploy -H "X-Webhook-Secret: …" -d '{"project":"${p.key}","sha":"…"${env === 'stage' ? ',"env":"stage"' : ''}}'`}</code>
@@ -823,7 +850,7 @@ function ProjectPrompts() {
     <>
       <div className="s-card" id="agent-prompts">
         {PROMPTS.map((x) => (
-          <div key={x.kind} className="s-row">
+          <div key={x.kind} id={x.kind === 'analyze' ? 'agent-analyze' : 'agent-deep'} className="s-row">
             <b>{x.name}</b><span className="hint grow">{x.hint}</span>
             {/* Aliasy Claude Code: zawsze najnowsza wersja danego modelu. Wybór równy domyślnemu zapisujemy jako pusty. */}
             <Tooltip text={ro ?? t('Model for this analysis')}>

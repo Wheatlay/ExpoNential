@@ -904,6 +904,9 @@ a.sub-row > button { display: inline-flex; }
 .poll-row.mine .poll-cell { flex-direction: row; align-items: center; }
 .poll-row.mine .poll-cell .input { width: 100%; }
 /* Powód "Maybe": rośnie w dół razem z tekstem zamiast go ucinać. */
+/* textarea.input: inaczej ".modal textarea" (border: 0, background: none) wygrywa specyficznością i pole traci ramkę. */
+textarea.input.vote-note { background: var(--bg-primary); border: 1px solid var(--border-secondary); }
+textarea.input.vote-note:focus { border-color: var(--accent); }
 .vote-note { height: auto; min-height: var(--control-md); field-sizing: content; resize: none; padding: 6px 10px; line-height: 1.4; }
 /* Głosy po wyborze terminu: tabela na szerokim ekranie, lista terminów na telefonie (patrz @media niżej). */
 .poll-list { display: none; flex-direction: column; gap: 8px; }
@@ -1252,6 +1255,9 @@ a.sub-row > button { display: inline-flex; }
 .mention-pop { z-index: 120; min-width: 240px; padding: 4px; }
 .mention-pop .menu-item { gap: 8px; }
 .mention-pop .mp-muted { margin-left: auto; color: var(--text-tertiary); font-size: var(--text-sm); }
+/* Wiersz w jednym spanie: menu-item rozciąga swoje bezpośrednie spany, więc kropka tagu w środku zostaje kropką. Ja przygaszony. */
+.mention-pop .mp-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mention-pop .mp-row.self { color: var(--text-tertiary); }
 
 .header .inbox-bell { position: relative; flex-shrink: 0; }
 .inbox-badge { position: absolute; top: 0; right: 0; min-width: 1.6em; height: 1.6em; padding: 0 4px; border-radius: var(--radius-full); display: grid; place-items: center; background: var(--info); color: var(--on-accent); font-size: var(--text-xs); font-weight: 600; line-height: 1; }
@@ -1300,3 +1306,5 @@ a.sub-row > button { display: inline-flex; }
 .tag-option.create { color: var(--text-secondary); }
 .tag-option:hover { background: var(--bg-hover); }
 .tag-error { color: var(--danger-text); font-size: var(--text-sm); }
+/* Ustawienia › Tagi: awatary członków w wierszu i pole zmiany nazwy. */
+.tag-members { display: flex; align-items: center; gap: 4px; }

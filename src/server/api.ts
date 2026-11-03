@@ -30,6 +30,7 @@ export const issueInputSchema = z.object({
   changeHuman: z.string().optional(),
   changeAi: z.string().optional(),
   infoFromId: z.number().int().nullable().optional(),
+  infoTagId: z.number().int().nullable().optional(),
   infoQuestion: z.string().max(2000).optional(),
 });
 
@@ -168,7 +169,7 @@ export async function registerApi(app: FastifyInstance) {
       const me = req.user!.id;
       // Pytania czekające na mnie w każdym projekcie (ta sama reguła co isAskedTo w aplikacji): widać je bez przełączania.
       const asked = await db.select({ projectId: issues.projectId, n: dsql<number>`count(*)::int` }).from(issues)
-        .where(dsql`${issues.infoQuestion} <> '' and (${issues.infoFromId} = ${me} or (${issues.infoFromId} is null and ${issues.infoById} is distinct from ${me}))`)
+        .where(dsql`${issues.infoQuestion} <> '' and (${issues.infoFromId} = ${me} or ${issues.infoTagId} in (select m.tag_id from user_tag_members m where m.user_id = ${me}) or (${issues.infoFromId} is null and ${issues.infoTagId} is null and ${issues.infoById} is distinct from ${me}))`)
         .groupBy(issues.projectId);
       const askedBy = new Map(asked.map((a) => [a.projectId, a.n]));
       return (await pr.projectsOf(req.user!)).map(({ project, role, memberCount }) => ({
@@ -286,6 +287,17 @@ export async function registerApi(app: FastifyInstance) {
       await svc.publish({ type: 'meta', projectKey: project.key });
       return t;
     });
+    // Usuwanie: admin projektu albo twórca taga. Członkowie znikają kaskadą, pytania do taga tracą adresata (set null).
+    r.delete<{ Params: { id: string } }>('/api/tags/:id', async (req) => {
+      const { project, role } = await ctx(req);
+      const id = intParam(req.params.id);
+      const [t] = await db.select().from(userTags).where(and(eq(userTags.id, id), eq(userTags.projectId, project.id)));
+      if (!t) throw new RuleError('Tag not found', 'not_found');
+      if (!pr.canManage(req.user!, role) && t.createdBy !== req.user!.id) throw new RuleError('Only the tag creator or a project admin can delete a tag', 'forbidden');
+      await db.delete(userTags).where(eq(userTags.id, id));
+      await svc.publish({ type: 'meta', projectKey: project.key });
+      return { ok: true };
+    });
     // Moje tagi w bieżącym projekcie: lista zastępuje dotychczasową, tag bez członków znika.
     r.put('/api/me/tags', async (req) => {
       const { project } = await ctx(req);
@@ -296,7 +308,7 @@ export async function registerApi(app: FastifyInstance) {
         const want = [...new Set(tagIds)].filter((id) => own.includes(id));
         if (own.length) await tx.delete(userTagMembers).where(and(eq(userTagMembers.userId, userId), inArray(userTagMembers.tagId, own), ...(want.length ? [notInArray(userTagMembers.tagId, want)] : [])));
         if (want.length) await tx.insert(userTagMembers).values(want.map((tagId) => ({ tagId, userId }))).onConflictDoNothing();
-        await tx.delete(userTags).where(and(eq(userTags.projectId, project.id), dsql`not exists (select 1 from user_tag_members m where m.tag_id = ${userTags.id})`));
+        // Tag należy do projektu (Ustawienia › Tagi), więc zostaje także bez członków; usuwa się go jawnie.
       });
       await svc.publish({ type: 'meta', projectKey: project.key });
       return { ok: true };

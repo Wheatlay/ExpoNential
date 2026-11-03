@@ -1,6 +1,6 @@
 import { useEffect, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { useMeta } from './api.ts';
+import { useMe, useMeta } from './api.ts';
 import { Avatar } from './icons.tsx';
 import { t, tn } from './i18n.ts';
 
@@ -17,6 +17,7 @@ type Option = { key: string; insert: string; node: React.ReactNode };
  */
 export function useMentionAutocomplete(ref: RefObject<HTMLTextAreaElement | null>, value: string, setValue: (v: string) => void) {
   const meta = useMeta().data;
+  const me = useMe().data;
   const [hl, setHl] = useState(0);
   // Escape zamyka podpowiedź dla tego fragmentu; kolejny znak (inny fragment) otwiera ją znowu.
   const [closedFor, setClosedFor] = useState<string | null>(null);
@@ -34,14 +35,16 @@ export function useMentionAutocomplete(ref: RefObject<HTMLTextAreaElement | null
   if (m && meta && closedFor !== fragment) {
     const pq = plain(q);
     if (sign === '@') {
-      options = meta.users.filter((u) => u.active && (plain(u.name).includes(pq) || plain(u.login).includes(pq))).slice(0, MAX).map((u) => ({
-        key: `u${u.id}`, insert: `@${u.login} `,
-        node: <><Avatar user={u} size={18} /><span>{u.name}</span><span className="mp-muted">@{u.login}</span></>,
-      }));
+      // Siebie oznacza się rzadko: na końcu listy i przygaszony.
+      options = meta.users.filter((u) => u.active && (plain(u.name).includes(pq) || plain(u.login).includes(pq)))
+        .sort((a, b) => Number(a.id === me?.id) - Number(b.id === me?.id)).slice(0, MAX).map((u) => ({
+          key: `u${u.id}`, insert: `@${u.login} `,
+          node: <span className={`mp-row ${u.id === me?.id ? 'self' : ''}`}><Avatar user={u} size={18} /><span>{u.name}</span><span className="mp-muted">@{u.login}</span></span>,
+        }));
     } else {
       options = (meta.tags ?? []).filter((x) => plain(x.name).includes(pq)).slice(0, MAX).map((x) => ({
         key: `t${x.id}`, insert: `#${x.name} `,
-        node: <><span className="tag-dot" style={{ '--tag': `var(--tag-${x.color})` } as React.CSSProperties} /><span>#{x.name}</span><span className="mp-muted">{tn(x.memberIds.length, '{n} person', '{n} people')}</span></>,
+        node: <span className="mp-row"><span className="tag-dot" style={{ '--tag': `var(--tag-${x.color})` } as React.CSSProperties} /><span>#{x.name}</span><span className="mp-muted">{tn(x.memberIds.length, '{n} person', '{n} people')}</span></span>,
       }));
     }
   }

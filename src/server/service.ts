@@ -5,6 +5,7 @@ import {
   type ActivityPayload,
 } from '../db/schema.ts';
 import { RuleError, identifier, isEmail, isNeedInfo, PRIORITIES } from './rules.ts';
+import { st } from './i18n.ts';
 import { relationsOf } from './relations.ts';
 import { notifyMentions } from './mentions.ts';
 import { listAllProjects, seedProjectStatuses, type Project } from './projects.ts';
@@ -41,7 +42,7 @@ export async function getMeta(p: Project) {
       .from(projectMembers).innerJoin(users, eq(users.id, projectMembers.userId))
       .where(eq(projectMembers.projectId, p.id)).orderBy(asc(users.name)),
     // Tagi osób (#tag) i ich członkowie: dwa zapytania zamiast jednego na tag.
-    db.select({ id: userTags.id, name: userTags.name, color: userTags.color }).from(userTags).where(eq(userTags.projectId, p.id)).orderBy(asc(userTags.name)),
+    db.select({ id: userTags.id, name: userTags.name, color: userTags.color, createdBy: userTags.createdBy }).from(userTags).where(eq(userTags.projectId, p.id)).orderBy(asc(userTags.name)),
     db.select({ tagId: userTagMembers.tagId, userId: userTagMembers.userId }).from(userTagMembers)
       .innerJoin(userTags, eq(userTags.id, userTagMembers.tagId)).where(eq(userTags.projectId, p.id)),
   ]);
@@ -75,7 +76,7 @@ export async function listIssues(p: Project, filter: {
     // Czy zadanie było kiedyś w statusie testowym (do ostrzeżenia przy Done z pominięciem testów).
     wasTested: dsql<boolean>`exists (select 1 from activity a where a.issue_id = "issues"."id" and a.payload->>'kind' = 'status' and a.payload->>'to' in (select s.name from statuses s where s.project_id = "issues"."project_id" and s.role = 'testing'))`,
     // Niezamknięte zadania, na które to zadanie czeka (relacja blocks).
-    infoFromId: issues.infoFromId, infoQuestion: issues.infoQuestion, infoById: issues.infoById,
+    infoFromId: issues.infoFromId, infoTagId: issues.infoTagId, infoQuestion: issues.infoQuestion, infoById: issues.infoById,
     // Komentarze innych od ostatniego otwarcia zadania (bez wizyty: od założenia konta), tylko w "moich" zadaniach:
     // przypisanych do mnie, założonych przeze mnie, skomentowanych przeze mnie albo z wzmianką do mnie w skrzynce.
     unreadComments: filter.viewerId ? dsql<number>`(select case when ("issues"."assignee_id" = ${filter.viewerId} or "issues"."creator_id" = ${filter.viewerId}
@@ -190,6 +191,8 @@ export type IssueInput = {
   changeAi?: string;
   /** Need Info: kogo pytamy i o co (wymagane razem przy wejściu w Need Info z UI). */
   infoFromId?: number | null;
+  /** Albo #tag zamiast osoby: odpowiada każdy jego członek. Bez obu pól pytanie jest "do każdego". */
+  infoTagId?: number | null;
   infoQuestion?: string;
 };
 
@@ -238,7 +241,7 @@ export async function createIssue(p: Project, actor: Actor, input: IssueInput & 
 
 export async function updateIssue(p: Project, actor: Actor, number: number, patch: IssueInput) {
   // Do powiadomień o wzmiankach po zapisie: stary opis i komentarz z pytaniem.
-  const after: { prevDescription: string | null; asked: { id: number; body: string; to: number | null } | null } = { prevDescription: null, asked: null };
+  const after: { prevDescription: string | null; asked: { id: number; body: string; to: number | null; tagId: number | null } | null } = { prevDescription: null, asked: null };
   const result = await db.transaction(async (tx) => {
     const cur = await requireIssue(p, number, tx);
     const set: Partial<typeof issues.$inferInsert> = {};
@@ -286,8 +289,9 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
       set.completedAt = to.type === 'completed' ? new Date() : null;
       await log(tx, cur.id, actor, { kind: 'status', from: statusById.get(cur.statusId)?.name ?? null, to: to.name });
       // Wyjście z Need Info zamyka pytanie.
-      if (!isNeedInfo(to) && (cur.infoFromId || cur.infoQuestion)) {
+      if (!isNeedInfo(to) && (cur.infoFromId || cur.infoTagId || cur.infoQuestion)) {
         set.infoFromId = null;
+        set.infoTagId = null;
         set.infoQuestion = '';
         set.infoById = null;
         set.infoPrevStatusId = null;
@@ -319,28 +323,34 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
 
     const asking = patch.infoQuestion !== undefined && !!patch.infoQuestion.trim();
     // "Answered": jawne wyczyszczenie pytania (infoFromId: null bez treści) bez zmiany statusu.
-    if (patch.infoFromId === null && !asking && (cur.infoFromId || cur.infoQuestion)) {
+    if (patch.infoFromId === null && !asking && (cur.infoFromId || cur.infoTagId || cur.infoQuestion)) {
       set.infoFromId = null;
+      set.infoTagId = null;
       set.infoQuestion = '';
       set.infoById = null;
       set.infoPrevStatusId = null;
     }
     // Pytanie do osoby albo do każdego (infoFromId null/brak): pole na karcie plus komentarz w historii.
     if (asking) {
+      if (patch.infoFromId && patch.infoTagId) throw new RuleError('Ask a person or a tag, not both', 'invalid');
       if (patch.infoFromId) await checkMember(tx, p, patch.infoFromId);
-      const who = patch.infoFromId ? await userName(patch.infoFromId) : 'anyone';
+      // Tag musi należeć do projektu zgłoszenia.
+      const [askTag] = patch.infoTagId ? await tx.select().from(userTags).where(and(eq(userTags.id, patch.infoTagId), eq(userTags.projectId, p.id))) : [];
+      if (patch.infoTagId && !askTag) throw new RuleError('Tag not found', 'not_found');
+      const who = askTag ? `#${askTag.name}` : patch.infoFromId ? await userName(patch.infoFromId) : 'anyone';
       if (!who) throw new RuleError('Unknown user', 'invalid');
       // W treści komentarza @login, żeby pytanie było wzmianką (login jest unikalny, imię nie).
       const [asker] = patch.infoFromId ? await tx.select({ login: users.login }).from(users).where(eq(users.id, patch.infoFromId)) : [];
       set.infoFromId = patch.infoFromId ?? null;
+      set.infoTagId = askTag?.id ?? null;
       set.infoById = actor?.id ?? null;
       // Status sprzed Need Info: po odpowiedzi zadanie do niego wróci.
       set.infoPrevStatusId = set.statusId !== undefined && set.statusId !== cur.statusId ? cur.statusId : (cur.infoPrevStatusId ?? null);
       set.infoQuestion = patch.infoQuestion!.trim();
       await log(tx, cur.id, actor, { kind: 'question', to: who, question: set.infoQuestion });
-      const [q] = await tx.insert(comments).values({ issueId: cur.id, authorId: actor?.id ?? null, body: `**Question for ${asker ? `@${asker.login}` : 'anyone'}:** ${set.infoQuestion}` }).returning();
+      const [q] = await tx.insert(comments).values({ issueId: cur.id, authorId: actor?.id ?? null, body: `**${st('Question for {who}', { who: askTag ? `#${askTag.name}` : asker ? `@${asker.login}` : st('anyone') })}:** ${set.infoQuestion}` }).returning();
       set.infoCommentId = q.id;
-      after.asked = { id: q.id, body: q.body, to: patch.infoFromId ?? null };
+      after.asked = { id: q.id, body: q.body, to: patch.infoFromId ?? null, tagId: askTag?.id ?? null };
     }
 
     if (patch.labelIds !== undefined) {
@@ -365,7 +375,7 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
   });
   await publish({ type: 'issue', projectKey: p.key, number });
   if (after.prevDescription !== null) await notifyMentions(p, actor, result, { body: result.description, previousBody: after.prevDescription });
-  if (after.asked) await notifyMentions(p, actor, result, { body: after.asked.body, commentId: after.asked.id, questionFor: after.asked.to });
+  if (after.asked) await notifyMentions(p, actor, result, { body: after.asked.body, commentId: after.asked.id, questionFor: after.asked.to, questionForTag: after.asked.tagId });
   return result;
 }
 
@@ -503,13 +513,18 @@ export async function addComment(p: Project, actor: Actor, number: number, body:
 async function answerIfAsked(tx: Tx, actor: Actor, cur: typeof issues.$inferSelect): Promise<boolean> {
   // Komentarz agenta przez MCP nie zamyka pytania do człowieka.
   if (!actor || actor.ai || !cur.infoQuestion) return false;
-  const answers = cur.infoFromId ? cur.infoFromId === actor.id : cur.infoById !== actor.id;
+  let answers: boolean;
+  if (cur.infoTagId) {
+    // Pytanie do #tagu: odpowiada członek taga (nie pytający).
+    const [m] = await tx.select().from(userTagMembers).where(and(eq(userTagMembers.tagId, cur.infoTagId), eq(userTagMembers.userId, actor.id)));
+    answers = !!m && cur.infoById !== actor.id;
+  } else answers = cur.infoFromId ? cur.infoFromId === actor.id : cur.infoById !== actor.id;
   if (!answers) return false;
   const all = await tx.select().from(statuses).where(eq(statuses.projectId, cur.projectId));
   const now = all.find((x) => x.id === cur.statusId);
   const back = cur.infoPrevStatusId && now && isNeedInfo(now) ? all.find((x) => x.id === cur.infoPrevStatusId) : undefined;
   await tx.update(issues).set({
-    infoFromId: null, infoQuestion: '', infoById: null, infoPrevStatusId: null, infoCommentId: null,
+    infoFromId: null, infoTagId: null, infoQuestion: '', infoById: null, infoPrevStatusId: null, infoCommentId: null,
     ...(back ? { statusId: back.id, completedAt: null } : {}),
     updatedAt: new Date(),
   }).where(eq(issues.id, cur.id));

@@ -4,7 +4,7 @@ import { Avatar, Icon } from './icons.tsx';
 import { enterToSubmit } from './keys.ts';
 import { ident } from './project.ts';
 import { CurrentProjectBadge } from './ProjectSwitcher.tsx';
-import { t } from './i18n.ts';
+import { t, tn } from './i18n.ts';
 
 /**
  * Wejście w Need Info: zamiast samego statusu pytamy, kogo i o co.
@@ -28,12 +28,15 @@ function AskModal({ ask }: { ask: Ask }) {
   const me = useMe().data;
   const update = useUpdateIssue();
   const [who, setWho] = useState<number | 'anyone' | null>(null);
+  // Albo #tag (odpowiada jego członek); wybór osoby i taga wyklucza się.
+  const [tagId, setTagId] = useState<number | null>(null);
   const [q, setQ] = useState('');
   if (!meta) return null;
   const people = meta.users.filter((u) => u.active && u.id !== me?.id);
+  const tags = meta.tags ?? [];
   const send = () => {
-    if (!who || !q.trim()) return;
-    update.mutate({ number: ask.number, patch: { ...ask.extra, statusId: ask.statusId, infoFromId: who === 'anyone' ? null : who, infoQuestion: q } });
+    if ((!who && !tagId) || !q.trim()) return;
+    update.mutate({ number: ask.number, patch: { ...ask.extra, statusId: ask.statusId, infoFromId: tagId ? null : who === 'anyone' ? null : who, infoTagId: tagId, infoQuestion: q } });
     close();
   };
   return (
@@ -46,22 +49,31 @@ function AskModal({ ask }: { ask: Ask }) {
         <div className="crumbs"><CurrentProjectBadge /> {ident(ask.number)} <Icon.chevronRight size={12} /> {t('Need info')}</div>
         <div className="ask-title">{t('Who should answer?')}</div>
         <div className="ask-people">
-          <button className={`ask-person ${who === 'anyone' ? 'on' : ''}`} onClick={() => setWho('anyone')}>
+          <button className={`ask-person ${who === 'anyone' ? 'on' : ''}`} onClick={() => { setWho('anyone'); setTagId(null); }}>
             <span className="avatar" style={{ width: 22, height: 22, background: 'var(--bg-active)', color: 'var(--text-secondary)' }}><Icon.user size={13} /></span> {t('Anyone')}
           </button>
           {people.map((u) => (
-            <button key={u.id} className={`ask-person ${who === u.id ? 'on' : ''}`} onClick={() => setWho(u.id)}>
+            <button key={u.id} className={`ask-person ${who === u.id ? 'on' : ''}`} onClick={() => { setWho(u.id); setTagId(null); }}>
               <Avatar user={u} size={22} /> {u.name}
             </button>
           ))}
         </div>
+        {tags.length > 0 && (
+          <div className="ask-people" role="group" aria-label={t('Tags')}>
+            {tags.map((x) => (
+              <button key={x.id} className={`ask-person ${tagId === x.id ? 'on' : ''}`} style={{ '--tag': `var(--tag-${x.color})` } as React.CSSProperties}
+                title={tn(x.memberIds.length, '{n} person', '{n} people')} onClick={() => { setTagId(x.id); setWho(null); }}>
+                <span className="tag-dot" /> #{x.name} <span className="hint">{x.memberIds.length}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <textarea autoFocus placeholder={t('What do you need to know? (Enter to ask, Alt+Enter new line)')} value={q} onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') close(); enterToSubmit(e, send, setQ); }} />
         <div className="foot">
-          <span className="hint">{t('The question is added as a comment and highlighted for that person.')}</span>
           <span className="spacer" />
           <button className="btn" onClick={close}>{t('Cancel')}</button>
-          <button className="btn primary" disabled={!who || !q.trim()} onClick={send}>{t('Ask')} <span className="kbd" style={{ background: 'transparent', color: '#fff', borderColor: 'rgb(255 255 255 / 0.3)' }}>↵</span></button>
+          <button className="btn primary" disabled={(!who && !tagId) || !q.trim()} onClick={send}>{t('Ask')} <span className="kbd" style={{ background: 'transparent', color: '#fff', borderColor: 'rgb(255 255 255 / 0.3)' }}>↵</span></button>
         </div>
       </div>
     </div>

@@ -16,7 +16,7 @@ export type AppConfig = { demo: boolean; repoUrl: string | null; providers: { gi
 export type TagColor = 'green' | 'teal' | 'sky' | 'violet' | 'pink' | 'amber' | 'blue' | 'slate';
 export const TAG_COLORS: TagColor[] = ['green', 'teal', 'sky', 'violet', 'pink', 'amber', 'blue', 'slate'];
 /** Tag osób (#nazwa): pisząc go, powiadamiasz wszystkich członków. */
-export type Tag = { id: number; name: string; color: TagColor; memberIds: number[] };
+export type Tag = { id: number; name: string; color: TagColor; createdBy: number | null; memberIds: number[] };
 export type Meta = { statuses: Status[]; labels: Label[]; users: User[]; priorities: string[]; tags: Tag[] };
 export type InboxItem = {
   id: number; kind: 'mention' | 'tag' | 'question'; projectKey: string; issueNumber: number; issueTitle: string;
@@ -40,7 +40,7 @@ export type IssueRow = {
   parentId: number | null; sprintId: number | null; sortOrder: number; analysisRequestedAt: string | null; analysisClaimedAt: string | null;
   hasAnalysis: boolean; hasChangeNotes: boolean; createdAt: string; updatedAt: string; completedAt: string | null;
   labelIds: number[]; subTotal: number; subDone: number; waitingOn: number[];
-  infoFromId: number | null; infoQuestion: string; infoById: number | null;
+  infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null;
   unreadComments: number; wasTested: boolean;
 };
 
@@ -81,7 +81,7 @@ export type IssueDetail = {
   id: number; number: number; identifier: string; title: string; description: string; statusId: number;
   assigneeId: number | null; creatorId: number | null; priority: number; parentId: number | null; sprintId: number | null;
   analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; analysisResultDeep: boolean; analysisClaimedAt: string | null; analysisClaimedDeviceName: string | null; analysisCanRun: boolean; analysisNoCapablePc: boolean; analysisFailedAt: string | null; analysisError: string; teamQueue: boolean; changeHuman: string; changeAi: string;
-  infoFromId: number | null; infoQuestion: string; infoById: number | null;
+  infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null;
   createdAt: string; updatedAt: string; completedAt: string | null; labelIds: number[];
   parent: { number: number; title: string } | null;
   children: { number: number; title: string; statusId: number; assigneeId: number | null; priority: number; hasChangeNotes: boolean }[];
@@ -96,7 +96,7 @@ export type IssueDetail = {
 export type IssuePatch = Partial<{
   title: string; description: string; statusId: number; assigneeId: number | null; priority: number; labelIds: number[];
   parentNumber: number | null; sprintId: number | null; sortOrder: number; analysis: string; changeHuman: string; changeAi: string;
-  infoFromId: number | null; infoQuestion: string;
+  infoFromId: number | null; infoTagId: number | null; infoQuestion: string;
 }>;
 
 export function markDemoSession() { try { sessionStorage.setItem('demoSession', '1'); } catch { /* prywatne okno */ } }
@@ -286,8 +286,9 @@ export function useLiveUpdates(enabled: boolean) {
   }, [enabled, qc]);
 }
 
-/** Pytanie z Need Info czeka na mnie: zadane mi wprost albo "do każdego" przez kogoś innego. */
-export function isAskedTo(i: { infoFromId: number | null; infoQuestion: string; infoById: number | null }, meId: number | undefined) {
+/** Pytanie z Need Info czeka na mnie: zadane mi wprost, mojemu #tagowi (trzeba podać tagi z meta) albo "do każdego" przez kogoś innego. */
+export function isAskedTo(i: { infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null }, meId: number | undefined, tags?: Tag[]) {
   if (!meId || !i.infoQuestion) return false;
+  if (i.infoTagId) return i.infoById !== meId && !!tags?.find((x) => x.id === i.infoTagId)?.memberIds.includes(meId);
   return i.infoFromId === meId || (i.infoFromId == null && i.infoById !== meId);
 }
