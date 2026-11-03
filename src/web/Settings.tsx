@@ -392,7 +392,10 @@ function ProjectGeneral() {
         <span className="s-label">{t('Sprint review')}</span>
         <Tooltip text={ro}>
           <button className={`switch ${p.reviewMeeting ? 'on' : ''}`} role="switch" aria-checked={p.reviewMeeting} aria-label={t('Plan a sprint review meeting')} disabled={!!ro}
-            onClick={() => void patch({ reviewMeeting: !p.reviewMeeting }).then(() => qc.invalidateQueries({ queryKey: ['meetings'] }))} />
+            onClick={() => void askConfirm(p.reviewMeeting
+              ? { title: t('Turn off the sprint review?'), body: t('Planned review meetings disappear from the calendar for everyone.'), action: t('Turn off') }
+              : { title: t('Turn on the sprint review?'), body: t('Every sprint gets a review meeting in the calendar for the whole team.'), action: t('Turn on'), danger: false })
+              .then((ok) => { if (ok) void patch({ reviewMeeting: !p.reviewMeeting }).then(() => qc.invalidateQueries({ queryKey: ['meetings'] })); })} />
         </Tooltip>
         <span className="hint">{t('meeting in the calendar on the last working day at')}</span>
         <Tooltip text={ro ?? off}>
@@ -509,7 +512,10 @@ function ProjectPeople() {
               <div className="seg">
                 {(['member', 'admin'] as const).map((r) => (
                   <button key={r} className={u.role === r ? 'on' : ''} disabled={!!ro || lastAdmin}
-                    onClick={() => u.role !== r && void api(`/api/projects/${p.key}/members`, { method: 'POST', body: { login: u.login, role: r } }).then(refresh)}>
+                    onClick={() => u.role !== r && void askConfirm(r === 'admin'
+                      ? { title: t('Make {name} a project admin?', { name: u.name }), body: t('They can change settings and members of {project}.', { project: p.name }), action: t('Make admin'), danger: false }
+                      : { title: t('Make {name} a member?', { name: u.name }), body: t('They lose admin rights in {project}.', { project: p.name }), action: t('Remove admin') })
+                      .then((ok) => { if (ok) void api(`/api/projects/${p.key}/members`, { method: 'POST', body: { login: u.login, role: r } }).then(refresh); })}>
                     {r === 'admin' ? t('Admin') : t('Member')}
                   </button>
                 ))}
@@ -589,7 +595,8 @@ function InviteLinks() {
             <button className="btn sm" disabled={i.status === 'accepted'} onClick={() => renew(i.id)}>{t('New link')}</button>
           </Tooltip>
           <Tooltip text={i.status === 'pending' ? null : i.status === 'accepted' ? t('Already accepted') : t('Already expired')}>
-            <button className="btn sm danger" disabled={i.status !== 'pending'} onClick={() => void api(`/api/projects/${key}/invites/${i.id}`, { method: 'DELETE' }).then(refresh)}>{t('Revoke')}</button>
+            <button className="btn sm danger" disabled={i.status !== 'pending'} onClick={() => void askConfirm({ title: t('Revoke this invite link?'), body: i.createdByName ? t('Created by {name}. The link stops working.', { name: i.createdByName }) : t('The link stops working.'), action: t('Revoke') })
+              .then((ok) => { if (ok) void api(`/api/projects/${key}/invites/${i.id}`, { method: 'DELETE' }).then(refresh); })}>{t('Revoke')}</button>
           </Tooltip>
         </div>
       ))}
@@ -754,10 +761,21 @@ function Accounts() {
           </span>
           {/* Login GitHub jest edytowalny, żeby poprawić mapowanie z importu bez dublowania osoby. */}
           <input className="input" style={{ width: 150 }} defaultValue={u.login} disabled={demo} title={demo ? t('Disabled in the demo') : t('GitHub login')}
-            onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== u.login && void saveUser({ id: u.id, login: e.target.value.trim() })} />
+            onBlur={(e) => {
+              const el = e.target, login = el.value.trim();
+              if (!login || login === u.login) return;
+              void askConfirm({ title: t('Change the login of {name} to {login}?', { name: u.name, login }), body: t('From now on they sign in with this GitHub account.'), action: t('Change login'), danger: false })
+                .then((ok) => { if (ok) void saveUser({ id: u.id, login }); else el.value = u.login; });
+            }} />
           <Tooltip text={demo ? t('Disabled in the demo') : u.id === me?.id ? t('You cannot remove your own admin role') : t('Workspace admins manage accounts and every project')}>
             <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input type="checkbox" checked={u.isAdmin} disabled={demo || u.id === me?.id} onChange={(e) => void saveUser({ id: u.id, login: u.login, isAdmin: e.target.checked })} /> {t('Admin')}
+              <input type="checkbox" checked={u.isAdmin} disabled={demo || u.id === me?.id} onChange={(e) => {
+                const isAdmin = e.target.checked;
+                void askConfirm(isAdmin
+                  ? { title: t('Make {name} a workspace admin?', { name: u.name }), body: t('They get admin rights in every project and can manage accounts.'), action: t('Make admin'), danger: false }
+                  : { title: t('Remove workspace admin from {name}?', { name: u.name }), body: t('They keep access only to the projects they are a member of.'), action: t('Remove admin') })
+                  .then((ok) => { if (ok) void saveUser({ id: u.id, login: u.login, isAdmin }); });
+              }} /> {t('Admin')}
             </label>
           </Tooltip>
           {/* Zawsze w tym samym miejscu (wyszarzony bez hasła), żeby wiersze się nie rozjeżdżały. */}
@@ -765,7 +783,9 @@ function Accounts() {
             <button className="btn sm" disabled={demo || !u.hasPassword} onClick={() => void api<{ url: string }>(`/api/admin/users/${u.id}/reset-link`, { method: 'POST' }).then((r) => copyText(r.url, t('Password link copied')))}>{t('Reset password')}</button>
           </Tooltip>
           <Tooltip text={demo ? t('Disabled in the demo') : u.id === me?.id ? t('You cannot deactivate yourself') : null}>
-            <button className="btn sm" disabled={demo || u.id === me?.id} onClick={() => void saveUser({ id: u.id, login: u.login, active: !u.active })}>{u.active ? t('Deactivate') : t('Activate')}</button>
+            <button className="btn sm" disabled={demo || u.id === me?.id} onClick={() => void (u.active
+              ? askConfirm({ title: t('Deactivate {name}?', { name: u.name }), body: t('They can no longer sign in. You can activate the account again later.'), action: t('Deactivate') })
+              : Promise.resolve(true)).then((ok) => { if (ok) void saveUser({ id: u.id, login: u.login, active: !u.active }); })}>{u.active ? t('Deactivate') : t('Activate')}</button>
           </Tooltip>
         </div>
       ))}
