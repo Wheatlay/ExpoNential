@@ -26,3 +26,9 @@ export function useNow(ms = 30_000) {
 
 /** Jak CLAIM_TTL_MIN na serwerze: po tylu minutach bez sygnału od agenta analiza liczy się jako utknięta. */
 export const CLAIM_TTL_MIN = 30;
+
+/** Data dla człowieka zawsze dd.mm.rrrr, niezależnie od języka przeglądarki. */
+export function fmtDate(d: string | number | Date) {
+  const x = new Date(d);
+  return `${String(x.getDate()).padStart(2, '0')}.${String(x.getMonth() + 1).padStart(2, '0')}.${x.getFullYear()}`;
+}

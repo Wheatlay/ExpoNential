@@ -149,7 +149,7 @@ function Sidebar({ page }: { page: string }) {
   );
   return (
     <>
-      {open && <div className="backdrop mobile-only sidebar-backdrop" style={{ padding: 0, zIndex: 79 }} onClick={() => setOpen(false)} />}
+      {open && <div className="backdrop mobile-only sidebar-backdrop" onClick={() => setOpen(false)} />}
       <nav className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-top">
           <button className="icon-btn rail-only" onClick={() => toggleSidebar()} title={open ? t('Collapse menu') : t('Expand menu')} aria-label={t('Menu')}><Icon.menu size={16} /></button>
@@ -168,7 +168,7 @@ function Sidebar({ page }: { page: string }) {
           {/* Ja jak każda osoba w aplikacji: klik otwiera moją kartę (tagi, nad czym pracuję, moje issues). */}
           <PersonLink userId={me.id} className="me-link">
             <Avatar user={useMeta().data?.users.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={22} />
-            <span className="me-name" style={{ fontWeight: 500 }}>{me.name}</span>
+            <span className="me-name">{me.name}</span>
           </PersonLink>
           <button className="icon-btn" title={t('Log out')} aria-label={t('Log out')} onClick={() => void api('/auth/logout', { method: 'POST' }).then(() => location.assign('/login'))}><Icon.logout size={15} /></button>
         </div>
@@ -236,7 +236,7 @@ window.addEventListener('unhandledrejection', (e) => {
   const r = e.reason;
   if (r instanceof ApiError) {
     e.preventDefault();
-    if (r.code !== 'demo' && r.code !== 'rate') toast(r.message || t('Something went wrong'), 'err');
+    if (r.code !== 'demo' && r.code !== 'rate') toast(r.message ? t(r.message) : t('Something went wrong'), 'err');
   } else if (r instanceof TypeError && /Failed to fetch|NetworkError|Load failed/i.test(r.message)) {
     e.preventDefault();
     toast(t('No connection to Exponential. The change was not saved.'), 'err');

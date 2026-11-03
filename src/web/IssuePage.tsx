@@ -28,8 +28,8 @@ import { rememberIssue } from './SidebarExtras.tsx';
 import { ident } from './project.ts';
 import { t, tn } from './i18n.ts';
 
-export function MarkdownField({ value, onSave, placeholder, minHeight }: {
-  value: string; onSave: (v: string) => void; placeholder: string; minHeight?: number;
+export function MarkdownField({ value, onSave, placeholder, size }: {
+  value: string; onSave: (v: string) => void; placeholder: string; size?: 'sm' | 'md';
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -62,8 +62,7 @@ export function MarkdownField({ value, onSave, placeholder, minHeight }: {
     <div>
       <textarea
         ref={ref}
-        className="md-edit"
-        style={{ minHeight: minHeight ?? 160 }}
+        className={`md-edit ${size ? `md-${size}` : ''}`}
         value={draft}
         placeholder={placeholder}
         onChange={(e) => setDraft(e.target.value)}
@@ -80,7 +79,7 @@ export function MarkdownField({ value, onSave, placeholder, minHeight }: {
       {mention.popup}
       <Attachments urls={att.urls} onRemove={att.remove} />
       <div className="edit-actions">
-        <span className="hint" style={{ marginRight: 'auto' }}>{t('Enter to save · Alt+Enter new line · paste images')}</span>
+        <span className="hint edit-hint">{t('Enter saves · Alt+Enter new line')}</span>
         <button className="btn sm" onClick={() => { setDraft(value); setEditing(false); }}>{t('Cancel')}</button>
         <button className="btn sm primary" onClick={save}>{t('Save')}</button>
       </div>
@@ -148,7 +147,7 @@ export function IssuePage({ number }: { number: number }) {
   });
 
   if (q.isError && !issue) {
-    if (q.error instanceof ApiError && q.error.status === 404) return <div className="issue-page"><div className="issue-content"><h2>{t('{id} not found', { id: ident(number) })}</h2><a className="btn" {...linkProps('/')}>{t('Back to board')}</a></div></div>;
+    if (q.error instanceof ApiError && q.error.status === 404) return <div className="issue-page"><div className="issue-content"><div className="empty-block"><b>{t('{id} not found', { id: ident(number) })}</b><a className="btn" {...linkProps('/')}>{t('Back to board')}</a></div></div></div>;
     return <div className="issue-page"><div className="issue-content"><ErrorState error={q.error} onRetry={() => void q.refetch()} /></div></div>;
   }
   if (!issue || !meta || !target) return <div className="issue-page" />;
@@ -162,7 +161,7 @@ export function IssuePage({ number }: { number: number }) {
   const local = !!me?.hasAgent;
   // Stare skrypty na PC: serwer i tak nie wyda im zlecenia, więc nie dajemy go złożyć (powód + skrót do aktualizacji obok).
   const outdated = !!me?.agentOutdated && local && !me?.demo;
-  const outdatedReason = t('This computer has an old agent. Update it first (Settings > My AI).');
+  const outdatedReason = t('This PC has an old agent. Update it first (Settings › My AI).');
   // Bez podłączonego AI link vscode:// albo nic nie otworzy, albo otworzy klienta bez dostępu do zgłoszenia: zamiast błędu
   // popover pod przyciskiem prowadzi do kreatora z celem tej funkcji.
   const ai = me?.aiStatus;
@@ -176,7 +175,7 @@ export function IssuePage({ number }: { number: number }) {
     await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep } });
     void qc.invalidateQueries({ queryKey: ['issue', number] });
     if (local) toast(me?.agentOnline ? t('Queued. It runs on your PC in a moment.') : t('Queued. Your PC is offline, it runs when it is on.'));
-    else toast(t('AI analysis requested. A computer with the agent runs it.'));
+    else toast(t('AI analysis requested. A PC with the agent runs it.'));
   };
   // Stan zlecenia: czeka (jest online PC, który je weźmie) / czeka na PC (nikt nie słucha) / biegnie na PC (claim).
   // Utknięte liczymy od ostatniego sygnału zajętego agenta (claim jest odświeżany), nie od zlecenia: kolejka przy wyłączonym PC to nie awaria.
@@ -207,12 +206,12 @@ export function IssuePage({ number }: { number: number }) {
               <Tooltip text={outdated ? outdatedReason : me?.agentOnline ? null : t('Your PC is offline')}>
                 <button className="btn sm start-btn" data-tour="start-work" disabled={outdated || !me?.agentOnline}
                   onClick={() => void startOnPc(number).catch((e: Error) => toast(e.message, 'err'))}>
-                  <Icon.play size={12} /> {t('Start on my PC')}
+                  <Icon.play size={12} /> {t('Start work')}
                 </button>
               </Tooltip>
             ) : (
               <button className="btn sm start-btn" data-tour="start-work" onClick={(e) => (demo ? setStartOpen(true) : local || ai?.client ? void startWork(number) : openAiHint(e.currentTarget, 'start', 3))} title={t('Opens Claude Code in VS Code with this issue, assigns you and moves it to In Progress')}>
-                <Icon.play size={12} /> {t('Start work in Claude')}
+                <Icon.play size={12} /> {t('Start work')}
               </button>
             )}
           </div>
@@ -226,7 +225,7 @@ export function IssuePage({ number }: { number: number }) {
               <div className={`question-banner ${mine ? 'me' : ''}`}>
                 <Icon.question size={16} />
                 <div className="q-body">
-                  <div className="q-who">{mine ? (asked ? t('Question for you') : t('Question for everyone')) : t('Waiting for {name}', { name: asked?.name ?? t('anyone') })}{by ? ` · ${t('asked by {name}', { name: by.name })}` : ''}</div>
+                  <div className="q-who">{mine ? (asked ? t('Asked you') : t('Question for everyone')) : t('Waiting for {name}', { name: asked?.name ?? t('anyone') })}{by ? ` · ${t('asked by {name}', { name: by.name })}` : ''}</div>
                   <div className="q-text">{issue.infoQuestion}</div>
                 </div>
                 {!mine && <button className="btn sm" onClick={() => save({ infoFromId: null })} title={t('Close the question without an answer')}>{t('Close question')}</button>}
@@ -234,7 +233,7 @@ export function IssuePage({ number }: { number: number }) {
               </div>
             );
           })()}
-          <div style={{ marginTop: 14 }}>
+          <div className="desc-wrap">
             {/* Opis z etykietą i ramką, żeby było widać, że to pole (i że to nie odpowiedź na pytanie). */}
             <div className="desc-field">
               <div className="desc-label">{t('Description')}</div>
@@ -250,44 +249,43 @@ export function IssuePage({ number }: { number: number }) {
           {/* ---- pola AI: zwijane paski z podglądem (wariant C) ---- */}
           <div className="section fold-group">
             <FoldBar id="analysis" tour="analysis" badge={<span className="badge ai">AI</span>} name={t('Problem analysis')}
-              preview={issue.analysisRequestedAt ? t('Waiting for Claude…') : analysisPreview(issue) || t('No analysis yet')}
+              preview={issue.analysisRequestedAt ? t('Waiting for analysis…') : analysisPreview(issue) || t('No analysis yet')}
               meta={issue.analysisUpdatedAt && !issue.analysisRequestedAt ? `${timeAgo(issue.analysisUpdatedAt)}${!issue.analysisRequestedAt && issue.analysisResultDeep ? ` · ${t('Deep')}` : ''}` : ''}
               tools={<span className="fold-tools">
                 {/* Kolejka zespołu jest domyślnie wyłączona; gdy włączona, widać to przy analizie, bo zmienia, czyj PC ją uruchomi. */}
                 {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in project settings > AI agent.")}>{t('Team queue')}</span>}
                 {/* Czeka, a mój PC ma stare skrypty: to zwykle prawdziwa przyczyna, więc mówimy o niej tutaj, nie tylko w Ustawieniach. */}
                 {outdated && !issue.analysisClaimedAt && (
-                  <span className="pill stalled" role="button" title={t('This computer has an old agent and may not pick this up. Click to open Settings > My AI.')}
+                  <span className="pill stalled" role="button" title={t('This PC has an old agent and may not pick this up. Click to open Settings › My AI.')}
                     onClick={(e) => { e.stopPropagation(); navigate('/settings#claude'); }}>{t('Update needed')}</span>
                 )}
                 {issue.analysisRequestedAt && <>
                   <span className={`pill ${failed || stalled || waitingForPc || noRepoPc ? 'stalled' : 'ai'}`}
                     title={failed ? t('The analysis failed on the PC: {error}. Analyze again or cancel.', { error: issue.analysisError || '?' })
-                      : stalled ? t('No analysis after 15 minutes: the agent did not start or stopped. Analyze again or cancel.')
-                      : waitingForPc ? t('No computer with the agent is online for this request. It runs when one is on.') : noRepoPc ? t('Waiting for a PC with this project\'s repo') : undefined}>
-                    <Icon.sparkle size={12} /> <span className="pill-text">{failed ? t('Failed') : stalled ? t('Stalled') : waitingForPc ? t('Waiting for a PC') : noRepoPc ? t('Waiting for a PC with this project\'s repo')
+                      : stalled ? t('No analysis after {min} minutes: the agent did not start or stopped. Analyze again or cancel.', { min: CLAIM_TTL_MIN })
+                      : waitingForPc ? t('No PC with the agent is online for this request. It runs when one is on.') : noRepoPc ? t('Waiting for a PC with this project\'s repo') : undefined}>
+                    <Icon.sparkle size={12} /> <span className="pill-text">{failed ? t('Failed') : stalled ? t('Stalled') : waitingForPc || noRepoPc ? t('Waiting for a PC')
                       : claimedAt ? t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') }) : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(failed ? issue.analysisFailedAt! : claimedAt ?? issue.analysisRequestedAt)}</span></span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
                 </>}
                 {(!issue.analysisRequestedAt || stalled || failed) && <>
-                    <Tooltip text={outdated ? outdatedReason : null}>
-                      <button className="btn sm ai-btn" data-tour="analyze" disabled={outdated} title={outdated ? undefined : local ? t('Runs Claude on your computer, read-only') : t('Marks the issue for analysis by Claude')}
+                    <Tooltip text={outdated ? outdatedReason : local ? t('Runs on your PC, read-only') : t('Marks the issue for AI analysis')}>
+                      <button className="btn sm ai-btn" data-tour="analyze" disabled={outdated}
                         onClick={(e) => { e.stopPropagation(); void analyze(false, e.currentTarget); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
                     </Tooltip>
-                    {demo && <button className="btn sm ai-btn" disabled title={t('Disabled in the demo')} onClick={(e) => e.stopPropagation()}>{t('Deep')}</button>}
-                    {!demo && local && <Tooltip text={outdated ? outdatedReason : null}>
-                      <button className="btn sm ai-btn" disabled={outdated} title={outdated ? undefined : t('Deeper analysis with a stronger model: slower and more expensive')} onClick={(e) => { e.stopPropagation(); void analyze(true, e.currentTarget); }}>{t('Deep')}</button>
-                    </Tooltip>}
+                    {/* Deep jest zawsze widoczny; bez agenta (albo w demo) wyszarzony z powodem. */}
+                    <Tooltip text={demo ? t('Disabled in the demo') : outdated ? outdatedReason : !local ? t('Deep needs the agent on your PC') : t('Deeper analysis with a stronger model: slower and more expensive')}>
+                      <button className="btn sm ai-btn" disabled={demo || outdated || !local} onClick={(e) => { e.stopPropagation(); void analyze(true, e.currentTarget); }}>{t('Deep')}</button>
+                    </Tooltip>
                 </>}
                   </span>}>
               <div className="panel ai">
                 {issue.analysisData
                   ? <AnalysisView issue={issue} data={issue.analysisData} />
                   : demo && issue.analysisRequestedAt && !issue.analysis.trim()
-                  ? <div className="analyzing"><Icon.sparkle size={14} /> {t('Agent is analyzing…')}</div>
+                  ? <div className="analyzing"><Icon.sparkle size={14} /> {t('Analysis in progress…')}</div>
                   : <MarkdownField value={issue.analysis} onSave={(analysis) => save({ analysis })}
-                  placeholder={issue.analysisRequestedAt ? t('Claude will write the analysis here.') : local ? t('No analysis yet. Analyze runs Claude on your computer and writes it here in a few minutes.')
-                    : t('No analysis yet. Click Analyze and Claude will look at the problem and the code.')} minHeight={120} />}
+                  placeholder={issue.analysisRequestedAt ? t('Analysis will appear here') : t('No analysis yet')} size="md" />}
               </div>
             </FoldBar>
             <FoldBar id="human" badge={<span className="badge human">HUMAN</span>} name={t('Summary')}
@@ -295,7 +293,7 @@ export function IssuePage({ number }: { number: number }) {
               meta={lineCount(issue.changeHuman)} required={!issue.changeHuman.trim()}>
               <div className="panel human">
                 <MarkdownField value={issue.changeHuman} onSave={(changeHuman) => save({ changeHuman })}
-                  placeholder={t('Short summary for people: one change per line. Written by the close-ticket skill.')} minHeight={100} />
+                  placeholder={t('One change per line')} size="sm" />
               </div>
             </FoldBar>
             <FoldBar id="tech" badge={<span className="badge tech">TECH</span>} name={t('Change log')}
@@ -303,7 +301,7 @@ export function IssuePage({ number }: { number: number }) {
               meta="" required={!issue.changeAi.trim()}>
               <div className="panel tech">
                 <MarkdownField value={issue.changeAi} onSave={(changeAi) => save({ changeAi })}
-                  placeholder={t('Detailed description of every change for the next agent: commits, files, reasons, verification.')} minHeight={140} />
+                  placeholder={t('Commits, files, reasons, verification')} />
               </div>
             </FoldBar>
           </div>
@@ -374,7 +372,7 @@ export function IssuePage({ number }: { number: number }) {
         )}
         <div className="props-group hint">
           {t('Created by {name}', { name: creator?.name ?? t('unknown') })} · <span title={fullDate(issue.createdAt)}>{timeAgo(issue.createdAt)}</span>
-          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          <div className="copy-row">
             <button className="btn sm" onClick={() => copyText(`${location.origin}/issue/${ident(number)}`, t('Link copied'))}><Icon.link size={13} /> {t('Copy link')}</button>
             <button className="btn sm" onClick={() => copyText(`${ident(number)}`, t('ID copied'))}><Icon.copy size={13} /> ID</button>
           </div>
@@ -413,7 +411,7 @@ function SubIssues({ issue, meta, done }: { issue: IssueDetail; meta: Meta; done
   };
   if (!issue.children.length && !adding) {
     return (
-      <div className="section" style={{ marginTop: 18 }}>
+      <div className="section add-sub">
         <button className="btn sm" onClick={() => setAdding(true)}><Icon.sub size={13} /> {t('Add sub-issue')}</button>
       </div>
     );
@@ -603,7 +601,7 @@ function CommentEditor({ initial, onSave, onCancel }: { initial: string; onSave:
   const mention = useMentionAutocomplete(grow, v, setV);
   return (
     <div>
-      <textarea ref={grow} className="md-edit" style={{ minHeight: 100 }} autoFocus value={v} onChange={(e) => setV(e.target.value)}
+      <textarea ref={grow} className="md-edit md-sm" autoFocus value={v} onChange={(e) => setV(e.target.value)}
         onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; if (e.key === 'Escape') onCancel(); enterToSubmit(e, () => onSave(v), setV); }} />
       <MentionHint text={v} />
       {mention.popup}
@@ -631,7 +629,7 @@ function Relations({ issue, meta }: { issue: IssueDetail; meta: Meta }) {
     <div className="props-group">
       <h4 style={{ display: 'flex', alignItems: 'center' }}>
         {t('Relations')}
-        <button className="icon-btn" style={{ marginLeft: 'auto', width: 22, height: 22 }} title={t('Add relation')} aria-label={t('Add relation')}
+        <button className="icon-btn rel-add" title={t('Add relation')} aria-label={t('Add relation')}
           onClick={(e) => openMenu(e.currentTarget, relationMenu(qc.getQueryData<IssueRow[]>(['issues']) ?? [], issue.number, refresh, meta.statuses))}>
           <Icon.plus size={13} />
         </button>
@@ -714,7 +712,7 @@ function QuestionFooter({ issue, meId }: { issue: IssueDetail; meId?: number }) 
     .then(() => { void qc.invalidateQueries({ queryKey: ['issue', issue.number] }); void qc.invalidateQueries({ queryKey: ['issues'] }); });
   return (
     <div className="reply waiting">
-      <span className="badge req">{mine ? t('Question for you') : t('Waiting for answer')}</span>
+      <span className="badge req">{mine ? t('Asked you') : t('Waiting for answer')}</span>
       {mine ? <AnswerBox number={issue.number} />
         : <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={close} title={t('Close the question without an answer')}>{t('Close question')}</button>}
     </div>
@@ -771,12 +769,13 @@ function DemoStartModal({ number, onClose }: { number: number; onClose: () => vo
           </div>
         </div>
         <pre className="demo-prompt">{prompt.data ?? (prompt.isError ? t('Could not load the prompt') : t('Loading…'))}</pre>
-        <div className="hint">{t('In production this opens Claude Code in VS Code with the prompt above.')}</div>
         <div className="foot">
           <button className="btn" disabled={!prompt.data} onClick={() => copyText(prompt.data ?? '', t('Copied'))}><Icon.copy size={13} /> {t('Copy')}</button>
           <span className="spacer" />
           <button className="btn" onClick={onClose}>{t('Cancel')}</button>
-          <button className="btn primary" disabled={busy} onClick={() => void run()}><Icon.play size={12} /> {t('Run the agent (replay)')}</button>
+          <Tooltip text={t('In production this opens Claude Code in VS Code with the prompt above.')}>
+            <button className="btn primary" disabled={busy} onClick={() => void run()}><Icon.play size={12} /> {t('Run the agent (replay)')}</button>
+          </Tooltip>
         </div>
       </div>
     </div>

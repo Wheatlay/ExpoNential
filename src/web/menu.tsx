@@ -225,9 +225,12 @@ export function Tooltip({ text, children }: { text: string | null | undefined; c
   const id = useId();
   if (!text) return <>{children}</>;
   const show = (e: { currentTarget: HTMLElement }) => { const r = e.currentTarget.getBoundingClientRect(); setPos({ x: r.left, y: r.bottom + 6 }); };
+  // Wyłączony przycisk nie dostaje fokusu, więc powód czytelny z klawiatury daje sam wrapper.
+  const childDisabled = isValidElement<{ disabled?: boolean }>(children) && !!children.props.disabled;
   return (
     <span
       style={{ display: 'inline-flex' }}
+      tabIndex={childDisabled ? 0 : undefined} aria-describedby={childDisabled ? id : undefined}
       onMouseEnter={show} onMouseLeave={() => setPos(null)}
       onFocus={show} onBlur={() => setPos(null)}
     >

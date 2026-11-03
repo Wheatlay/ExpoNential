@@ -46,4 +46,4 @@ export function openAiHint(anchor: HTMLElement, kind: 'analyze' | 'start', goal:
 export const useHint = () => useSyncExternalStore((fn) => { hintSubs.push(fn); return () => { hintSubs = hintSubs.filter((s) => s !== fn); }; }, () => hint);
 
 /** Okno albo podpowiedź jest otwarte: dopiero wtedy ładujemy ciężki kod kreatora (SetupWizard.tsx). */
-export const useWizardActive = () => useSnap().open || !!useHint();
+export const useWizardActive = () => { const open = useSnap().open; const hint = useHint(); return open || !!hint; };

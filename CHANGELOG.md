@@ -2,6 +2,20 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.7] - 04.11.2026
+
+UI and UX consistency pass.
+
+- One vocabulary everywhere: "PC" for the machine (also in Polish), "agent" for what runs on it, "AI" for features; paths written "Settings › My AI". Start buttons read "Start work".
+- Unavailable options are grayed out with the reason when knowing about them helps (Deep, Today, Carry over all); the reason can be read from the keyboard too. Clutter stays hidden (empty counters, admin-only settings).
+- Dialogs: Cancel on the left, the main action on the right, destructive actions on the left edge; New issue has a Cancel button.
+- Colors for projects, labels and statuses are picked from the palette.
+- Explanatory sentences moved into tooltips; empty and error views share one layout (Inbox, Calendar, Sprint review, issue not found, empty board).
+- Dates are dd.mm.yyyy everywhere; poll days read "Tue 04.11".
+- Duplicate names (e.g. labels) show "This name is already taken" instead of "Server error"; server errors are translated.
+- Visual cleanup: sizes, shadows and widths follow the design system.
+- Connect AI no longer offers the removed terminal login.
+
 ## Server [1.3.6] - 03.11.2026
 
 - Opening an uploaded image no longer crashes the server (regression in 1.3.5).

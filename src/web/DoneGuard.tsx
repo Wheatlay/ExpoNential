@@ -89,8 +89,8 @@ function DoneGuardModal({ g }: { g: Guard }) {
           </div>
         )}
         <div className="foot">
-          <button className="btn" onClick={close}>{t('Cancel')}</button>
           <span className="spacer" />
+          <button className="btn" onClick={close}>{t('Cancel')}</button>
           {g.skippedTesting && testing && <button className="btn" onClick={toTesting}>{t('Move to {name} instead', { name: testing.name })}</button>}
           <button className={`btn ${filled || !g.missingNotes ? 'primary' : 'warn'}`} onClick={done}>
             {g.missingNotes && filled ? t('Save notes and move to Done') : t('Move to Done anyway')}

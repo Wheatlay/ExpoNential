@@ -130,14 +130,14 @@ export function issueContextMenu(opts: {
   const { meta, sprints, t: tg, update, meId } = opts;
   const url = `${location.origin}/issue/${ident(tg.number)}`;
   const items: MenuItem[] = [
-    { key: 'status', label: t('Status'), icon: <StatusIcon status={meta.statuses.find((s) => s.id === tg.statusId) ?? { type: 'unstarted', color: '#888' }} />, kbd: ['S'], submenu: () => statusMenu(meta, tg, update) },
+    { key: 'status', label: t('Status'), icon: <StatusIcon status={meta.statuses.find((s) => s.id === tg.statusId) ?? { type: 'unstarted', color: 'var(--text-tertiary)' }} />, kbd: ['S'], submenu: () => statusMenu(meta, tg, update) },
     { key: 'priority', label: t('Priority'), icon: <PriorityIcon priority={tg.priority} colored={false} />, kbd: ['P'], submenu: () => priorityMenu(meta, tg, update) },
     { key: 'assignee', label: t('Assignee'), icon: <Icon.user size={14} />, kbd: ['A'], submenu: () => assigneeMenu(meta, tg, update, meId) },
     { key: 'labels', label: t('Labels'), icon: <Icon.label size={14} />, kbd: ['L'], submenu: () => labelMenu(meta, tg, update) },
     { key: 'sprint', label: t('Sprint'), icon: <Icon.sprint size={14} />, kbd: ['C'], submenu: () => sprintMenu(sprints, tg, update) },
     { key: 'sep1', separator: true },
     ...(opts.onMarkRead ? [{ key: 'read', label: t('Mark as read'), icon: <Icon.check size={14} />, onSelect: opts.onMarkRead }] : []),
-    ...(opts.onStart ? [{ key: 'start', label: t('Start work in Claude'), icon: <Icon.play size={14} />, onSelect: opts.onStart }] : []),
+    ...(opts.onStart ? [{ key: 'start', label: t('Start work'), icon: <Icon.play size={14} />, onSelect: opts.onStart }] : []),
     { key: 'analyze', label: t('Request AI analysis'), icon: <Icon.sparkle size={14} />, onSelect: opts.onAnalyze },
     { key: 'sub', label: t('Add sub-issue'), icon: <Icon.sub size={14} />, onSelect: opts.onSubIssue },
     ...(opts.allIssues ? [{ key: 'relation', label: t('Add relation'), icon: <Icon.relation size={14} />, kbd: ['R'], submenu: () => relationMenu(opts.allIssues!, tg.number, undefined, meta.statuses) }] : []),

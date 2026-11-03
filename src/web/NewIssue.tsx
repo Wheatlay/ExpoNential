@@ -120,8 +120,9 @@ function NewIssueModal({ init }: { init: Init }) {
           <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }} title={t('Keeps this window open after creating, so you can add several issues in a row')}>
             <input type="checkbox" checked={another} onChange={(e) => setAnother(e.target.checked)} /> {t('Create another')}
           </label>
+          <button className="btn" onClick={close}>{t('Cancel')}</button>
           <button className="btn primary" disabled={!title.trim() || create.isPending} onClick={() => void submit()}>
-            {t('Create issue')} <span className="kbd" style={{ background: 'transparent', color: '#fff', borderColor: 'rgb(255 255 255 / 0.3)' }}>↵</span>
+            {t('Create issue')} <span className="kbd">↵</span>
           </button>
         </div>
       </div>

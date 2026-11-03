@@ -10,7 +10,8 @@ import { ProjectTags } from './ProjectTags.tsx';
 import { PersonLink } from './PersonCard.tsx';
 import { Avatar, Icon, StatusIcon, startedFraction } from './icons.tsx';
 import { copyText, toast } from './toast.ts';
-import { timeAgo } from './time.ts';
+import { fmtDate, timeAgo } from './time.ts';
+import { Swatches, defaultSwatch } from './Swatches.tsx';
 import { Tooltip, openMenu } from './menu.tsx';
 import { openSetupWizard } from './setupWizardState.ts';
 import { setTheme, type Theme } from './theme.ts';
@@ -105,8 +106,8 @@ const HINTS: Record<string, Hint[]> = {
     { label: t('Analysis models'), to: 'prompts', target: 'agent-prompts' },
   ],
   prompts: [
-    { label: t('Connect this computer'), to: 'claude', target: 'claude-connect' },
-    { label: t('Your computers'), to: 'claude', target: 'your-computers' },
+    { label: t('Connect this PC'), to: 'claude', target: 'claude-connect' },
+    { label: t('Your PCs'), to: 'claude', target: 'your-computers' },
   ],
   profile: [{ label: t('Your notifications'), to: 'notifications' }],
   notifications: [
@@ -192,7 +193,7 @@ const SEARCH: SearchEntry[] = [
   // Ty › AI
   { label: t('Connect AI'), to: 'claude', target: 'claude-connect', keywords: ['claude code', 'claude', 'codex', 'mcp', 'wizard', 'ai', 'polacz'] },
   { label: t('Connected AI clients'), to: 'claude', target: 'ai-clients', keywords: ['mcp', 'oauth', 'grants', 'dostep'] },
-  { label: t('Your computers'), to: 'claude', target: 'your-computers', keywords: ['agent', 'pc', 'komputer', 'computer', 'runner'] },
+  { label: t('Your PCs'), to: 'claude', target: 'your-computers', keywords: ['agent', 'pc', 'komputer', 'computer', 'runner'] },
   { label: t('API keys'), to: 'claude', target: 'tokens', keywords: ['api', 'key', 'klucz', 'token', 'tokens'] },
   // Ty › Hasło
   { label: t('Password'), to: 'password', target: 'password-card', keywords: ['login', 'haslo', 'e-mail', 'email', 'konto', 'account'] },
@@ -335,7 +336,7 @@ function ProfileSettings() {
             onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} /></Tooltip>
         </div>
       </div>
-      <div id="profile-danger" className="s-card" style={{ marginTop: 24 }}>
+      <div id="profile-danger" className="s-card">
         <div className="s-row">
           <Tooltip text={t('Ends your sessions on every device.')}><span className="grow">{t('Sign out everywhere')}</span></Tooltip>
           <Tooltip text={reason}>
@@ -390,8 +391,6 @@ const tok = (n: number) => new Intl.NumberFormat(locale, { notation: 'compact', 
 const byRequesterText = (u: UsageInfo) => u.byRequester.map((b) => `${b.name} ${b.runs} · ${t('{n} tokens', { n: tok(b.tokens) })}`).join(' · ') || null;
 const LIMITS = [1e6, 5e6, 10e6, 50e6];
 
-const dmy = (iso: string) => { const d = new Date(iso); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`; };
-
 function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
@@ -417,18 +416,18 @@ function ClaudeConnect() {
           {me?.aiStatus?.client && (
             <span className="hint"><span className="wiz-chip-check"><Icon.check size={12} /></span> {me.aiStatus.clientName}{me.aiStatus.clientAt ? ` · ${timeAgo(me.aiStatus.clientAt)}` : ''}</span>
           )}
-          <button className={`btn${me?.aiStatus?.client ? '' : ' primary'}`} onClick={() => openSetupWizard()}>{me?.aiStatus?.client ? t('Connect another') : t('Connect AI')}{!demo && me?.aiStatus?.attention?.includes('connect') && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 6 }} />}</button>
+          <button className={`btn${me?.aiStatus?.client ? '' : ' primary'}`} onClick={() => openSetupWizard()}>{me?.aiStatus?.client ? t('Connect another') : t('Connect AI')}{!demo && me?.aiStatus?.attention?.includes('connect') && <span className="nav-dot" role="img" aria-label={t('Needs attention')} />}</button>
         </div>
       </div>
       {(grants.data?.length ?? 0) > 0 && (
-        <div className="s-card" id="ai-clients" style={{ marginTop: 12 }}>
+        <div className="s-card" id="ai-clients">
           <div className="s-row s-row-head"><b>{t('Connected AI clients')}</b></div>
           {grants.data!.map((g) => {
-            const label = g.agent ? t('Exponential agent · {computer}', { computer: g.computerName || t('Unnamed computer') }) : g.client;
+            const label = g.agent ? t('Exponential agent · {computer}', { computer: g.computerName || t('Unnamed PC') }) : g.client;
             return (
             <div key={g.id} className="s-row">
               <span className="grow">{label}</span>
-              <span className="hint">{g.lastUsedAt ? t('since {date}, last used {when}', { date: dmy(g.createdAt), when: timeAgo(g.lastUsedAt) }) : t('since {date}, never used', { date: dmy(g.createdAt) })}</span>
+              <span className="hint">{g.lastUsedAt ? t('since {date}, last used {when}', { date: fmtDate(g.createdAt), when: timeAgo(g.lastUsedAt) }) : t('since {date}, never used', { date: fmtDate(g.createdAt) })}</span>
               <button className="btn sm danger" onClick={() => void askConfirm({
                 title: t('Revoke "{name}"?', { name: label }), body: t('This client loses access to Exponential until you sign in with it again.'), action: t('Revoke'), danger: true,
               }).then((ok) => { if (ok) void api(`/api/connections/${g.id}`, { method: 'DELETE' }).then(() => { void qc.invalidateQueries({ queryKey: ['connections'] }); void qc.invalidateQueries({ queryKey: ['me'] }); }); })}>{t('Revoke')}</button>
@@ -438,16 +437,16 @@ function ClaudeConnect() {
         </div>
       )}
       {(agentList.data?.length ?? 0) > 0 && !demo && (
-        <div className="s-card" id="your-computers" style={{ marginTop: 12 }}>
-          <div className="s-row s-row-head"><b>{t('Your computers')}</b></div>
+        <div className="s-card" id="your-computers">
+          <div className="s-row s-row-head"><b>{t('Your PCs')}</b></div>
           {(agentList.data ?? []).map((a) => (
             <Fragment key={a.id}>
             <div className="s-row">
               <span className="grow">
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span className="s-computer-name">
                   {/* Własna nazwa (jak login GitHub w Kontach): zapis po wyjściu z pola, pusta wraca do nazwy z Windowsa. */}
-                  <input className="input" style={{ width: 180 }} key={a.label} defaultValue={a.label} placeholder={a.computerName || t('Unnamed computer')} aria-label={t('Computer name')}
-                    title={t('Your name for this computer. Empty: the Windows name.')}
+                  <input className="input s-input-name" key={a.label} defaultValue={a.label} placeholder={a.computerName || t('Unnamed PC')} aria-label={t('PC name')}
+                    title={t('Your name for this PC. Empty: the Windows name.')}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                     onBlur={(e) => { const v = e.target.value.trim(); if (v !== a.label) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { label: v } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); }); }} />
                   {!a.online && <Tooltip text={a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}><span className="pill">{t('Offline')}</span></Tooltip>}
@@ -456,9 +455,9 @@ function ClaudeConnect() {
                   {a.limitReached24h && <span className="pill stalled">{t('Limit reached')}</span>}
                   {a.claudeLimit && <Tooltip text={t('Analyses will return automatically after the limit renews.')}><span className="pill">{a.claudeLimit}</span></Tooltip>}
                   {a.inactive && <Tooltip text={t('Not seen for over 3 days. Hidden after 14 days.')}><span className="pill">{t('Inactive')}</span></Tooltip>}
-                  {(a.limitReached24h || a.lastError || a.legacy || (a.maxOthersTokensPerDay == null && a.forOthersTokens24h >= 2_000_000)) && <span className="nav-dot" role="img" aria-label={t('Needs attention')} style={{ marginLeft: 0 }} />}
+                  {(a.limitReached24h || a.lastError || a.legacy || (a.maxOthersTokensPerDay == null && a.forOthersTokens24h >= 2_000_000)) && <span className="nav-dot" role="img" aria-label={t('Needs attention')} />}
                 </span>
-                {(agentList.data ?? []).some((o) => o.id !== a.id && (o.label || o.computerName) === (a.label || a.computerName)) && <div className="hint">{t('Same name as another computer. ID: {id}', { id: a.id.slice(-4) })}</div>}
+                {(agentList.data ?? []).some((o) => o.id !== a.id && (o.label || o.computerName) === (a.label || a.computerName)) && <div className="hint">{t('Same name as another PC. ID: {id}', { id: a.id.slice(-4) })}</div>}
                 {a.label && a.computerName && <div className="hint">{t('Windows name: {name}', { name: a.computerName })}</div>}
                 {a.setup && a.setup.claude.length > 0 && (
                   <Tooltip text={a.setup.claude.map((c) => `${c.name}: ${t('issues')} ${c.mcp ? '✓' : '✗'} · ${t('work trace')} ${c.plugin ? '✓' : '✗'}`).join('\n')}>
@@ -478,7 +477,7 @@ function ClaudeConnect() {
                     onClick={() => { if (a.teamMode !== m) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { teamMode: m } }).then(refreshTeam); }}>{TEAM_MODE_LABEL[m]()}</button>
                 ))}
               </div>
-              <Tooltip text={t('Runs for other people on this computer in 24 hours. Your own are never limited.')}>
+              <Tooltip text={t('Runs for other people on this PC in 24 hours. Your own are never limited.')}>
                 <select className="input" value={a.maxOthersTokensPerDay ?? ''} aria-label={t('Limit for others per day')}
                   onChange={(e) => void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { maxOthersTokensPerDay: e.target.value === '' ? null : Number(e.target.value) } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); })}>
                   <option value="">{t('No limit for others')}</option>
@@ -487,7 +486,7 @@ function ClaudeConnect() {
               </Tooltip>
               <span className="hint">{a.online ? (a.busy ? t('running an analysis') : t('online')) : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>
               <button className="btn sm danger" onClick={() => void askConfirm({
-                title: t('Remove "{name}"?', { name: a.name || t('Unnamed computer') }), body: t('This computer stops taking requests until the agent is installed on it again.'), action: t('Remove'), danger: true,
+                title: t('Remove "{name}"?', { name: a.name || t('Unnamed PC') }), body: t('This PC stops taking requests until the agent is installed on it again.'), action: t('Remove'), danger: true,
               }).then((ok) => { if (ok) void api(`/api/agents/${a.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['agents'] })); })}>{t('Remove')}</button>
             </div>
             </Fragment>
@@ -501,7 +500,7 @@ function ClaudeConnect() {
             <div key={tk.id} className="s-row">
               <span className="grow">{tk.name}</span>
               <span className="hint">{t('created {when}', { when: timeAgo(tk.createdAt) })} · {tk.lastUsedAt ? t('used {when}', { when: timeAgo(tk.lastUsedAt) }) : t('never used')}</span>
-              <button className="btn sm danger" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void askConfirm({ title: t('Revoke "{name}"?', { name: tk.name }), body: t('Claude Code using this token stops working.'), action: t('Revoke') }).then((ok) => { if (ok) void api(`/api/tokens/${tk.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['tokens'] })); })}>{t('Revoke')}</button>
+              <Tooltip text={demo ? t('Disabled in the demo') : null}><button className="btn sm danger" disabled={demo} onClick={() => void askConfirm({ title: t('Revoke "{name}"?', { name: tk.name }), body: t('Claude Code using this token stops working.'), action: t('Revoke') }).then((ok) => { if (ok) void api(`/api/tokens/${tk.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['tokens'] })); })}>{t('Revoke')}</button></Tooltip>
             </div>
           ))}
         </details>
@@ -578,22 +577,21 @@ function ProjectGeneral() {
         </Tooltip>
         <ProjectLogo p={p} ro={ro ?? (demo ? t('Disabled in the demo') : null)} patch={patch} />
         {!p.logoUrl && <Tooltip text={ro}>
-          <input type="color" key={p.color} defaultValue={toHex(p.color)} disabled={!!ro} aria-label={t('Project color')}
-            onBlur={(e) => e.target.value !== toHex(p.color) && void patch({ color: e.target.value })} style={{ width: 30, height: 30, border: 0, background: 'none' }} />
+          <Swatches value={p.color} disabled={!!ro} label={t('Project color')} onChange={(c) => void patch({ color: c })} />
         </Tooltip>}
       </div>
       <div id="sprint-length" className="s-row">
         <span className="s-label">{t('Sprint length')}</span>
         {/* Zapis po wyjściu z pola, jak pozostałe pola Ustawień. */}
         <Tooltip text={ro}>
-          <input className="input" type="number" min={1} max={90} style={{ width: 80 }} disabled={!!ro} value={days ?? sprintData?.lengthDays ?? p.sprintLengthDays}
+          <input className="input s-input-num" type="number" min={1} max={90} disabled={!!ro} value={days ?? sprintData?.lengthDays ?? p.sprintLengthDays}
             onChange={(e) => setDays(Number(e.target.value))}
             onBlur={() => days != null && days >= 1 && days !== p.sprintLengthDays && void patch({ sprintLengthDays: days }, t('Saved. Applies to the next sprint.')).then(() => { void qc.invalidateQueries({ queryKey: ['sprints'] }); setDays(null); })} />
         </Tooltip>
-        <span className="hint grow">{t('days. A new sprint starts by itself when the current one ends.')}</span>
+        <Tooltip text={t('A new sprint starts by itself when the current one ends.')}><span className="hint grow">{t('days')}</span></Tooltip>
       </div>
       <div id="sprint-review" className="s-row">
-        <span className="s-label">{t('Sprint review')}</span>
+        <Tooltip text={t('Meeting in the calendar on the last working day of the sprint.')}><span className="s-label">{t('Sprint review')}</span></Tooltip>
         <Tooltip text={ro}>
           <button className={`switch ${p.reviewMeeting ? 'on' : ''}`} role="switch" aria-checked={p.reviewMeeting} aria-label={t('Plan a sprint review meeting')} disabled={!!ro}
             onClick={() => void askConfirm(p.reviewMeeting
@@ -601,13 +599,13 @@ function ProjectGeneral() {
               : { title: t('Turn on the sprint review?'), body: t('Every sprint gets a review meeting in the calendar for the whole team.'), action: t('Turn on'), danger: false })
               .then((ok) => { if (ok) void patch({ reviewMeeting: !p.reviewMeeting }).then(() => qc.invalidateQueries({ queryKey: ['meetings'] })); })} />
         </Tooltip>
-        <span className="hint">{t('meeting in the calendar on the last working day at')}</span>
+        <span className="hint">{t('at')}</span>
         <Tooltip text={ro ?? off}>
           <TimeInput value={p.reviewTime} disabled={!!(ro ?? off)} aria-label={t('Sprint review time')} onChange={(v) => void patch({ reviewTime: v })} />
         </Tooltip>
         <span className="hint">{t('for')}</span>
         <Tooltip text={ro ?? off}>
-          <input className="input" type="number" min={5} max={480} step={5} key={p.reviewMinutes} defaultValue={p.reviewMinutes} disabled={!!(ro ?? off)} style={{ width: 80 }}
+          <input className="input s-input-num" type="number" min={5} max={480} step={5} key={p.reviewMinutes} defaultValue={p.reviewMinutes} disabled={!!(ro ?? off)}
             onBlur={(e) => Number(e.target.value) !== p.reviewMinutes && void patch({ reviewMinutes: Number(e.target.value) })} />
         </Tooltip>
         <span className="hint">min</span>
@@ -672,9 +670,9 @@ function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deployS
               {t('Production')}
             </span>
           </Tooltip>
-          <button className="icon-btn" disabled={!!ro} aria-label={t('Remove')} title={ro ?? t('Remove')} onClick={() => void askConfirm({
+          <Tooltip text={ro ?? t('Remove')}><button className="icon-btn" disabled={!!ro} aria-label={t('Remove')} onClick={() => void askConfirm({
             title: t('Remove {name}?', { name: e.name }), body: t('Its deploy history stays, commits lose this marker.'), action: t('Remove'), danger: true,
-          }).then((ok) => { if (ok) void save(envs.filter((_, j) => j !== i)); })}><Icon.trash size={14} /></button>
+          }).then((ok) => { if (ok) void save(envs.filter((_, j) => j !== i)); })}><Icon.trash size={14} /></button></Tooltip>
         </div>
       ))}
     </>
@@ -690,12 +688,11 @@ function ProjectIntegrations() {
   return (
     <div className="s-card">
       <div id="github-repo" className="s-row">
-        <span className="s-label">{t('GitHub repo')}</span>
+        <Tooltip text={t('Analyze runs Claude in this repo, and only its commits are linked to {key} issues. After a change, reinstall local analysis.', { key: p.key })}><span className="s-label">{t('GitHub repo')}</span></Tooltip>
         <Tooltip text={ro}>
           <input className="input grow" key={p.githubRepo} disabled={!!ro} placeholder="owner/name" defaultValue={p.githubRepo}
             onBlur={(e) => e.target.value.trim() !== p.githubRepo && void patch({ githubRepo: e.target.value.trim() })} />
         </Tooltip>
-        <span className="hint s-hint">{t('Analyze runs Claude in this repo, and only its commits are linked to {key} issues. After a change, reinstall local analysis.', { key: p.key })}</span>
       </div>
       <div id="deploys" className="s-row">
         <span className="s-label">{t('Deploys')}</span>
@@ -717,23 +714,21 @@ function ProjectIntegrations() {
       </div>
       {p.deploySource && <DeployEnvs source={p.deploySource} projectKey={p.key} ro={ro} />}
       <div className="s-row" id="discord">
-        <span className="s-label">Discord webhook</span>
+        <Tooltip text={t('Meeting polls, picked times and reminders are posted to this channel with @here.')}><span className="s-label">Discord webhook</span></Tooltip>
         <Tooltip text={ro}>
           <input className="input grow" key={p.discordWebhookUrl ?? ''} disabled={!!ro} placeholder={ro ? t('Set by a project admin') : 'https://discord.com/api/webhooks/…'}
             defaultValue={p.discordWebhookUrl ?? ''}
             onBlur={(e) => e.target.value.trim() !== (p.discordWebhookUrl ?? '') && void patch({ discordWebhookUrl: e.target.value.trim() || null })} />
         </Tooltip>
-        <span className="hint s-hint">{t('Meeting polls, picked times and reminders are posted to this channel with @here.')}</span>
         {p.discordLastError && <span className="hint s-hint">{t('Last Discord message failed {when}: {error}. Check the webhook URL.', { when: p.discordLastErrorAt ? timeAgo(p.discordLastErrorAt) : '', error: p.discordLastError })}</span>}
       </div>
       <div id="meeting-place" className="s-row">
-        <span className="s-label">{t('Meeting place')}</span>
+        <Tooltip text={t('Default meeting link (Teams, Discord, Meet…) for new meetings and sprint reviews.')}><span className="s-label">{t('Meeting place')}</span></Tooltip>
         <Tooltip text={ro}>
           <input className="input grow" key={p.meetingLocationUrl} disabled={!!ro} placeholder={t('Teams, Discord or Meet link')}
             defaultValue={p.meetingLocationUrl}
             onBlur={(e) => e.target.value.trim() !== p.meetingLocationUrl && void patch({ meetingLocationUrl: e.target.value.trim() })} />
         </Tooltip>
-        <span className="hint s-hint">{t('Default meeting link (Teams, Discord, Meet…) for new meetings and sprint reviews.')}</span>
       </div>
     </div>
   );
@@ -791,8 +786,6 @@ type InviteRow = {
   id: number; role: 'admin' | 'member'; expiresAt: string; usedAt: string | null; createdByName: string | null; usedByName: string | null;
   status: 'pending' | 'expired' | 'accepted';
 };
-// Daty zawsze dd.mm.rrrr, niezależnie od języka przeglądarki.
-const plDate = (iso: string) => new Date(iso).toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
 /** Jednorazowe linki zaproszeń do projektu: admin tworzy link z rolą i sam go wysyła; link widać tylko raz. */
 function InviteLinks() {
@@ -809,15 +802,13 @@ function InviteLinks() {
   const renew = (id: number) => void api<{ url: string }>(`/api/projects/${key}/invites/${id}/renew`, { method: 'POST' }).then((r) => { setLink(r.url); refresh(); });
   const statusPill = { accepted: ['ok', t('Accepted')], pending: ['waiting', t('Pending')], expired: ['ended', t('Expired')] } as const;
   const statusText = (i: InviteRow) => i.status === 'accepted'
-    ? t('{name}, {date}', { name: i.usedByName ?? '', date: plDate(i.usedAt!) })
-    : i.status === 'expired' ? t('by {name}, expired {date}', { name: i.createdByName ?? '', date: plDate(i.expiresAt) })
-    : t('by {name}, expires {date}', { name: i.createdByName ?? '', date: plDate(i.expiresAt) });
+    ? t('{name}, {date}', { name: i.usedByName ?? '', date: fmtDate(i.usedAt!) })
+    : i.status === 'expired' ? t('by {name}, expired {date}', { name: i.createdByName ?? '', date: fmtDate(i.expiresAt) })
+    : t('by {name}, expires {date}', { name: i.createdByName ?? '', date: fmtDate(i.expiresAt) });
   return (
-    <div className="s-card" id="invites" style={{ marginTop: 12 }}>
+    <div className="s-card" id="invites">
       <div className="s-row s-row-head">
-        <span className="grow"><b>{t('Invite link')}</b>
-          <div className="hint">{t('One-time link, valid for 7 days. Whoever opens it creates an account and joins this project.')}</div>
-        </span>
+        <span className="grow"><Tooltip text={t('One-time link, valid for 7 days. Whoever opens it creates an account and joins this project.')}><b>{t('Invite link')}</b></Tooltip></span>
         <Tooltip text={ro}>
           <div className="seg" aria-label={t('Role')}>
             {(['member', 'admin'] as const).map((r) => (
@@ -876,11 +867,11 @@ function PasswordSettings() {
       </div>
       {me?.hasPassword && (
         <div className="s-row">
-          <input className="input grow" type="password" autoComplete="current-password" disabled={demo} title={reason ?? undefined} placeholder={t('Current password')} aria-label={t('Current password')} value={current} onChange={(e) => setCurrent(e.target.value)} />
+          <Tooltip text={reason}><input className="input grow" type="password" autoComplete="current-password" disabled={demo} placeholder={t('Current password')} aria-label={t('Current password')} value={current} onChange={(e) => setCurrent(e.target.value)} /></Tooltip>
         </div>
       )}
       <div className="s-row">
-        <input className="input grow" type="password" autoComplete="new-password" disabled={demo} title={reason ?? undefined} placeholder={t('New password')} aria-label={t('New password')} value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Tooltip text={reason}><input className="input grow" type="password" autoComplete="new-password" disabled={demo} placeholder={t('New password')} aria-label={t('New password')} value={password} onChange={(e) => setPassword(e.target.value)} /></Tooltip>
         <Tooltip text={reason}>
           <button className="btn primary" disabled={demo || password.length < 10 || (!!me?.hasPassword && !current)} onClick={save}>{t('Save password')}</button>
         </Tooltip>
@@ -894,7 +885,7 @@ const AI_LABELS = ['bug', 'feature', 'investigate'];
 
 function ProjectLabelsStatuses() {
   const c = useProject();
-  const [label, setLabel] = useState({ name: '', color: '#5e6ad2' });
+  const [label, setLabel] = useState(() => ({ name: '', color: defaultSwatch() }));
   if (!c) return null;
   const { meta, ro, refresh } = c;
   return (
@@ -902,7 +893,7 @@ function ProjectLabelsStatuses() {
       <div id="labels" className="s-card">
         <div className="s-row s-row-head"><b>{t('Labels')}</b></div>
         <div className="s-row">
-          <input type="color" value={label.color} disabled={!!ro} onChange={(e) => setLabel((l) => ({ ...l, color: e.target.value }))} style={{ width: 30, height: 30, border: 0, background: 'none' }} />
+          <Tooltip text={ro}><Swatches value={label.color} disabled={!!ro} onChange={(c) => setLabel((l) => ({ ...l, color: c }))} /></Tooltip>
           <input className="input grow" placeholder={t('New label')} value={label.name} disabled={!!ro} onChange={(e) => setLabel((l) => ({ ...l, name: e.target.value }))} />
           <Tooltip text={ro}>
             <button className="btn" disabled={!!ro || !label.name.trim()} onClick={() => void api('/api/admin/labels', { method: 'POST', body: label }).then(() => { setLabel({ name: '', color: label.color }); refresh(); })}><Icon.plus size={13} /> {t('Add')}</button>
@@ -910,21 +901,21 @@ function ProjectLabelsStatuses() {
         </div>
         {meta.labels.map((l) => { const byAi = AI_LABELS.includes(l.name.toLowerCase()); const lock = ro || (byAi ? t('AI analysis finds this label by its name, so it cannot be renamed or deleted. You can change its color.') : null); return (
           <div key={l.id} className="s-row">
-            <input type="color" defaultValue={toHex(l.color)} disabled={!!ro} onBlur={(e) => e.target.value !== toHex(l.color) && void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: l.name, color: e.target.value } }).then(refresh)} style={{ width: 30, height: 30, border: 0, background: 'none' }} />
-            <input className="input grow" defaultValue={l.name} disabled={!!lock} title={lock ?? undefined} onBlur={(e) => { const el = e.target; if (el.value.trim() && el.value !== l.name) void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: el.value.trim(), color: l.color } }).then(refresh).catch((err: Error) => { toast(err.message, 'err'); el.value = l.name; }); }} />
-            {byAi && <span className="badge ai" title={t('AI analysis sets this label from the issue type.')}>{t('set by AI')}</span>}
+            <Tooltip text={ro}><Swatches value={l.color} disabled={!!ro} onChange={(c) => void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: l.name, color: c } }).then(refresh)} /></Tooltip>
+            <Tooltip text={lock}><input className="input grow" defaultValue={l.name} disabled={!!lock} onBlur={(e) => { const el = e.target; if (el.value.trim() && el.value !== l.name) void api('/api/admin/labels', { method: 'POST', body: { id: l.id, name: el.value.trim(), color: l.color } }).then(refresh).catch((err: Error) => { toast(err.message, 'err'); el.value = l.name; }); }} /></Tooltip>
+            {byAi && <Tooltip text={t('AI analysis sets this label from the issue type.')}><span className="badge ai">{t('set by AI')}</span></Tooltip>}
             <Tooltip text={lock}>
               <button className="btn sm danger" disabled={!!lock} onClick={() => void askConfirm({ title: t('Delete label "{name}"?', { name: l.name }), body: t('It will be removed from all issues.') }).then((ok) => { if (ok) void api(`/api/admin/labels/${l.id}`, { method: 'DELETE' }).then(refresh); })}>{t('Delete')}</button>
             </Tooltip>
           </div>
         ); })}
       </div>
-      <div id="statuses" className="s-card" style={{ marginTop: 12 }}>
-        <div className="s-row s-row-head"><b>{t('Statuses')}</b><span className="hint">{t('Order is the order of columns on the board.')}</span></div>
+      <div id="statuses" className="s-card">
+        <div className="s-row s-row-head"><Tooltip text={t('Order is the order of columns on the board.')}><b>{t('Statuses')}</b></Tooltip></div>
         {meta.statuses.map((s, idx) => (
           <div key={s.id} className="s-row">
-            <Tooltip text={t(s.type)}><span style={{ display: 'inline-flex' }}><StatusIcon status={s} fraction={startedFraction(meta.statuses, s)} /></span></Tooltip>
-            <input type="color" defaultValue={toHex(s.color)} disabled={!!ro} onBlur={(e) => e.target.value !== toHex(s.color) && void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, color: e.target.value } }).then(refresh)} style={{ width: 26, height: 26, border: 0, background: 'none' }} />
+            <Tooltip text={t(s.type)}><span className="s-inline"><StatusIcon status={s} fraction={startedFraction(meta.statuses, s)} /></span></Tooltip>
+            <Tooltip text={ro}><Swatches value={s.color} disabled={!!ro} onChange={(c) => void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, color: c } }).then(refresh)} /></Tooltip>
             <input className="input grow" defaultValue={s.name} disabled={!!ro} onBlur={(e) => { const el = e.target; if (el.value.trim() && el.value !== s.name) void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, name: el.value.trim() } }).then(refresh).catch((err: Error) => { toast(err.message, 'err'); el.value = s.name; }); }} />
             <Tooltip text={ro}>
               <select className="input" value={s.role ?? ''} disabled={!!ro} aria-label={t('Status role')}
@@ -934,11 +925,11 @@ function ProjectLabelsStatuses() {
                 <option value="testing">{t('Testing')}</option>
               </select>
             </Tooltip>
-            <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <label className="hint s-check">
               <input type="checkbox" checked={!s.hiddenOnBoard} disabled={!!ro} onChange={(e) => void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, hiddenOnBoard: !e.target.checked } }).then(refresh)} /> {t('On board')}
             </label>
-            <button className="icon-btn" disabled={!!ro || idx === 0} title={ro ?? t('Move up')} aria-label={ro ?? t('Move up')} onClick={() => void swap(meta.statuses, idx, idx - 1).then(refresh)}>↑</button>
-            <button className="icon-btn" disabled={!!ro || idx === meta.statuses.length - 1} title={ro ?? t('Move down')} aria-label={ro ?? t('Move down')} onClick={() => void swap(meta.statuses, idx, idx + 1).then(refresh)}>↓</button>
+            <Tooltip text={ro ?? t('Move up')}><button className="icon-btn" disabled={!!ro || idx === 0} aria-label={t('Move up')} onClick={() => void swap(meta.statuses, idx, idx - 1).then(refresh)}>↑</button></Tooltip>
+            <Tooltip text={ro ?? t('Move down')}><button className="icon-btn" disabled={!!ro || idx === meta.statuses.length - 1} aria-label={t('Move down')} onClick={() => void swap(meta.statuses, idx, idx + 1).then(refresh)}>↓</button></Tooltip>
           </div>
         ))}
       </div>
@@ -950,7 +941,7 @@ const MODELS = ['haiku', 'sonnet', 'opus', 'fable'] as const;
 
 // Polecenia dla Claude Code są stałe w kodzie (prompts.ts), treść i format analizy ustala skill; projekt wybiera tylko model.
 const PROMPTS = [
-  { kind: 'analyze', name: t('Analyze'), hint: t('Runs in the background on the computer of whoever clicks it (local runner), read-only.'), model: 'analyzeModel' },
+  { kind: 'analyze', name: t('Analyze'), hint: t('Runs in the background on the PC of whoever clicks it (local runner), read-only.'), model: 'analyzeModel' },
   { kind: 'deep', name: t('Deep'), hint: t('Analyze with a deeper look at the code: checks more causes and lists risks.'), model: 'deepModel' },
 ] as const;
 
@@ -1000,8 +991,8 @@ function Accounts() {
   return (
     <div id="accounts-card" className="s-card">
       <div className="s-row s-row-head">
-        <input className="input grow" disabled={demo} title={demo ? t('Disabled in the demo') : undefined} placeholder={t('GitHub login or e-mail to allow')} value={login} onChange={(e) => setLogin(e.target.value)} />
-        <button className="btn" disabled={demo || !login.trim()} title={demo ? t('Disabled in the demo') : undefined} onClick={() => void saveUser({ login: login.trim() }).then(() => setLogin(''))}><Icon.plus size={13} /> {t('Allow')}</button>
+        <Tooltip text={demo ? t('Disabled in the demo') : null}><input className="input grow" disabled={demo} placeholder={t('GitHub login or e-mail to allow')} value={login} onChange={(e) => setLogin(e.target.value)} /></Tooltip>
+        <Tooltip text={demo ? t('Disabled in the demo') : null}><button className="btn" disabled={demo || !login.trim()} onClick={() => void saveUser({ login: login.trim() }).then(() => setLogin(''))}><Icon.plus size={13} /> {t('Allow')}</button></Tooltip>
       </div>
       {accounts.data?.map((u) => (
         <div key={u.id} className="s-row" style={u.active ? undefined : { opacity: 0.5 }}>
@@ -1013,15 +1004,15 @@ function Accounts() {
             </div>
           </span>
           {/* Login GitHub jest edytowalny, żeby poprawić mapowanie z importu bez dublowania osoby. */}
-          <input className="input" style={{ width: 150 }} defaultValue={u.login} disabled={demo} title={demo ? t('Disabled in the demo') : t('GitHub login')}
+          <Tooltip text={demo ? t('Disabled in the demo') : t('GitHub login')}><input className="input s-input-login" defaultValue={u.login} disabled={demo}
             onBlur={(e) => {
               const el = e.target, login = el.value.trim();
               if (!login || login === u.login) return;
               void askConfirm({ title: t('Change the login of {name} to {login}?', { name: u.name, login }), body: t('From now on they sign in with this GitHub account.'), action: t('Change login'), danger: false })
                 .then((ok) => { if (ok) void saveUser({ id: u.id, login }); else el.value = u.login; });
-            }} />
+            }} /></Tooltip>
           <Tooltip text={demo ? t('Disabled in the demo') : u.id === me?.id ? t('You cannot remove your own admin role') : t('Workspace admins manage accounts and every project')}>
-            <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <label className="hint s-check">
               <input type="checkbox" checked={u.isAdmin} disabled={demo || u.id === me?.id} onChange={(e) => {
                 const isAdmin = e.target.checked;
                 void askConfirm(isAdmin
@@ -1051,10 +1042,6 @@ async function swap(statuses: { id: number; position: number }[], a: number, b: 
   await api('/api/admin/statuses', { method: 'PATCH', body: { id: statuses[b].id, position: statuses[a].position } });
 }
 
-function toHex(c: string) {
-  return /^#[0-9a-f]{6}$/i.test(c) ? c : '#888888';
-}
-
 /** Kolejka zespołu projektu: online komputer któregokolwiek członka bierze analizy wszystkich (na limitach jego Claude). */
 type TeamMode = 'ask' | 'auto' | 'off';
 const TEAM_MODES: TeamMode[] = ['ask', 'auto', 'off'];
@@ -1070,23 +1057,23 @@ function TeamQueue() {
   const { p, ro: roBase, patch } = c;
   const ro = roBase ?? (demo ? t('Disabled in the demo') : null);
   return (
-    <div className="s-card" id="team-queue" style={{ marginTop: 12 }}>
+    <div className="s-card" id="team-queue">
       <div className="s-row">
-        <span className="grow"><Tooltip text={t('Lets members share their computers. Each owner sets how their computer handles it.')}><span>{t('Team queue')} · {p.name}</span></Tooltip></span>
+        <span className="grow"><Tooltip text={t('Lets members share their PCs. Each owner sets how their PC handles it.')}><span>{t('Team queue')} · {p.name}</span></Tooltip></span>
         <Tooltip text={ro}>
           <button className={`switch ${p.agentTeamQueue ? 'on' : ''}`} role="switch" aria-checked={p.agentTeamQueue} aria-label={t('Team queue')}
-            disabled={!!ro} style={ro ? { opacity: 0.45, cursor: 'not-allowed' } : undefined} onClick={() => void patch({ agentTeamQueue: !p.agentTeamQueue })} />
+            disabled={!!ro} onClick={() => void patch({ agentTeamQueue: !p.agentTeamQueue })} />
         </Tooltip>
       </div>
       {(online.data ?? []).map((a, i) => (
         <div key={i} className="s-row">
-          <span className="grow">{a.name || t('Unnamed computer')} · {a.owner}</span>
+          <span className="grow">{a.name || t('Unnamed PC')} · {a.owner}</span>
           {a.busy && <span className="hint">{t('running an analysis')}</span>}
           <span className={a.teamMode === 'off' ? 'pill ended' : 'pill ok'}>{TEAM_MODE_STATE[a.teamMode]()}</span>
           <Tooltip text={byRequesterText(a.usage30d)}><span className="hint">{t('30 days: {runs} analyses · {tokens}', { runs: a.usage30d.runs, tokens: t('{n} tokens', { n: tok(a.usage30d.tokens) }) })}</span></Tooltip>
         </div>
       ))}
-      {!demo && !(online.data ?? []).length && <div className="s-row"><span className="hint">{t('No computer is online right now.')}</span></div>}
+      {!demo && !(online.data ?? []).length && <div className="s-row"><span className="hint">{t('No PC is online right now.')}</span></div>}
     </div>
   );
 }

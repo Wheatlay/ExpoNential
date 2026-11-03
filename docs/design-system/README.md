@@ -13,6 +13,8 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
 - Krótko, w trybie rozkazującym, nazwy rzeczy tak, jak ludzie je widzą: „Move to Done”, „Mark all as read”, „Join on Teams”. Bez wykrzykników, bez emoji.
 - Wielka litera tylko na początku etykiety („Sprint review”, nie „Sprint Review”). Nazwy statusów zostają takie, jak je nazwał zespół.
 - Komunikat o błędzie mówi, co się stało i co zrobić („Only project admins can set the default view”).
+- Słownictwo (zatwierdzone 04.11.2026): maszyna = „PC”, to, co na niej działa = „agent”, funkcje = „AI” / „analiza”; „Claude Code” tylko tam, gdzie naprawdę otwiera się Claude Code. Ścieżki pisane „Settings › My AI” (separator ›). Po polsku „ty/twój/ciebie” małą literą.
+- Kolory projektów, etykiet i statusów wybiera się z palety `project-1…7` (próbki, jak przy tagach), nie z systemowego wybieraka koloru (zatwierdzone 04.11.2026).
 - Daty zawsze `dd.mm.rrrr`, godziny zawsze 24 h (`DateInput`, `TimeInput`), niezależnie od języka przeglądarki. Czas względny przez `timeAgo` („2 hours ago”).
 
 ## Kolor
@@ -22,7 +24,7 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
 - Tekst: `text-primary` treść, `text-secondary` etykiety, `text-tertiary` podpowiedzi i liczniki, `text-quaternary` tylko placeholdery i wyłączone.
 - `accent` to jedyny kolor marki: przycisk główny, fokus, zaznaczenie, przełącznik, link. Napis w kolorze akcentu na tle: `accent-text`.
 - Kolory znaczeń mają parę: wypełnienie (kropka, tło `color-mix(… 10–18%)`, ramka `color-mix(… 40–50%)`) i `-text` do napisów. Napis zawsze `-text`, nigdy samo wypełnienie:
-  - `warning` — coś czeka na Ciebie: pytanie do mnie, brak notatek, Need Info, głosowanie.
+  - `warning` — coś czeka na ciebie: pytanie do mnie, brak notatek, Need Info, głosowanie.
   - `success` — zrobione, dobre: deploy udany, ktoś online, notatki HUMAN, odpowiedź.
   - `danger` — błąd, blokada, usuwanie.
   - `progress` — w toku: deploy trwa, ktoś był niedawno.
@@ -51,7 +53,8 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
 
 ## Zachowanie
 
-- Niedostępna akcja jest wyszarzona z podpowiedzią podającą powód (`Tooltip` + `disabled`), nigdy ukryta; układ strony się nie zmienia.
+- Niedostępna akcja: wyszarzona z podpowiedzią podającą powód (`Tooltip` + `disabled`), gdy użytkownikowi przyda się wiedza, że ta opcja istnieje (Deep, Today, Carry over all); ukryta, gdy tylko zaśmiecałaby widok (chipy z licznikiem 0, „×” przy jedynym terminie, sekcja Accounts dla nie-adminów). Zatwierdzone 04.11.2026. Wyszarzona akcja jest osiągalna klawiaturą, żeby powód był do przeczytania.
+- Przyciski w oknach: drugorzędny (Cancel) po lewej, główny ostatni po prawej; akcja niszcząca (Delete, Cancel meeting) przy lewej krawędzi, oddzielona. Zatwierdzone 04.11.2026.
 - Najechanie nie przesuwa układu (np. „+” w komórce boardu zajmuje miejsce zawsze, tylko jest niewidoczny).
 - Potwierdzenia przez `askConfirm` (okno aplikacji), nigdy systemowe `confirm()`/`alert()`.
 - Filtry w kolumnach: lejek w nagłówku kolumny i popover.

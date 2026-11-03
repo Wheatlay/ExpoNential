@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ErrorState, LoadingState } from './states.tsx';
+import { EmptyState, ErrorState, LoadingState } from './states.tsx';
+import { fmtDate } from './time.ts';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, useIssues, useMeta, useSprints, useUpdateIssue, type IssueRow, type Meta, type Sprint } from './api.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
@@ -42,15 +43,14 @@ export function SprintReview() {
     const pickable = [...sprints].reverse().filter((s) => s.status !== 'planned');
     return (
       <div className="review" data-tour="review">
-        <div className="review-head">
+        <EmptyState title={t('No sprint to review yet.')} hint={t('Older sprints are in the picker.')} action={(
           <button className="chip on" disabled={!pickable.length} onClick={(e) => openMenu(e.currentTarget, {
             searchable: false,
             items: pickable.map((s) => ({ key: String(s.id), label: `${sprintLabel(s)} · ${t(s.status)}`, onSelect: () => setSelectedId(s.id) })),
           })}>
             <Icon.sprint size={13} /> {t('Select sprint')} <Icon.chevron size={12} />
           </button>
-        </div>
-        <div className="hint" style={{ padding: 16 }}>{t('No sprint to review yet.')}</div>
+        )} />
       </div>
     );
   }
@@ -90,7 +90,7 @@ export function SprintReview() {
    * (pierwsza linia każdej zmiany), zadania bez HUMAN tylko tytułem. Mieści się w limicie Discorda.
    */
   const copySummary = async () => {
-    const f = (d: string) => new Date(d).toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
+    const f = fmtDate;
     const details = await Promise.all(done.map((i) => api<{ changeHuman: string }>(`/api/issues/${ident(i.number)}`)));
     const groups = new Map<string, string[]>();
     const noNotes: string[] = [];
@@ -142,31 +142,31 @@ export function SprintReview() {
         <div className="review-col">
           <h3><StatusIcon status={{ type: 'completed', color: 'var(--accent)' }} /> {t('Done')} <span className="n">{done.length}</span></h3>
           {done.map((i) => <ReviewCard key={i.id} issue={i} meta={meta} showHuman />)}
-          {!done.length && <div className="hint" style={{ padding: 8 }}>{t('Nothing finished in this sprint yet.')}</div>}
+          {!done.length && <div className="hint review-empty">{t('No finished issues')}</div>}
         </div>
 
         <div className="review-col">
           <h3>
             <StatusIcon status={{ type: 'started', color: 'var(--progress)' }} /> {t('Not finished')} <span className="n">{open.length}</span>
-            {open.length > 0 && (
-              <Tooltip text={next ? null : t('There is no next sprint yet')}>
-                <button className="btn sm" style={{ marginLeft: 'auto' }} disabled={!next} onClick={() => void carry()}>{t('Carry over all')}</button>
-              </Tooltip>
-            )}
+            <Tooltip text={!open.length ? t('No open issues to carry over') : next ? null : t('There is no next sprint yet')}>
+              <button className="btn sm ml-auto" disabled={!next || !open.length} onClick={() => void carry()}>{t('Carry over all')}</button>
+            </Tooltip>
           </h3>
           {open.map((i) => (
-            <ReviewCard key={i.id} issue={i} meta={meta} action={next && (
-              <button className="btn sm" onClick={() => void carry([i.number])}>{t('Carry over')} →</button>
+            <ReviewCard key={i.id} issue={i} meta={meta} action={(
+              <Tooltip text={next ? null : t('There is no next sprint yet')}>
+                <button className="btn sm" disabled={!next} onClick={() => void carry([i.number])}>{t('Carry over')} →</button>
+              </Tooltip>
             )} />
           ))}
-          {!open.length && <div className="hint" style={{ padding: 8 }}>{t('No open issues left.')}</div>}
+          {!open.length && <div className="hint review-empty">{t('No open issues')}</div>}
         </div>
 
         <div className="review-col">
           <h3>
             <Icon.sprint size={14} /> {t('Planned for {name}', { name: next?.name ?? t('next sprint') })} <span className="n">{planned.length}</span>
             {next && (
-              <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={(e) => openMenu(e.currentTarget, {
+              <button className="btn sm ml-auto" onClick={(e) => openMenu(e.currentTarget, {
                 searchable: true, placeholder: t('Add issues to the next sprint…'),
                 items: candidates.sort((a, b) => b.number - a.number).map((i) => ({
                   key: String(i.number), label: `${ident(i.number)} ${i.title}`, keepOpen: true,
@@ -181,7 +181,7 @@ export function SprintReview() {
               <button className="icon-btn" title={t('Remove from sprint')} aria-label={t('Remove from sprint')} onClick={() => update.mutate({ number: i.number, patch: { sprintId: null } })}><Icon.close size={13} /></button>
             } />
           ))}
-          {!planned.length && <div className="hint" style={{ padding: 8 }}>{t('Add issues from Todo or Backlog.')}</div>}
+          {!planned.length && <div className="hint review-empty">{t('No planned issues')}</div>}
         </div>
       </div>
 
@@ -214,12 +214,12 @@ export function SprintReview() {
 function SprintStatus({ sprint }: { sprint: Sprint }) {
   const days = Math.ceil((new Date(sprint.endsAt).getTime() - Date.now()) / 864e5);
   const map = {
-    active: { text: tn(days, 'Active · {n} day left', 'Active · {n} days left'), color: 'var(--progress-text)' },
-    ended: { text: t('Ended · waiting for review'), color: 'var(--warning-text)' },
-    reviewed: { text: t('Reviewed'), color: 'var(--success-text)' },
-    planned: { text: t('Planned'), color: 'var(--text-tertiary)' },
+    active: { text: tn(days, 'Active · {n} day left', 'Active · {n} days left') },
+    ended: { text: t('Ended · waiting for review') },
+    reviewed: { text: t('Reviewed') },
+    planned: { text: t('Planned') },
   }[sprint.status];
-  return <span className="pill" style={{ color: map.color, borderColor: 'currentColor' }}>{map.text}</span>;
+  return <span className={`pill status-${sprint.status}`}>{map.text}</span>;
 }
 
 function ReviewCard({ issue, meta, showHuman, action }: { issue: IssueRow; meta: Meta; showHuman?: boolean; action?: React.ReactNode }) {
@@ -232,16 +232,16 @@ function ReviewCard({ issue, meta, showHuman, action }: { issue: IssueRow; meta:
   }, [showHuman, issue.number, issue.updatedAt]);
   return (
     <div className="review-card">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="review-card-head">
         <StatusIcon status={st} fraction={startedFraction(meta.statuses, st)} />
         <span className="card-id">{ident(issue.number)}</span>
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+        <span className="review-card-actions">
           {action}
           <Avatar user={meta.users.find((u) => u.id === issue.assigneeId)} size={18} />
         </span>
       </div>
-      <a {...linkProps(`/issue/${ident(issue.number)}`)} className="card-title" style={{ display: 'block' }}><InlineCode text={issue.title} /></a>
-      {showHuman && human != null && (human.trim() ? <div className="human">{human}</div> : <div className="hint" style={{ marginTop: 6 }}>{t('No HUMAN summary')}</div>)}
+      <a {...linkProps(`/issue/${ident(issue.number)}`)} className="card-title block"><InlineCode text={issue.title} /></a>
+      {showHuman && human != null && (human.trim() ? <div className="human">{human}</div> : <div className="hint mt-6">{t('No HUMAN summary')}</div>)}
     </div>
   );
 }

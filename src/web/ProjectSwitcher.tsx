@@ -10,10 +10,10 @@ import { t, tn } from './i18n.ts';
 export function ProjectBadge({ project, size = 20 }: { project: (Pick<ProjectSummary, 'name' | 'color'> & { key?: string; logoUrl?: string }) | undefined; size?: number }) {
   const words = (project?.name ?? '?').trim().split(/\s+/);
   const initials = (project?.key?.slice(0, 2) ?? (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2))).toUpperCase();
-  const c = project?.color ?? '#5e6ad2';
+  const c = project?.color ?? 'var(--project-1)';
   if (project?.logoUrl) return <span className="ws-badge" style={{ width: size, height: size }}><img src={project.logoUrl} alt="" /></span>;
   return (
-    <span className="ws-badge" style={{ width: size, height: size, fontSize: size * 0.5, background: `linear-gradient(135deg, ${c}, color-mix(in srgb, ${c} 55%, #fff))` }}>
+    <span className="ws-badge" style={{ width: size, height: size, fontSize: size * 0.5, background: c }}>
       {initials}
     </span>
   );

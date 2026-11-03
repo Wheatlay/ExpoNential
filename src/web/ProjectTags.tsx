@@ -4,6 +4,7 @@ import { TAG_COLORS, api, useMe, useMeta, type Tag, type TagColor } from './api.
 import { askConfirm } from './Confirm.tsx';
 import { Avatar, Icon } from './icons.tsx';
 import { Tooltip } from './menu.tsx';
+import { Swatches } from './Swatches.tsx';
 import { t, tn } from './i18n.ts';
 
 const MAX_AVATARS = 6;
@@ -53,12 +54,7 @@ export function ProjectTags() {
   };
 
   const swatches = (current: TagColor | null, pick: (c: TagColor) => void) => (
-    <div className="tag-swatches" role="radiogroup" aria-label={t('Tag color')}>
-      {TAG_COLORS.map((c) => (
-        <button key={c} type="button" role="radio" aria-checked={c === current} aria-label={c} title={c}
-          className={`tag-swatch${c === current ? ' on' : ''}`} style={tagVar(c)} onClick={() => pick(c)} />
-      ))}
-    </div>
+    <Swatches value={current} tagColors={TAG_COLORS} label={t('Tag color')} onChange={(c) => pick(c as TagColor)} />
   );
 
   return (

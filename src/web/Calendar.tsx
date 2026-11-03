@@ -11,6 +11,7 @@ import {
   fmtDay, meetingColor, fmtTime, joinLabel, openMeeting, openNewMeeting, sameDay, whenLabel,
 } from './Meetings.tsx';
 import { locale, t, tn } from './i18n.ts';
+import { ErrorState } from './states.tsx';
 
 /** Poniedziałek 00:00 tygodnia, w którym jest data. */
 function weekStart(d: Date) {
@@ -57,7 +58,8 @@ export function Calendar() {
   const [month, setMonth] = useState(() => monthStart(new Date()));
   // Starsze tygodnie/miesiące: API domyślnie oddaje 14 dni wstecz, więc dla przeszłości prosimy o więcej.
   const from = view === 'month' ? weekStart(month) : week;
-  const all = useMeetings(from < addDays(new Date(), -13) ? from : undefined).data ?? [];
+  const meetingsQ = useMeetings(from < addDays(new Date(), -13) ? from : undefined);
+  const all = meetingsQ.data ?? [];
   // Spotkania, na które nie jestem zaproszony: widoczne (wyciszone) albo ukryte; wybór osoby, w tej przeglądarce.
   // Domyślnie ukryte; włącza się w opcjach widoku.
   const [showOthers, setShowOthers] = useState(() => { try { return localStorage.getItem('calendar.showOthers') === '1'; } catch { return false; } });
@@ -127,6 +129,8 @@ export function Calendar() {
     );
   };
 
+  if (meetingsQ.isError && !meetingsQ.data) return <div className="calendar-page"><ErrorState error={meetingsQ.error} onRetry={() => void meetingsQ.refetch()} /></div>;
+
   return (
     <div className="calendar-page">
       <div className="calendar-main">
@@ -140,14 +144,18 @@ export function Calendar() {
               <button className="icon-btn" aria-label={t('Previous week')} onClick={() => setWeek((w) => addDays(w, -7))}><Icon.chevronRight size={13} className="flip" /></button>
               <button className="icon-btn" aria-label={t('Next week')} onClick={() => setWeek((w) => addDays(w, 7))}><Icon.chevronRight size={13} /></button>
               <span style={{ fontWeight: 600 }}>{range}</span><span className="hint">{t('+ start of next week')}</span>
-              {!isThisWeek && <button className="btn sm" onClick={() => setWeek(weekStart(new Date()))}>{t('Today')}</button>}
+              <Tooltip text={isThisWeek ? t('Already showing this week') : null}>
+                <button className="btn sm" disabled={isThisWeek} onClick={() => setWeek(weekStart(new Date()))}>{t('Today')}</button>
+              </Tooltip>
             </>
           ) : (
             <>
               <button className="icon-btn" aria-label={t('Previous month')} onClick={() => setMonth((m) => addMonths(m, -1))}><Icon.chevronRight size={13} className="flip" /></button>
               <button className="icon-btn" aria-label={t('Next month')} onClick={() => setMonth((m) => addMonths(m, 1))}><Icon.chevronRight size={13} /></button>
               <span style={{ fontWeight: 600 }}>{month.toLocaleDateString(locale, { month: 'long', year: 'numeric' })}</span>
-              {!sameMonth(month, now) && <button className="btn sm" onClick={() => setMonth(monthStart(new Date()))}>{t('Today')}</button>}
+              <Tooltip text={sameMonth(month, now) ? t('Already showing this month') : null}>
+                <button className="btn sm" disabled={sameMonth(month, now)} onClick={() => setMonth(monthStart(new Date()))}>{t('Today')}</button>
+              </Tooltip>
             </>
           )}
           <span className="spacer" />

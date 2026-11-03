@@ -78,6 +78,9 @@ export async function registerApi(app: FastifyInstance) {
       return reply.code(code).send({ error: err.message, code: err.code });
     }
     if (err instanceof z.ZodError) return reply.code(400).send({ error: 'Invalid input', issues: err.issues });
+    // Naruszenie unikalności w bazie (np. dwie etykiety o tej samej nazwie): czytelny 409 zamiast "Server error".
+    const pg = (err as { code?: string; cause?: { code?: string } });
+    if (pg.code === '23505' || pg.cause?.code === '23505') return reply.code(409).send({ error: 'This name is already taken', code: 'conflict' });
     app.log.error(err);
     return reply.code(500).send({ error: 'Server error' });
   });

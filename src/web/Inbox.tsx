@@ -5,22 +5,23 @@ import { api, pollAlertKey, useInbox, useMeta, useNotifySettings, type InboxItem
 import { Avatar, Icon } from './icons.tsx';
 import { addDismissed, useMeetingAlerts } from './Notifications.tsx';
 import { fmtTime, openMeeting } from './Meetings.tsx';
-import { pad } from './datetime.ts';
 import { navigate } from './router.ts';
-import { timeAgo } from './time.ts';
+import { fmtDate, timeAgo } from './time.ts';
+import { ErrorState } from './states.tsx';
 import { t } from './i18n.ts';
 
 const DAY = 86_400_000;
 /** Świeże: czas względny; starsze niż ~2 dni: dd.mm.rrrr (data zawsze w tym formacie). */
 function when(iso: string) {
   const d = new Date(iso);
-  return Date.now() - d.getTime() < 2 * DAY ? timeAgo(iso) : `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
+  return Date.now() - d.getTime() < 2 * DAY ? timeAgo(iso) : fmtDate(iso);
 }
 
 /** Dzwonek w nagłówku: skrzynka "Do ciebie" (wzmianki, tagi, pytania) plus to, co czeka z kalendarza (ankiety, spotkania). */
 export function InboxBell() {
   const qc = useQueryClient();
-  const inbox = useInbox().data ?? [];
+  const inboxQ = useInbox();
+  const inbox = inboxQ.data ?? [];
   const meta = useMeta().data;
   const settings = useNotifySettings().data;
   const { now, soon, polls } = useMeetingAlerts();
@@ -123,7 +124,8 @@ export function InboxBell() {
                 </div>
               );
             })}
-            {!hasAnything && <div className="inbox-empty hint">{t('Nothing for you right now. Mentions and questions will show up here.')}</div>}
+            {!hasAnything && inboxQ.isError && <ErrorState error={inboxQ.error} onRetry={() => void inboxQ.refetch()} />}
+            {!hasAnything && !inboxQ.isError && <div className="inbox-empty hint">{t('Nothing for you right now. Mentions and questions will show up here.')}</div>}
           </div>
         </div>,
         document.body,

@@ -31,7 +31,7 @@ export function agentUpToDate(version: string | null | undefined) {
 /** Urządzenie musi istnieć (agent zgłasza je pierwszym odpytaniem) i należeć do wołającego. */
 export async function requireOwnAgent(user: User, deviceId: string) {
   const [row] = await db.select().from(agents).where(eq(agents.id, deviceId));
-  if (!row) throw new RuleError('Unknown computer: connect the agent again (Settings > My AI)', 'invalid');
+  if (!row) throw new RuleError('Unknown PC: connect the agent again (Settings › My AI)', 'invalid');
   if (row.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   return row;
 }
@@ -63,7 +63,7 @@ const LIMIT_MSG = 'Daily token limit for others reached on this PC';
 export async function claimAnalysis(p: Project, user: User & { name: string }, number: number, deviceId: string, version?: string, ownOnly = false) {
   // Kliknięcie w przeglądarce może odpalić handler, zanim agent w tle zdąży się pierwszy raz zgłosić: wtedy rejestrujemy
   // urządzenie tutaj (należy do właściciela tokenu), zamiast wywracać analizę na "Unknown device".
-  if (await recentlyRemoved(deviceId)) throw new RuleError('This computer was removed', 'conflict');
+  if (await recentlyRemoved(deviceId)) throw new RuleError('This PC was removed', 'conflict');
   await db.insert(agents).values({ id: deviceId, userId: user.id }).onConflictDoNothing();
   const agent = await requireOwnAgent(user, deviceId);
   // Agent podaje swoją wersję: świeżo zaktualizowany PC nie czeka na pierwszy sygnał.
@@ -72,7 +72,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
     agent.version = version;
   }
   // Stary agent nie dostaje pracy: poprawki (np. blokada .env) działają dopiero po aktualizacji.
-  if (!agentUpToDate(agent.version)) throw new RuleError('The agent on this computer is outdated: update it (Settings > My AI)', 'outdated');
+  if (!agentUpToDate(agent.version)) throw new RuleError('The agent on this PC is outdated: update it (Settings › My AI)', 'outdated');
   // Analizę bierze tylko komputer z działającym repo projektu (chyba że projekt pozwala agentom klonować).
   if (!p.agentsMayClone) {
     const [m] = await db.select({ s: agentRepos.status }).from(agentRepos).where(and(eq(agentRepos.agentId, deviceId), eq(agentRepos.projectId, p.id)));
@@ -183,7 +183,7 @@ async function recentlyRemoved(deviceId: string) {
 
 export async function heartbeat(user: User, deviceId: string, info: HeartbeatInfo) {
   const [existing] = await db.select({ userId: agents.userId }).from(agents).where(eq(agents.id, deviceId));
-  if (!existing && await recentlyRemoved(deviceId)) throw new RuleError('This computer was removed', 'conflict');
+  if (!existing && await recentlyRemoved(deviceId)) throw new RuleError('This PC was removed', 'conflict');
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
   // Bez podanej wersji zostaje zapisana poprzednia.
@@ -507,7 +507,7 @@ export async function createStartJob(p: Project, user: NonNullable<Actor>, numbe
   const mine = await agentsLite(user);
   if (!mine.some((a) => a.online)) throw new RuleError('Your PC is offline', 'invalid');
   // Stary agent nie dostaje pracy, więc zlecenie by tylko wisiało.
-  if (!mine.some((a) => a.online && !a.outdated)) throw new RuleError('The agent on this computer is outdated: update it (Settings > My AI)', 'outdated');
+  if (!mine.some((a) => a.online && !a.outdated)) throw new RuleError('The agent on this PC is outdated: update it (Settings › My AI)', 'outdated');
   const cur = await requireIssue(p, number);
   const [job] = await db.insert(agentJobs).values({ userId: user.id, issueId: cur.id, kind: 'start' }).returning({ id: agentJobs.id });
   const sts = await db.select().from(statuses).where(eq(statuses.projectId, p.id)).orderBy(asc(statuses.position));

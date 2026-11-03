@@ -75,7 +75,7 @@ function AskModal({ ask }: { ask: Ask }) {
         <div className="foot">
           <span className="spacer" />
           <button className="btn" onClick={close}>{t('Cancel')}</button>
-          <button className="btn primary" disabled={(!who && !tagId) || !q.trim()} onClick={send}>{t('Ask')} <span className="kbd" style={{ background: 'transparent', color: '#fff', borderColor: 'rgb(255 255 255 / 0.3)' }}>↵</span></button>
+          <button className="btn primary" disabled={(!who && !tagId) || !q.trim()} onClick={send}>{t('Ask')} <span className="kbd">↵</span></button>
         </div>
       </div>
     </div>

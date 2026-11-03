@@ -61,7 +61,7 @@ export function MeetingBanner() {
           <div key={m.id} className="meeting-banner" style={{ '--kind': meetingColor(m) } as React.CSSProperties}>
             <span className="pulse" />
             <button className="banner-text" onClick={() => openMeeting(m.id)}>
-              <div style={{ fontWeight: 600 }}>{m.title} {mins > 0 ? t('starts in {n} min', { n: mins }) : t('is starting now')}</div>
+              <div className="strong">{m.title} {mins > 0 ? t('starts in {n} min', { n: mins }) : t('is starting now')}</div>
               <div className="hint">{fmtTime(m.startsAt!)}{m.locationUrl ? ' · Discord' : ''}</div>
             </button>
             <Tooltip text={isHttpUrl(m.locationUrl) ? null : t('No meeting link set for this meeting')}>
@@ -102,11 +102,11 @@ export function NotifyPrompt() {
   };
   return (
     <div className="notify-prompt" role="dialog" aria-label={t('Turn on notifications')}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div className="notify-head">
         <span className="notify-icon"><Icon.bell size={16} /></span>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>{t('Turn on notifications?')}</div>
-          <div className="hint" style={{ lineHeight: 1.5, marginTop: 4 }}>{t("So you don't miss things even with Exponential closed:")}</div>
+          <div className="notify-title">{t('Turn on notifications?')}</div>
+          <div className="hint">{t("So you don't miss things even with Exponential closed:")}</div>
         </div>
       </div>
       <div className="notify-list">
@@ -114,8 +114,8 @@ export function NotifyPrompt() {
         <div>· {t('a new time poll needs your vote')}</div>
         <div>· {t('someone suggests another time or picks the final one')}</div>
       </div>
-      <div className="hint" style={{ paddingLeft: 46 }}>{t('Only these. We ask once; you can change it any time in Settings. Your browser will ask next.')}</div>
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <div className="hint">{t('We ask once. You can change it in Settings.')}</div>
+      <div className="notify-foot">
         <button className="btn sm" disabled={busy} onClick={() => void done({})}>{t('Not now')}</button>
         <button className="btn sm primary" disabled={busy} onClick={() => void turnOn()}>{t('Turn on')}</button>
       </div>

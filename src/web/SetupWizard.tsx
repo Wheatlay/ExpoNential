@@ -25,9 +25,9 @@ function AiHint() {
   return (
     <div className="ai-hint" role="dialog" aria-label={t('Connect AI')} style={{ left, top: h.rect.bottom + 6 }}>
       <Tooltip text={h.kind === 'analyze'
-        ? t('Connect AI once and Analyze runs on your computer. Until then the request has nothing to pick it up.')
+        ? t('Connect AI once and Analyze runs on your PC. Until then the request has nothing to pick it up.')
         : t('Connect AI once so your client can read this issue and report back.')}>
-        <div className="ai-hint-title">{h.kind === 'analyze' ? t('Analysis is done by AI on your computer') : t('Work starts in your AI client')}</div>
+        <div className="ai-hint-title">{h.kind === 'analyze' ? t('Analysis is done by AI on your PC') : t('Work starts in your AI client')}</div>
       </Tooltip>
       <div className="ai-hint-actions">
         <button className="btn primary sm" autoFocus onClick={() => openSetupWizard(h.goal)}>{t('Connect AI')}</button>
@@ -49,9 +49,6 @@ const claudeCmd = () => `claude mcp add --transport http --scope user tracker ${
 const codexCmds = () => [`codex mcp add tracker --url ${BASE()}/mcp`, 'codex mcp login tracker'];
 const cursorLink = () => `cursor://anysphere.cursor-deeplink/mcp/install?name=tracker&config=${btoa(JSON.stringify({ url: `${BASE()}/mcp` }))}`;
 const pluginCmds = () => [`claude plugin marketplace add ${BASE()}/agent/marketplace.json`, 'claude plugin install tracker@tracker'];
-const agentCmds = () => [`exponential-agent login --url ${BASE()}`, 'exponential-agent autostart on'];
-
-const dmy = (iso: string) => { const d = new Date(iso); return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`; };
 
 function Cmd({ lines }: { lines: string[] }) {
   return (
@@ -79,7 +76,7 @@ const useNarrow = () => useSyncExternalStore(
 const GOALS: { n: Goal; title: () => string; sub: () => string }[] = [
   { n: 1, title: () => t('Ask about and update issues'), sub: () => t('Your AI client reads and changes issues for you.') },
   { n: 2, title: () => t('…and have issues record my work'), sub: () => t('Claude Code leaves a log of its work in each issue.') },
-  { n: 3, title: () => t("…and have AI work while I'm away"), sub: () => t('Analyses and Start work run on your computer without you.') },
+  { n: 3, title: () => t("…and have AI work while I'm away"), sub: () => t('Analyses and Start work run on your PC without you.') },
 ];
 
 export function SetupWizardHost() {
@@ -105,7 +102,6 @@ export function SetupWizardHost() {
   const [slow, setSlow] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [path, setPath] = useState('');
-  const [terminal, setTerminal] = useState(false);
   const [manual, setManual] = useState(false);
   // Wejście na konkretny krok (np. "Wybierz folder" przy komputerze) rozwija sekcję ręczną, gdzie ten krok jest.
   useEffect(() => { if (open && pickedStep) setManual(true); }, [open, pickedStep]);
@@ -159,11 +155,11 @@ export function SetupWizardHost() {
   const clientHint = where === 'Cursor' ? t('Restart Cursor and check that tracker is enabled in its MCP settings.')
     : claude ? t('In Claude Code run /mcp and choose Authenticate for tracker.') : t('Run codex mcp login tracker and finish the sign-in in the browser.');
 
-  const stepTitle: Record<Goal, string> = { 1: t('Connect a client'), 2: t('Turn on work trace'), 3: t('Agent on this computer') };
+  const stepTitle: Record<Goal, string> = { 1: t('Connect a client'), 2: t('Turn on work trace'), 3: t('Agent on this PC') };
   const doneText: Record<Goal, string> = {
     1: `${ai?.clientName ?? t('Client')} · ${ai?.clientAt ? t('connected {when}', { when: timeAgo(ai.clientAt) }) : t('connected')}`,
     2: t('Work trace is on'),
-    3: t('A computer is online and up to date'),
+    3: t('A PC is online and up to date'),
   };
 
   const step1 = (
@@ -199,7 +195,7 @@ export function SetupWizardHost() {
           ? <input className="input grow" autoFocus value={path} aria-label={t('Path')} onChange={(e) => setPath(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') savePath(a, p.key); if (e.key === 'Escape') { e.stopPropagation(); setEditing(null); } }} />
           : rp ? <code className="grow">{rp.path}</code> : <span className="hint grow">{t('no repo')}</span>}
-        {rp?.status && rp.status !== 'ok' && editing !== k && <span className="hint" title={rp.error ?? undefined}>{rp.status}</span>}
+        {rp?.status && rp.status !== 'ok' && editing !== k && <span className="hint" title={rp.error ?? undefined}>{rp.status === 'error' ? t('Error') : t('Needs attention')}</span>}
         {editing === k
           ? <button className="btn sm primary" onClick={() => savePath(a, p.key)}>{t('Save')}</button>
           : <button className="btn sm" onClick={() => { setEditing(k); setPath(rp?.path ?? ''); }}>{rp ? t('Change') : t('Choose folder')}</button>}
@@ -214,19 +210,17 @@ export function SetupWizardHost() {
         <Tooltip text={t('Windows may warn about an unsigned file: More info, then Run anyway.')}>
           <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Windows may warn about an unsigned file: More info, then Run anyway.')}><Icon.question size={14} /></span>
         </Tooltip>
-        <button type="button" className="wiz-link" aria-expanded={terminal} onClick={() => setTerminal(!terminal)}>{t('Use the terminal')}</button>
       </div>
-      {terminal && <Cmd lines={agentCmds()} />}
       {(agents.data ?? []).map((a) => (
         <div key={a.id} className="wiz-computer">
           <div className="wiz-line">
-            <b className="grow">{a.label || a.computerName || t('Unnamed computer')}</b>
+            <b className="grow">{a.label || a.computerName || t('Unnamed PC')}</b>
             {a.online ? <span className="wiz-ok">{t('online')}</span> : <span className="hint">{a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>}
           </div>
           {rows(a)}
         </div>
       ))}
-      <Wait text={t('Waiting for the agent to come online…')} hintText={t('Run exponential-agent login again and check that the program is running.')} slow={slow} />
+      <Wait text={t('Waiting for the agent to come online…')} hintText={t('Run the downloaded file again and check that the agent is in the tray.')} slow={slow} />
     </>
   );
   const bodies: Record<Goal, ReactNode> = { 1: step1, 2: step2, 3: step3 };
@@ -258,7 +252,7 @@ export function SetupWizardHost() {
                     </div>
                   ))}
                 </div>
-                <p className="hint">{t('Connect on a computer, in Settings > My AI. From the phone you can request analyses; your computer runs them when it is on.')}</p>
+                <p className="hint">{t('Connecting is done on a PC, in Settings › My AI. From the phone you can request analyses; your PC runs them when it is on.')}</p>
               </>
             ) : (
               <>

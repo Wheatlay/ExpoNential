@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ErrorState, LoadingState } from './states.tsx';
+import { CLAIM_TTL_MIN } from './time.ts';
 import { askConfirm } from './Confirm.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { openAsk } from './AskModal.tsx';
@@ -55,6 +56,8 @@ type Filters = { scope: 'all' | 'sprint' | 'questions' | 'unread'; labelIds: num
 
 const DEFAULT_DISPLAY: Display = { rows: 'assignee', ordering: 'priority', completed: 'week', showSubIssues: false, showEmptyRows: false, showHidden: false, props: ALL_PROPS, livePresence: true };
 
+/** Szerokość .display-panel (styles.css), do ustawienia panelu przy przycisku. */
+const DISPLAY_PANEL_W = 320;
 const DEFAULT_FILTERS: Filters = { scope: 'all', labelIds: [], assigneeIds: [], priorities: [] };
 type View = { display: Display; filters: Filters };
 type ViewResponse = { projectDefault: Partial<View> | null; mine: Partial<View> | null; canSetDefault: boolean };
@@ -450,7 +453,7 @@ export function Board() {
           <Icon.sprint size={13} /> {t('Current sprint')}
         </button>
         {(unreadCount > 0 || filters.scope === 'unread') && (
-          <span className={`chip unread ${filters.scope === 'unread' ? 'on' : ''}`} style={{ paddingRight: unreadCount > 0 ? 3 : undefined }}>
+          <span className={`chip unread ${filters.scope === 'unread' ? 'on' : ''} ${unreadCount > 0 ? 'has-action' : ''}`}>
             <button className="chip-main" onClick={() => setFilters((f) => ({ ...f, scope: 'unread' }))}>
               <Icon.comment size={13} /> {t('Unread')} <b>{unreadCount}</b>
             </button>
@@ -465,7 +468,7 @@ export function Board() {
         {filters.scope === 'sprint' && <SprintProgress issues={issues ?? []} meta={meta} sprintId={activeSprint?.id} />}
         {(askedMe > 0 || filters.scope === 'questions') && (
           <button className={`chip ask ${filters.scope === 'questions' ? 'on' : ''}`} onClick={() => setFilters((f) => ({ ...f, scope: 'questions' }))}>
-            <Icon.question size={13} /> {t('Asked to me')} <b>{askedMe}</b>
+            <Icon.question size={13} /> {t('Asked you')} <b>{askedMe}</b>
           </button>
         )}
         {activeFilters.map((f) => (
@@ -619,11 +622,17 @@ export function Board() {
                 </div>
               );
             })}
-            {!rows.length && <div className="hint" style={{ padding: 40, textAlign: 'center' }}>{t('No issues match the current filters.')}</div>}
+            {!rows.length && (
+              <div className="empty-block">
+                <b>{t('No issues match')}</b>
+                <span className="hint">{t('No issues match the current filters.')}</span>
+                {(activeFilters.length > 0 || filters.scope !== 'all') && <button className="btn" onClick={() => setFilters(DEFAULT_FILTERS)}>{t('Clear filters')}</button>}
+              </div>
+            )}
           </div>
         </div>
         {display.livePresence !== false && <RemoteDrags presence={presence} issues={issues} meta={meta} />}
-        <DragOverlay modifiers={[restrictToBoard]} dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)' }}>{dragging && <div className="overlay-tilt" style={{ transform: `rotate(${2 + tilt}deg) scale(1.04)` }}><CardView issue={dragging} meta={meta} overlay /></div>}</DragOverlay>
+        <DragOverlay modifiers={[restrictToBoard]} dropAnimation={{ duration: 180, easing: 'cubic-bezier(0.2, 0.9, 0.3, 1)' }}>{dragging && <div className="overlay-tilt" style={{ '--tilt': `${tilt}deg` } as CSSProperties}><CardView issue={dragging} meta={meta} overlay /></div>}</DragOverlay>
       </DndContext>
       </CardActionsContext.Provider>
       </CardPropsContext.Provider>
@@ -750,8 +759,10 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
           <span key={l.id} className="pill" {...pillProps('labels')}><span className="dot" style={{ background: l.color }} />{l.name}</span>
         ))}
         {show.ai && issue.analysisRequestedAt && (issue.analysisClaimedAt
-          ? <span className="pill ai" title={t('A PC is running the AI analysis')}><Icon.sparkle size={12} /> {t('Analysis running')}</span>
-          : <span className="pill ai" title={t('Waiting for AI analysis')}><Icon.sparkle size={12} /> {t('Analysis pending')}</span>)}
+          ? (Date.now() - new Date(issue.analysisClaimedAt).getTime() > CLAIM_TTL_MIN * 60_000
+            ? <span className="pill stalled" title={t('Analysis stalled: open the issue to analyze again or cancel')}><Icon.sparkle size={12} /> {t('Stalled')}</span>
+            : <span className="pill ai" title={t('A PC is running the AI analysis')}><Icon.sparkle size={12} /> {t('Running')}</span>)
+          : <span className="pill ai" title={t('Waiting for AI analysis')}><Icon.sparkle size={12} /> {t('Waiting')}</span>)}
         {show.ai && !issue.analysisRequestedAt && issue.hasAnalysis && <span className="pill ai done" title={t('AI analysis available')}><Icon.sparkle size={12} /></span>}
         {notesMissing && <span className="pill notes-missing" title={t('Done without HUMAN / AI change notes')}>{t('Notes missing')}</span>}
       </div>
@@ -814,7 +825,7 @@ function DisplayPanel({ at, display, setDisplay, onClose }: {
     </button>
   );
   return (
-    <div ref={ref} className="display-panel" style={{ left: Math.max(8, at.x - 330), top: at.y }}>
+    <div ref={ref} className="display-panel" style={{ left: Math.max(8, at.x - DISPLAY_PANEL_W), top: at.y }}>
       <div className="sec">
         <label className="row">{t('Rows')}
           <select value={display.rows} onChange={(e) => set('rows', e.target.value as Display['rows'])}>
@@ -926,7 +937,7 @@ function RemoteDrags({ presence, issues, meta }: { presence: Presence[]; issues:
         if (board) y = Math.min(Math.max(y, board.top + 40), board.bottom - 40);
         const width = Math.max(220, Math.min(300, r.width - 12));
         return (
-          <div key={p.userId} className="remote-drag" style={{ transform: `translate(${x - 40}px, ${y - 18}px) rotate(2deg)` }}>
+          <div key={p.userId} className="remote-drag" style={{ transform: `translate(${x - 40}px, ${y - 18}px)` }}>
             <span className="remote-cursor"><Icon.cursor size={14} /> {p.name}</span>
             <div style={{ width }}><CardView issue={issue} meta={meta} overlay /></div>
           </div>

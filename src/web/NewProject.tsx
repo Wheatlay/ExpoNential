@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, type ProjectSummary } from './api.ts';
 import { ProjectBadge, switchProject } from './ProjectSwitcher.tsx';
 import { toast } from './toast.ts';
+import { Tooltip } from './menu.tsx';
+import { Swatches, projectPalette } from './Swatches.tsx';
 import { t } from './i18n.ts';
 
 /** Nowy projekt (osobny zespół): klucz do numerów zadań, nazwa, kolor. Twórca zostaje adminem projektu. */
@@ -19,8 +21,6 @@ export function NewProjectHost() {
   return o ? <NewProjectModal /> : null;
 }
 
-const COLORS = ['#5e6ad2', '#2563eb', '#26b5ce', '#059669', '#d97706', '#e5484d', '#a855f7'];
-
 /** Propozycja klucza z nazwy: "Strona szefa" -> "SS", "Website" -> "WEBS". */
 function suggestKey(name: string) {
   const words = name.normalize('NFD').replace(/[^A-Za-z\s]/g, '').trim().split(/\s+/).filter(Boolean);
@@ -33,7 +33,7 @@ function NewProjectModal() {
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
   const [keyTouched, setKeyTouched] = useState(false);
-  const [color, setColor] = useState(COLORS[1]);
+  const [color, setColor] = useState(() => projectPalette()[1]);
   const [busy, setBusy] = useState(false);
   const modalRef = useModal();
   const k = keyTouched ? key : suggestKey(name);
@@ -55,36 +55,30 @@ function NewProjectModal() {
   };
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="modal" style={{ width: 520 }} role="dialog" aria-modal="true" aria-label={t('New project')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => {
+      <div className="modal np-modal" role="dialog" aria-modal="true" aria-label={t('New project')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === 'Escape') close();
         if (e.key === 'Enter') void create();
       }}>
-        <div className="crumbs">{t('New project')}</div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <Tooltip text={t('You become the project admin. Add people in Settings › Project.')}><div className="crumbs">{t('New project')}</div></Tooltip>
+        <div className="np-head">
           <ProjectBadge project={{ name: name || '?', color }} size={32} />
           <input className="title" autoFocus placeholder={t('Project name')} value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 12, alignItems: 'center', padding: '12px 0' }}>
+        <div className="np-grid">
           <label className="hint" htmlFor="np-key">{t('Issue prefix')}</label>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input id="np-key" className="input" style={{ width: 110, textTransform: 'uppercase' }} value={k} maxLength={6}
+          <div className="np-key">
+            <input id="np-key" className="input" size={8} value={k} maxLength={6}
               onChange={(e) => { setKeyTouched(true); setKey(e.target.value.toUpperCase().replace(/[^A-Z]/g, '')); }} />
             <span className="hint">{k ? t('Issues will be {a}, {b}…', { a: `${k}-1`, b: `${k}-2` }) : t('2-6 letters')}</span>
           </div>
           <span className="hint">{t('Color')}</span>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {COLORS.map((c) => (
-              <button key={c} aria-label={`${t('Color')} ${c}`} onClick={() => setColor(c)}
-                style={{ width: 22, height: 22, borderRadius: 6, background: c, outline: c === color ? '2px solid var(--text-primary)' : 'none', outlineOffset: 2 }} />
-            ))}
-          </div>
+          <Swatches value={color} onChange={setColor} />
         </div>
         <div className="foot">
-          <span className="hint">{t('You become the project admin. Add people in Settings › Project.')}</span>
           <span className="spacer" />
           <button className="btn" onClick={close}>{t('Cancel')}</button>
-          <button className="btn primary" disabled={!valid || busy} title={valid ? undefined : t('Enter a name and a 2-6 letter prefix')} onClick={() => void create()}>{t('Create project')}</button>
+          <Tooltip text={valid ? null : t('Enter a name and a 2-6 letter prefix')}><button className="btn primary" disabled={!valid || busy} onClick={() => void create()}>{t('Create project')}</button></Tooltip>
         </div>
       </div>
     </div>

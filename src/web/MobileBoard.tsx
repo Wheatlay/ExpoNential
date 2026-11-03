@@ -27,7 +27,7 @@ function useMoveSheet(meta: Meta) {
       { key: 'me', label: t('Assign to me'), checked: !!me && i.assigneeId === me.id, onSelect: () => { if (me) patch({ assigneeId: me.id }); } },
       // Start na moim komputerze: wyszarzone z powodem, gdy agent jest offline (nie chowamy pozycji).
       ...(me && !me.demo && me.hasAgent ? [{
-        key: 'start', label: t('Start on my PC'), disabledReason: me.agentOutdated ? t('This computer has an old agent. Update it first (Settings > My AI).') : me.agentOnline ? undefined : t('Your PC is offline'),
+        key: 'start', label: t('Start work'), disabledReason: me.agentOutdated ? t('This PC has an old agent. Update it first (Settings › My AI).') : me.agentOnline ? undefined : t('Your PC is offline'),
         onSelect: () => { void startOnPc(i.number).catch((e: Error) => toast(e.message, 'err')); },
       } satisfies MenuItem] : []),
       { key: 'open', label: t('Open'), onSelect: onOpen },
