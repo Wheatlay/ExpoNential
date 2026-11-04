@@ -2,22 +2,6 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Server [1.3.15] - 04.11.2026
-
-- My AI: one main "Connect AI" button; an empty "Your PCs" card offers a "Connect this PC" link (opens the wizard at the agent step).
-
-## Server [1.3.14] - 04.11.2026
-
-- My AI: with nothing connected, "Connect AI" sits in the empty row like "Connect this PC" (it had a hidden dot that pushed its label off-center).
-
-## Server [1.3.13] - 04.11.2026
-
-- Your PCs: the Claude Code setup line is gone; a "Claude Code: incomplete setup" warning appears only when an account is missing the tracker or the work trace.
-
-## Server [1.3.12] - 04.11.2026
-
-- Your PCs: team requests and the limit can be changed while the PC is offline; "Without asking" is turned on only in the agent window on that PC (grayed out on the web with the reason). Claude Code setup reads "tracker and work trace in all accounts (3)".
-
 ## Server [1.3.17], Agent [0.4.13] - 04.11.2026
 
 - The agent window opens instantly and without a white flash: closing only hides it, and the first open shows it once the page is drawn.
@@ -47,6 +31,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Agent [0.4.8] - 04.11.2026
 
 - The agent window no longer hangs after a click: setting changes run in the background, the state read answers within 2 s (last known state otherwise), and any action slower than 3 s is written to the log by name.
+
+## Server [1.3.15] - 04.11.2026
+
+- My AI: one main "Connect AI" button; an empty "Your PCs" card offers a "Connect this PC" link (opens the wizard at the agent step).
+
+## Server [1.3.14] - 04.11.2026
+
+- My AI: with nothing connected, "Connect AI" sits in the empty row like "Connect this PC" (it had a hidden dot that pushed its label off-center).
+
+## Server [1.3.13] - 04.11.2026
+
+- Your PCs: the Claude Code setup line is gone; a "Claude Code: incomplete setup" warning appears only when an account is missing the tracker or the work trace.
+
+## Server [1.3.12] - 04.11.2026
+
+- Your PCs: team requests and the limit can be changed while the PC is offline; "Without asking" is turned on only in the agent window on that PC (grayed out on the web with the reason). Claude Code setup reads "tracker and work trace in all accounts (3)".
 
 ## Agent [0.4.7] - 04.11.2026
 
