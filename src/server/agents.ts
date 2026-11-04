@@ -440,7 +440,7 @@ export async function myAgents(user: User) {
   const others24 = new Map(day.map((d) => [d.agentId, d.n]));
   const othersTokens24 = new Map(day.map((d) => [d.agentId, Number(d.tokens)]));
   return rows.map((a) => ({ id: a.id, maxOthersTokensPerDay: a.maxOthersTokensPerDay, usage30d: usage.get(a.id)!,
-    forOthers24h: others24.get(a.id) ?? 0, forOthersTokens24h: othersTokens24.get(a.id) ?? 0, limitReached24h: a.maxOthersTokensPerDay != null && (othersTokens24.get(a.id) ?? 0) >= a.maxOthersTokensPerDay, name: a.label || a.name, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5, outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),
+    forOthers24h: others24.get(a.id) ?? 0, forOthersTokens24h: othersTokens24.get(a.id) ?? 0, limitReached24h: a.maxOthersTokensPerDay != null && (othersTokens24.get(a.id) ?? 0) >= a.maxOthersTokensPerDay, name: a.label || a.name, version: a.version, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5, outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),
     repos: repos.filter((r) => r.agentId === a.id).map(({ agentId: _, ...r }) => r),
     teamMode: a.teamMode,
     setup: a.setup ?? null,

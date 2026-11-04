@@ -1400,3 +1400,15 @@ textarea.md-edit.md-md { min-height: 120px; }
 .notify-title { font-weight: 600; font-size: var(--text-lg); }
 .notify-foot { display: flex; gap: 8px; justify-content: flex-end; }
 /* == end calendar, dialogs, shared == */
+
+/* == My AI layout == */
+.my-pc { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border-primary); }
+.my-pc:last-child { border-bottom: 0; }
+.my-pc-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.my-pc-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.my-pc-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+.my-ai-keys > summary { cursor: pointer; color: var(--text-secondary); list-style: none; display: flex; align-items: center; gap: 8px; }
+.my-ai-keys > summary::-webkit-details-marker { display: none; }
+.my-ai-keys > summary > svg { transition: transform 0.12s; color: var(--text-tertiary); }
+.my-ai-keys[open] > summary > svg { transform: rotate(90deg); }
+/* == end My AI layout == */

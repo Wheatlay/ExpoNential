@@ -216,6 +216,18 @@ describe('pairing name and rate limit', () => {
     await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: (await download()).cfg.pairing, deviceId: foreign, name: 'Hijack' } });
     expect((await dbmod.db.select().from(schema.agents).where(eq(schema.agents.id, foreign)))[0].name).toBe('Theirs');
   });
+  it('pairing under the same name replaces the other rows of that user with that name (grant revoked, no tombstone)', async () => {
+    const d1 = randomUUID(), d2 = randomUUID();
+    await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: (await download()).cfg.pairing, deviceId: d1, name: 'Twin-PC' } });
+    await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: (await download()).cfg.pairing, deviceId: d2, name: ' twin-pc ' } });
+    expect(await dbmod.db.select().from(schema.agents).where(eq(schema.agents.id, d1))).toHaveLength(0);
+    expect(await dbmod.db.select().from(schema.agents).where(eq(schema.agents.id, d2))).toHaveLength(1);
+    expect(await dbmod.db.select().from(schema.agentTombstones).where(eq(schema.agentTombstones.id, d1))).toHaveLength(0);
+    const [old] = await dbmod.db.select().from(schema.oauthGrants).where(eq(schema.oauthGrants.agentId, d1));
+    expect(old.revokedAt).not.toBeNull();
+    const [fresh] = await dbmod.db.select().from(schema.oauthGrants).where(eq(schema.oauthGrants.agentId, d2));
+    expect(fresh.revokedAt).toBeNull();
+  });
   it('429 carries error rate_limited', async () => {
     let last: { statusCode: number; json: () => { error: string } } | undefined;
     for (let i = 0; i < 70; i++) last = await app.inject({ method: 'POST', url: '/api/agent/pair', payload: { pairing: 'pair_x' }, remoteAddress: '10.9.9.9' });

@@ -5,3 +5,4 @@ Lista w karcie Ustawień (`.s-card` + wiersze `.s-row`), np. Projekt › Ludzie,
 - Ten sam zestaw przycisków w każdym wierszu i w tej samej kolejności, żeby kolumny się nie rozjeżdżały. Akcja bez sensu dla danej pozycji jest wyszarzona z powodem w `Tooltip`, nigdy ukryta.
 - Mój wiersz ma `.badge.me` „Ty” obok nazwy.
 - Daty w wierszach `dd.mm.rrrr`.
+- Układ Ustawienia › Moje AI (zatwierdzony 04.11.2026): dwie karty. „AI clients” (nagłówek z przyciskiem „Connect another”, albo „Connect AI” `primary` gdy pusto; pusta lista = `.hint` „No AI client connected”), pod wierszami klientów zwinięty `<details>` „API keys (n)” z tymi samymi wierszami (nazwa, utworzono/użyto, Revoke). „Your PCs” zawsze widoczna (pusta: `.hint` „No PC with the agent” + `btn primary` „Connect this PC”). Karty „Connected AI clients” i osobnej karty kluczy API nie ma.

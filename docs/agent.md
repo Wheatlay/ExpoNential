@@ -45,7 +45,7 @@ Details: [agent/README.md](../agent/README.md).
 | MCP (Codex) | `codex mcp remove tracker` |
 | Plugin | `claude plugin uninstall tracker@tracker` |
 | Agent | Windows Settings > Apps > Exponential agent > Uninstall (or `exponential-agent uninstall --yes`); also removes this computer and its sign-in from the server |
-| Server-side access | Settings > My AI > Connected AI clients: Revoke |
+| Server-side access | Settings > My AI > AI clients: Revoke |
 
 ## Legacy PowerShell installer
 

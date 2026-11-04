@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.11] - 04.11.2026
+
+- Settings › My AI: one "AI clients" list (sign-ins and API keys together), "Your PCs" always shown (with "Connect this PC" when empty); each PC row shows online state, version and update status without overlapping; team settings are grayed out with the reason while the PC is offline or outdated.
+- Pairing the same PC again replaces the old entry instead of adding a duplicate; agent sign-ins are no longer listed as AI clients. Old orphaned agent sign-ins and duplicate PCs were cleaned up (scripts/cleanup-agents.sql).
+
 ## Server [1.3.10] - 04.11.2026
 
 - Connect AI shows the state of the client you picked (Claude Code, Codex or Cursor), not of whichever client is connected; work trace is grayed out for clients other than Claude Code and does not count toward progress; the wizard opens on the client you already use.

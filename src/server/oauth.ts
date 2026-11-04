@@ -4,9 +4,9 @@
  */
 import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { and, desc, eq, gt, gte, isNull, lt, notExists, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, isNull, lt, ne, notExists, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
-import { agentPairings, agents, oauthClients, oauthCodes, oauthDeviceCodes, oauthGrants, users } from '../db/schema.ts';
+import { agentPairings, oauthClients, oauthCodes, oauthDeviceCodes, oauthGrants, users } from '../db/schema.ts';
 import { requireUser, sha256, type SessionUser } from './auth.ts';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5173';
@@ -417,18 +417,13 @@ ${clientFacts(d.clientName, d.clientAt)}
       return reply.send({});
     });
 
-    // Połączenia zalogowanego użytkownika (Ustawienia). Grants agenta (client exponential-agent) są na liście z agent: true;
-    // computerName z komputera (agents) przypisanego do grantu, null gdy grant nie ma komputera.
+    // Połączenia zalogowanego użytkownika (Ustawienia). Grants agenta (client exponential-agent) pomijamy: dostęp agenta widać przy komputerze.
     o.get('/api/connections', { preHandler: requireUser }, async (req) =>
-      (await db.select({
+      db.select({
         id: oauthGrants.id, client: oauthClients.name, createdAt: oauthGrants.createdAt, lastUsedAt: oauthGrants.lastUsedAt, firstMcpAt: oauthGrants.firstMcpAt,
-        clientId: oauthGrants.clientId, label: agents.label, computer: agents.name,
       }).from(oauthGrants).innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
-        .leftJoin(agents, and(eq(agents.id, oauthGrants.agentId), eq(agents.userId, oauthGrants.userId)))
-        .where(and(eq(oauthGrants.userId, req.user!.id), isNull(oauthGrants.revokedAt), gt(oauthGrants.refreshExpiresAt, new Date())))
-        .orderBy(desc(oauthGrants.createdAt))).map(({ clientId, label, computer, ...c }) => ({
-        ...c, agent: clientId === AGENT_CLIENT_ID, computerName: (label || computer || null) as string | null,
-      })));
+        .where(and(eq(oauthGrants.userId, req.user!.id), ne(oauthGrants.clientId, AGENT_CLIENT_ID), isNull(oauthGrants.revokedAt), gt(oauthGrants.refreshExpiresAt, new Date())))
+        .orderBy(desc(oauthGrants.createdAt)));
 
     o.delete<{ Params: { id: string } }>('/api/connections/:id', { preHandler: requireUser }, async (req, reply) => {
       const id = Number(req.params.id);

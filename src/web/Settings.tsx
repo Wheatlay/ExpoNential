@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { TimeInput } from './DateTime.tsx';
 import { askConfirm } from './Confirm.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -192,7 +192,6 @@ const SEARCH: SearchEntry[] = [
   { label: t('Only mentions and questions to me'), to: 'notifications', target: 'notif-important', keywords: ['mute', 'quiet', 'wycisz', 'wzmianki', 'mentions', 'pytania', 'questions', 'powiadomienia'] },
   // Ty › AI
   { label: t('Connect AI'), to: 'claude', target: 'claude-connect', keywords: ['claude code', 'claude', 'codex', 'mcp', 'wizard', 'ai', 'polacz'] },
-  { label: t('Connected AI clients'), to: 'claude', target: 'ai-clients', keywords: ['mcp', 'oauth', 'grants', 'dostep'] },
   { label: t('Your PCs'), to: 'claude', target: 'your-computers', keywords: ['agent', 'pc', 'komputer', 'computer', 'runner'] },
   { label: t('API keys'), to: 'claude', target: 'tokens', keywords: ['api', 'key', 'klucz', 'token', 'tokens'] },
   // Ty › Hasło
@@ -395,7 +394,7 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxOthersTokensPerDay: number | null; limitReached24h: boolean; forOthers24h: number; forOthersTokens24h: number; claudeLimit: string; usage30d: UsageInfo; teamMode: TeamMode; setup?: { claude: { name: string; mcp: boolean; plugin: boolean }[]; codex: boolean; cursor: boolean } | null; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; version?: string | null; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxOthersTokensPerDay: number | null; limitReached24h: boolean; forOthers24h: number; forOthersTokens24h: number; claudeLimit: string; usage30d: UsageInfo; teamMode: TeamMode; setup?: { claude: { name: string; mcp: boolean; plugin: boolean }[]; codex: boolean; cursor: boolean } | null; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
   const projects = useProjects(!!me && !me.demo).data;
   const projectOf = (k: string) => projects?.find((p) => p.key === k);
   const refreshTeam = () => { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); };
@@ -407,103 +406,105 @@ function ClaudeConnect() {
     return () => window.removeEventListener('focus', f);
   }, [qc]);
   const demo = !!me?.demo;
+  const anyClient = (grants.data?.length ?? 0) + (tokens.data?.length ?? 0) > 0;
   return (
     <>
       <div className="s-card" id="claude-connect">
-        <div className="s-row">
-          <span className="grow">{t('AI clients')}</span>
-          {/* Podłączony klient (też starym tokenem, którego nie ma na liście połączeń) widać tu, a przycisk staje się drugorzędny. */}
-          {me?.aiStatus?.client && (
-            <span className="hint"><span className="wiz-chip-check"><Icon.check size={12} /></span> {me.aiStatus.clientName}{me.aiStatus.clientAt ? ` · ${timeAgo(me.aiStatus.clientAt)}` : ''}</span>
-          )}
-          <button className={`btn${me?.aiStatus?.client ? '' : ' primary'}`} onClick={() => openSetupWizard()}>{me?.aiStatus?.client ? t('Connect another') : t('Connect AI')}{!demo && me?.aiStatus?.attention?.includes('connect') && <span className="nav-dot" role="img" aria-label={t('Needs attention')} />}</button>
+        <div className="s-row s-row-head">
+          <b className="grow">{t('AI clients')}</b>
+          <button className={`btn${anyClient ? '' : ' primary'}`} onClick={() => openSetupWizard()}>{anyClient ? t('Connect another') : t('Connect AI')}{!demo && me?.aiStatus?.attention?.includes('connect') && <span className="nav-dot" role="img" aria-label={t('Needs attention')} />}</button>
         </div>
+        {!anyClient && (
+          <div className="s-row"><span className="hint grow">{t('No AI client connected')}</span></div>
+        )}
+        {(grants.data ?? []).map((g) => (
+          <div key={g.id} className="s-row">
+            <span className="grow">{g.client}</span>
+            <span className="hint">{g.lastUsedAt ? t('since {date}, last used {when}', { date: fmtDate(g.createdAt), when: timeAgo(g.lastUsedAt) }) : t('since {date}, never used', { date: fmtDate(g.createdAt) })}</span>
+            <button className="btn sm danger" onClick={() => void askConfirm({
+              title: t('Revoke "{name}"?', { name: g.client }), body: t('This client loses access to Exponential until you sign in with it again.'), action: t('Revoke'), danger: true,
+            }).then((ok) => { if (ok) void api(`/api/connections/${g.id}`, { method: 'DELETE' }).then(() => { void qc.invalidateQueries({ queryKey: ['connections'] }); void qc.invalidateQueries({ queryKey: ['me'] }); }); })}>{t('Revoke')}</button>
+          </div>
+        ))}
+        {(tokens.data ?? []).map((tk) => (
+          <div key={`k${tk.id}`} className="s-row" id={tk === tokens.data![0] ? 'tokens' : undefined}>
+            <span className="grow">{tk.name} <Tooltip text={t('Connected with an API key')}><span className="pill">{t('API key')}</span></Tooltip></span>
+            <span className="hint">{t('created {when}', { when: timeAgo(tk.createdAt) })} · {tk.lastUsedAt ? t('used {when}', { when: timeAgo(tk.lastUsedAt) }) : t('never used')}</span>
+            <Tooltip text={demo ? t('Disabled in the demo') : null}><button className="btn sm danger" disabled={demo} onClick={() => void askConfirm({ title: t('Revoke "{name}"?', { name: tk.name }), body: t('Claude Code using this token stops working.'), action: t('Revoke'), danger: true }).then((ok) => { if (ok) void api(`/api/tokens/${tk.id}`, { method: 'DELETE' }).then(() => { void qc.invalidateQueries({ queryKey: ['tokens'] }); void qc.invalidateQueries({ queryKey: ['me'] }); }); })}>{t('Revoke')}</button></Tooltip>
+          </div>
+        ))}
       </div>
-      {(grants.data?.length ?? 0) > 0 && (
-        <div className="s-card" id="ai-clients">
-          <div className="s-row s-row-head"><b>{t('Connected AI clients')}</b></div>
-          {grants.data!.map((g) => {
-            const label = g.agent ? t('Exponential agent · {computer}', { computer: g.computerName || t('Unnamed PC') }) : g.client;
-            return (
-            <div key={g.id} className="s-row">
-              <span className="grow">{label}</span>
-              <span className="hint">{g.lastUsedAt ? t('since {date}, last used {when}', { date: fmtDate(g.createdAt), when: timeAgo(g.lastUsedAt) }) : t('since {date}, never used', { date: fmtDate(g.createdAt) })}</span>
-              <button className="btn sm danger" onClick={() => void askConfirm({
-                title: t('Revoke "{name}"?', { name: label }), body: t('This client loses access to Exponential until you sign in with it again.'), action: t('Revoke'), danger: true,
-              }).then((ok) => { if (ok) void api(`/api/connections/${g.id}`, { method: 'DELETE' }).then(() => { void qc.invalidateQueries({ queryKey: ['connections'] }); void qc.invalidateQueries({ queryKey: ['me'] }); }); })}>{t('Revoke')}</button>
-            </div>
-            );
-          })}
-        </div>
-      )}
-      {(agentList.data?.length ?? 0) > 0 && !demo && (
+      {!demo && (
         <div className="s-card" id="your-computers">
           <div className="s-row s-row-head"><b>{t('Your PCs')}</b></div>
-          {(agentList.data ?? []).map((a) => (
-            <Fragment key={a.id}>
+          {(agentList.data?.length ?? 0) === 0 && (
             <div className="s-row">
-              <span className="grow">
-                <span className="s-computer-name">
-                  {/* Własna nazwa (jak login GitHub w Kontach): zapis po wyjściu z pola, pusta wraca do nazwy z Windowsa. */}
-                  <input className="input s-input-name" key={a.label} defaultValue={a.label} placeholder={a.computerName || t('Unnamed PC')} aria-label={t('PC name')}
-                    title={t('Your name for this PC. Empty: the Windows name.')}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    onBlur={(e) => { const v = e.target.value.trim(); if (v !== a.label) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { label: v } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); }); }} />
-                  {!a.online && <Tooltip text={a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}><span className="pill">{t('Offline')}</span></Tooltip>}
+              <span className="hint grow">{t('No PC with the agent')}</span>
+              <button className="btn primary" onClick={() => openSetupWizard(3)}>{t('Connect this PC')}</button>
+            </div>
+          )}
+          {(agentList.data ?? []).map((a) => {
+            const teamOff = !a.online ? t('PC is offline') : a.outdated ? t('Update the agent first') : null;
+            return (
+            <div key={a.id} className="my-pc">
+              <div className="my-pc-line">
+                {/* Własna nazwa (jak login GitHub w Kontach): zapis po wyjściu z pola, pusta wraca do nazwy z Windowsa. */}
+                <input className="input s-input-name" key={a.label} defaultValue={a.label} placeholder={a.computerName || t('Unnamed PC')} aria-label={t('PC name')}
+                  title={t('Your name for this PC. Empty: the Windows name.')}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  onBlur={(e) => { const v = e.target.value.trim(); if (v !== a.label) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { label: v } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); }); }} />
+                <span className="my-pc-pills">
+                  <span className={`pill${a.online ? ' ok' : ''}`}>{a.online ? t('Online') : t('Offline')}</span>
                   {a.outdated && !a.legacy && <span className="pill stalled">{t('Update needed')}</span>}
                   {a.legacy && <button className="btn sm" onClick={() => openSetupWizard(3)}>{t('Switch to the new agent')}</button>}
                   {a.limitReached24h && <span className="pill stalled">{t('Limit reached')}</span>}
                   {a.claudeLimit && <Tooltip text={t('Analyses will return automatically after the limit renews.')}><span className="pill">{a.claudeLimit}</span></Tooltip>}
                   {a.inactive && <Tooltip text={t('Not seen for over 3 days. Hidden after 14 days.')}><span className="pill">{t('Inactive')}</span></Tooltip>}
+                  {a.lastError && <Tooltip text={t('Last error {when}: {error}', { when: a.lastErrorAt ? timeAgo(a.lastErrorAt) : '', error: a.lastError.slice(0, 300) })}><span className="pill stalled">{t('Error')}</span></Tooltip>}
                   {(a.limitReached24h || a.lastError || a.legacy || (a.maxOthersTokensPerDay == null && a.forOthersTokens24h >= 2_000_000)) && <span className="nav-dot" role="img" aria-label={t('Needs attention')} />}
                 </span>
-                {(agentList.data ?? []).some((o) => o.id !== a.id && (o.label || o.computerName) === (a.label || a.computerName)) && <div className="hint">{t('Same name as another PC. ID: {id}', { id: a.id.slice(-4) })}</div>}
-                {a.label && a.computerName && <div className="hint">{t('Windows name: {name}', { name: a.computerName })}</div>}
-                {a.setup && a.setup.claude.length > 0 && (
-                  <Tooltip text={a.setup.claude.map((c) => `${c.name}: ${t('issues')} ${c.mcp ? '✓' : '✗'} · ${t('work trace')} ${c.plugin ? '✓' : '✗'}`).join('\n')}>
-                    <div className="hint">{t('Claude Code: issues {a}/{n} · work trace {b}/{n}', { a: a.setup.claude.filter((c) => c.mcp).length, b: a.setup.claude.filter((c) => c.plugin).length, n: a.setup.claude.length })}</div>
-                  </Tooltip>
-                )}
-                {a.usage30d.runs > 0 && (
-                  <Tooltip text={byRequesterText(a.usage30d)}>
-                    <div className="hint">{t('30 days: {runs} analyses · {tokens}', { runs: a.usage30d.runs, tokens: t('{n} tokens', { n: tok(a.usage30d.tokens) }) })}</div>
-                  </Tooltip>
-                )}
-                {a.lastError && <Tooltip text={t('Last error {when}: {error}', { when: a.lastErrorAt ? timeAgo(a.lastErrorAt) : '', error: a.lastError.slice(0, 300) })}><span className="pill stalled">{t('Error')}</span></Tooltip>}</span>
-              <Tooltip text={t('Requests from other people in projects with a team queue.')}><span className="hint">{t('Team requests')}</span></Tooltip>
-              <div className="seg" role="group" aria-label={t('Team requests')}>
-                {TEAM_MODES.map((m) => (
-                  <button key={m} className={a.teamMode === m ? 'on' : ''} aria-pressed={a.teamMode === m}
-                    onClick={() => { if (a.teamMode !== m) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { teamMode: m } }).then(refreshTeam); }}>{TEAM_MODE_LABEL[m]()}</button>
-                ))}
               </div>
-              <Tooltip text={t('Runs for other people on this PC in 24 hours. Your own are never limited.')}>
-                <select className="input" value={a.maxOthersTokensPerDay ?? ''} aria-label={t('Limit for others per day')}
-                  onChange={(e) => void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { maxOthersTokensPerDay: e.target.value === '' ? null : Number(e.target.value) } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); })}>
-                  <option value="">{t('No limit for others')}</option>
-                  {[...new Set([...LIMITS, ...(a.maxOthersTokensPerDay != null ? [a.maxOthersTokensPerDay] : [])])].sort((x, y) => x - y).map((n) => <option key={n} value={n}>{t('{n} / day', { n: tok(n) })}</option>)}
-                </select>
-              </Tooltip>
-              <span className="hint">{a.online ? (a.busy ? t('running an analysis') : t('online')) : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}</span>
-              <button className="btn sm danger" onClick={() => void askConfirm({
-                title: t('Remove "{name}"?', { name: a.name || t('Unnamed PC') }), body: t('This PC stops taking requests until the agent is installed on it again.'), action: t('Remove'), danger: true,
-              }).then((ok) => { if (ok) void api(`/api/agents/${a.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['agents'] })); })}>{t('Remove')}</button>
+              <div className="my-pc-line">
+                <span className="grow my-pc-meta">
+                  <span className="hint">{a.online && a.busy ? t('running an analysis') : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}{a.version ? ` · ${t('version {v}', { v: a.version })}` : ''}</span>
+                  {a.label && a.computerName && <span className="hint">{t('Windows name: {name}', { name: a.computerName })}</span>}
+                  {a.setup && a.setup.claude.length > 0 && (
+                    <Tooltip text={a.setup.claude.map((c) => `${c.name}: ${t('issues')} ${c.mcp ? '✓' : '✗'} · ${t('work trace')} ${c.plugin ? '✓' : '✗'}`).join('\n')}>
+                      <span className="hint">{t('Claude Code: issues {a}/{n} · work trace {b}/{n}', { a: a.setup.claude.filter((c) => c.mcp).length, b: a.setup.claude.filter((c) => c.plugin).length, n: a.setup.claude.length })}</span>
+                    </Tooltip>
+                  )}
+                  {a.usage30d.runs > 0 && (
+                    <Tooltip text={byRequesterText(a.usage30d)}>
+                      <span className="hint">{t('30 days: {runs} analyses · {tokens}', { runs: a.usage30d.runs, tokens: t('{n} tokens', { n: tok(a.usage30d.tokens) }) })}</span>
+                    </Tooltip>
+                  )}
+                </span>
+                <button className="btn sm danger" onClick={() => void askConfirm({
+                  title: t('Remove "{name}"?', { name: a.name || t('Unnamed PC') }), body: t('This PC stops taking requests until the agent is installed on it again.'), action: t('Remove'), danger: true,
+                }).then((ok) => { if (ok) void api(`/api/agents/${a.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['agents'] })); })}>{t('Remove')}</button>
+              </div>
+              <div className="my-pc-line">
+                <Tooltip text={teamOff ?? t('Requests from other people in projects with a team queue.')}><span className="hint" tabIndex={teamOff ? 0 : undefined}>{t('Team requests')}</span></Tooltip>
+                <Tooltip text={teamOff}>
+                  <div className="seg" role="group" aria-label={t('Team requests')}>
+                    {TEAM_MODES.map((m) => (
+                      <button key={m} className={a.teamMode === m ? 'on' : ''} aria-pressed={a.teamMode === m} disabled={!!teamOff}
+                        onClick={() => { if (a.teamMode !== m) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { teamMode: m } }).then(refreshTeam); }}>{TEAM_MODE_LABEL[m]()}</button>
+                    ))}
+                  </div>
+                </Tooltip>
+                <Tooltip text={teamOff ?? t('Runs for other people on this PC in 24 hours. Your own are never limited.')}>
+                  <select className="input" value={a.maxOthersTokensPerDay ?? ''} aria-label={t('Limit for others per day')} disabled={!!teamOff}
+                    onChange={(e) => void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { maxOthersTokensPerDay: e.target.value === '' ? null : Number(e.target.value) } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); })}>
+                    <option value="">{t('No limit for others')}</option>
+                    {[...new Set([...LIMITS, ...(a.maxOthersTokensPerDay != null ? [a.maxOthersTokensPerDay] : [])])].sort((x, y) => x - y).map((n) => <option key={n} value={n}>{t('{n} / day', { n: tok(n) })}</option>)}
+                  </select>
+                </Tooltip>
+              </div>
             </div>
-            </Fragment>
-          ))}
+            );
+          })}
         </div>
-      )}
-      {(tokens.data?.length ?? 0) > 0 && (
-        <details id="tokens" className="s-card settings-legacy">
-          <summary className="s-row"><Icon.chevronRight size={12} /><Tooltip text={t('For scripts and integrations. AI clients and the agent connect by signing in.')}><b>{t('API keys')}</b></Tooltip><span className="hint">{tokens.data!.length}</span></summary>
-          {tokens.data!.map((tk) => (
-            <div key={tk.id} className="s-row">
-              <span className="grow">{tk.name}</span>
-              <span className="hint">{t('created {when}', { when: timeAgo(tk.createdAt) })} · {tk.lastUsedAt ? t('used {when}', { when: timeAgo(tk.lastUsedAt) }) : t('never used')}</span>
-              <Tooltip text={demo ? t('Disabled in the demo') : null}><button className="btn sm danger" disabled={demo} onClick={() => void askConfirm({ title: t('Revoke "{name}"?', { name: tk.name }), body: t('Claude Code using this token stops working.'), action: t('Revoke') }).then((ok) => { if (ok) void api(`/api/tokens/${tk.id}`, { method: 'DELETE' }).then(() => qc.invalidateQueries({ queryKey: ['tokens'] })); })}>{t('Revoke')}</button></Tooltip>
-            </div>
-          ))}
-        </details>
       )}
     </>
   );

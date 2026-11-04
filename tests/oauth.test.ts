@@ -332,18 +332,17 @@ describe('the agent client only comes from pairing', () => {
     expect((await app.inject({ url: `/oauth/authorize?${q}`, headers: { cookie: sessionCookie } })).statusCode).toBe(400);
     expect((await token({ grant_type: 'authorization_code', client_id: AGENT, code: 'x', redirect_uri: 'http://127.0.0.1/cb', code_verifier: pkce().verifier })).json().error).toBe('unauthorized_client');
   });
-  it('GET /api/connections lists agent grants with agent: true and the computer name', async () => {
+  it("GET /api/connections leaves agent grants out", async () => {
     const dev = randomUUID();
     await dbmod.db.insert(schema.agents).values({ id: dev, userId, name: 'Win-PC' });
     const { issueGrant } = await import('../src/server/oauth.ts');
     const g = await issueGrant(AGENT, userId, '', dev);
     const g2 = await issueGrant(AGENT, userId, '', null);
-    const list = (await app.inject({ url: '/api/connections', headers: { cookie: sessionCookie } })).json() as { id: number; client: string; agent: boolean; computerName: string | null }[];
+    const list = (await app.inject({ url: '/api/connections', headers: { cookie: sessionCookie } })).json() as { id: number; client: string }[];
     const [row] = await dbmod.db.select().from(schema.oauthGrants).where(eq(schema.oauthGrants.accessHash, auth.sha256(g.access_token)));
     const [row2] = await dbmod.db.select().from(schema.oauthGrants).where(eq(schema.oauthGrants.accessHash, auth.sha256(g2.access_token)));
-    expect(list.find((c) => c.id === row.id)).toMatchObject({ agent: true, computerName: 'Win-PC', client: 'Exponential agent' });
-    expect(list.find((c) => c.id === row2.id)).toMatchObject({ agent: true, computerName: null });
-    expect(list.filter((c) => !c.agent).every((c) => c.computerName === null)).toBe(true);
+    expect(list.find((c) => c.id === row.id || c.id === row2.id)).toBeUndefined();
+    expect(list.every((c) => !('agent' in c) && !('computerName' in c))).toBe(true);
     expect((await app.inject({ method: 'DELETE', url: `/api/connections/${row2.id}`, headers: { cookie: sessionCookie } })).statusCode).toBe(200);
   });
 });

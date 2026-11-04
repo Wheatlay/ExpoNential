@@ -4,7 +4,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, ne, sql as dsql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.ts';
 import { agentPairings, agentTombstones, agents, oauthClients, oauthGrants, apiTokens, users } from '../db/schema.ts';
@@ -116,9 +116,19 @@ export async function registerPairing(app: FastifyInstance) {
     // Nazwa komputera z agenta: wiersz agents powstaje (albo dostaje nazwę) już przy parowaniu, tylko dla własnego komputera użytkownika.
     const pcName = typeof b.name === 'string' ? b.name.trim().slice(0, 100) : '';
     if (deviceId && pcName) {
+      // Zamiana, nie usunięcie: inne wiersze tego użytkownika z tą samą nazwą (bez nagrobka) tracą grant, klucze i wiersz.
+      const same = await db.select({ id: agents.id }).from(agents)
+        .where(and(eq(agents.userId, row.userId), ne(agents.id, deviceId), dsql`lower(trim(${agents.name})) = ${pcName.toLowerCase()}`));
+      for (const o of same) {
+        await db.update(oauthGrants).set({ revokedAt: new Date() }).where(and(eq(oauthGrants.agentId, o.id), eq(oauthGrants.userId, row.userId), isNull(oauthGrants.revokedAt)));
+        await db.delete(apiTokens).where(and(eq(apiTokens.agentId, o.id), eq(apiTokens.userId, row.userId)));
+        await db.delete(agents).where(and(eq(agents.id, o.id), eq(agents.userId, row.userId)));
+      }
       await db.insert(agents).values({ id: deviceId, userId: row.userId, name: pcName })
         .onConflictDoUpdate({ target: agents.id, set: { name: pcName }, setWhere: eq(agents.userId, row.userId) });
     }
+    // Sieroty po starszych parowaniach (grant agenta bez komputera) nie mają już do czego należeć.
+    await db.update(oauthGrants).set({ revokedAt: new Date() }).where(and(eq(oauthGrants.clientId, AGENT_CLIENT_ID), eq(oauthGrants.userId, row.userId), isNull(oauthGrants.agentId), isNull(oauthGrants.revokedAt)));
     const grant = await issueGrant(AGENT_CLIENT_ID, row.userId, '', deviceId);
     return reply.header('Cache-Control', 'no-store').send({ client_id: AGENT_CLIENT_ID, ...grant, user: { name: u.name } });
   });
