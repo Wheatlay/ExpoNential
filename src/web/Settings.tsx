@@ -458,6 +458,11 @@ function ClaudeConnect() {
                   {a.outdated && !a.legacy && <span className="pill stalled">{t('Update needed')}</span>}
                   {a.legacy && <button className="btn sm" onClick={() => openSetupWizard(3)}>{t('Switch to the new agent')}</button>}
                   {a.limitReached24h && <span className="pill stalled">{t('Limit reached')}</span>}
+                  {a.setup && a.setup.claude.some((c) => !c.mcp || !c.plugin) && (
+                    <Tooltip text={[t('Run the agent installer again to fix it.'), ...a.setup.claude.filter((c) => !c.mcp || !c.plugin).map((c) => `${c.name}: ${[!c.mcp && t('no tracker'), !c.plugin && t('no work trace')].filter(Boolean).join(', ')}`)].join(' · ')}>
+                      <span className="pill stalled" tabIndex={0}>{t('Claude Code: incomplete setup')}</span>
+                    </Tooltip>
+                  )}
                   {a.claudeLimit && <Tooltip text={t('Analyses will return automatically after the limit renews.')}><span className="pill">{a.claudeLimit}</span></Tooltip>}
                   {a.inactive && <Tooltip text={t('Not seen for over 3 days. Hidden after 14 days.')}><span className="pill">{t('Inactive')}</span></Tooltip>}
                   {a.lastError && <Tooltip text={t('Last error {when}: {error}', { when: a.lastErrorAt ? timeAgo(a.lastErrorAt) : '', error: a.lastError.slice(0, 300) })}><span className="pill stalled">{t('Error')}</span></Tooltip>}
@@ -468,12 +473,6 @@ function ClaudeConnect() {
                 <span className="grow my-pc-meta">
                   <span className="hint">{a.online && a.busy ? t('running an analysis') : a.lastSeenAt ? t('last seen {when}', { when: timeAgo(a.lastSeenAt) }) : t('never seen')}{a.version ? ` · ${t('version {v}', { v: a.version })}` : ''}</span>
                   {a.label && a.computerName && <span className="hint">{t('Windows name: {name}', { name: a.computerName })}</span>}
-                  {a.setup && a.setup.claude.length > 0 && (
-                    <Tooltip text={a.setup.claude.map((c) => `${c.name}: ${t('issues')} ${c.mcp ? '✓' : '✗'} · ${t('work trace')} ${c.plugin ? '✓' : '✗'}`).join('\n')}>
-                      <span className="hint">{(() => { const n = a.setup!.claude.length, m = a.setup!.claude.filter((c) => c.mcp).length, p = a.setup!.claude.filter((c) => c.plugin).length;
-                        return m === n && p === n ? t('Claude Code: tracker and work trace in all accounts ({n})', { n }) : t('Claude Code: tracker in {m} of {n} accounts, work trace in {p} of {n}', { m, n, p }); })()}</span>
-                    </Tooltip>
-                  )}
                   {a.usage30d.runs > 0 && (
                     <Tooltip text={byRequesterText(a.usage30d)}>
                       <span className="hint">{t('30 days: {runs} analyses · {tokens}', { runs: a.usage30d.runs, tokens: t('{n} tokens', { n: tok(a.usage30d.tokens) }) })}</span>
