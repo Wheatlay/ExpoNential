@@ -394,6 +394,9 @@ func autoInstall(u *updateInfo) {
 	logf("auto-update to %s", u.Version)
 	go func() {
 		if err := doUpdate(func(int) {}, func() {}); err != nil {
+			if err.Error() == "already updating" {
+				return // another path started it already
+			}
 			logf("auto-update failed: %s", err)
 			offerUpdateCard(u)
 		}

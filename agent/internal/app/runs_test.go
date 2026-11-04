@@ -11,14 +11,15 @@ func TestRunsAppendTrim(t *testing.T) {
 	if len(loadRuns()) != 0 {
 		t.Fatal("empty at first")
 	}
-	for i := 1; i <= 25; i++ {
+	n := runsKeep + 5
+	for i := 1; i <= n; i++ {
 		appendRun(runRecord{Time: int64(i), Key: fmt.Sprintf("A-%d", i), Result: runOK})
 	}
 	l := loadRuns()
-	if len(l) != runsKeep || l[0].Key != "A-6" || l[len(l)-1].Key != "A-25" {
+	if len(l) != runsKeep || l[0].Key != "A-6" || l[len(l)-1].Key != fmt.Sprintf("A-%d", n) {
 		t.Fatalf("got %d runs, first %q last %q", len(l), l[0].Key, l[len(l)-1].Key)
 	}
-	appendRun(runRecord{Key: "A-26", Result: runFail, Reason: "boom", For: "Ola", Tokens: 1234})
+	appendRun(runRecord{Key: "A-new", Result: runFail, Reason: "boom", For: "Ola", Tokens: 1234})
 	l = loadRuns()
 	last := l[len(l)-1]
 	if len(l) != runsKeep || l[0].Key != "A-7" || last.Reason != "boom" || last.For != "Ola" || last.Tokens != 1234 || last.Time == 0 {

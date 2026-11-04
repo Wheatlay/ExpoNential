@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set by main (ldflags -X main.version).
-var Version = "0.4.10"
+var Version = "0.4.11"
 
 type RepoEntry struct {
 	Path   string `json:"path"`

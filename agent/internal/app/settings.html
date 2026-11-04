@@ -35,6 +35,8 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .seg button.on.neutral { background: var(--bg-tertiary); border-color: var(--border-tertiary); color: var(--text-secondary); }
 .row { display: flex; align-items: center; gap: 10px; height: 28px; cursor: pointer; color: var(--text-secondary); }
 .row span { flex: 1; }
+.row.dis { opacity: .45; cursor: default; }
+.btn:disabled { opacity: .45; cursor: default; }
 .sw { flex: none; width: 32px; height: 18px; border-radius: 9999px; background: var(--bg-tertiary); border: 1px solid var(--border-tertiary); position: relative; transition: background .15s; }
 .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-tertiary); transition: transform .15s, background .15s; }
 .row.on .sw { background: var(--accent); border-color: var(--accent); }
@@ -48,7 +50,6 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .x { all: unset; cursor: pointer; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: var(--text-tertiary); font-size: 18px; line-height: 1; flex: none; }
 .x:hover { background: var(--bg-hover, rgba(255,255,255,.06)); color: var(--text-primary); }
 .x:focus-visible { outline: 2px solid var(--accent); }
-.chkrow { margin: -4px 0 2px; padding-left: 2px; }
 .ver { white-space: nowrap; }
 .btn.chk { all: unset; cursor: pointer; font-size: 12px; color: var(--accent-text); }
 .btn.chk:hover { text-decoration: underline; }
@@ -70,6 +71,22 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .panel::-webkit-scrollbar { width: 6px; }
 .panel::-webkit-scrollbar-thumb { background: var(--border-tertiary); border-radius: 9999px; }
 .mut { color: var(--text-tertiary); }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+.stat { display: flex; flex-direction: column; gap: 2px; padding: 10px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); }
+.stat b { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.hintline { color: var(--text-tertiary); font-size: 12px; margin: 2px 0 10px; }
+.repos { gap: 8px; }
+.repo { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); }
+.repo .l1 .nm { flex: 1; min-width: 0; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo .path { direction: rtl; text-align: left; font-size: 11px; color: var(--text-secondary); }
+.repo .path span { direction: ltr; unicode-bidi: plaintext; }
+.repo .src { font-size: 11px; color: var(--text-tertiary); }
+.repo .acts { display: flex; gap: 14px; margin-top: 2px; }
+.repo .btn.link { color: var(--accent-text); padding: 0; height: 22px; }
+.btn.link.danger, .repo .btn.link.danger { color: var(--danger-text); }
+.pill.sm.good { color: var(--success-text); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+.pill.sm.bad { color: var(--danger-text); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+.pill.sm.mut { color: var(--text-tertiary); }
 .empty { color: var(--text-tertiary); padding: 18px 0; text-align: center; }
 .list { display: flex; flex-direction: column; }
 .item { display: flex; flex-direction: column; gap: 3px; padding: 8px 0; border-top: 1px solid var(--border-primary); }
@@ -92,8 +109,8 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .sub.err { color: var(--danger-text); }
 .logbar { display: flex; align-items: center; gap: 8px; flex: none; }
 .logbar b { flex: 1; font-weight: 600; }
-.logbox { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 8px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); color: var(--text-secondary);
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11px; line-height: 1.45; white-space: pre; user-select: text; -webkit-user-select: text; cursor: text; }
+.logbox { flex: 1; min-height: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 8px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); color: var(--text-secondary);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 11px; line-height: 1.45; user-select: text; -webkit-user-select: text; cursor: text; }
 </style>
 </head>
 <body>
@@ -126,17 +143,31 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 
   function drawHead() {
     var s = S, L = s.L;
-    var sig = JSON.stringify([s.who, s.dev, s.version, s.updateTo, s.state, s.kind, s.theme]);
+    var sig = JSON.stringify([checkMsg, s.who, s.dev, s.version, s.updateTo, s.state, s.kind, s.theme]);
     if (sig === sigs.head) return;
     sigs.head = sig;
     document.documentElement.setAttribute("data-theme", s.theme);
     headEl.innerHTML = '<span class="tile">' + MARK + '</span><div class="who"><b>' + esc(s.who) + '</b>' +
       '<div class="ver"><span>' + esc(L.version.replace("%V", s.version)) + '</span>' + (s.dev ? '<span class="dev">DEV</span>' : "") +
-      (s.updateTo ? '<button class="btn upd" id="upd">' + esc(L.update.replace("%V", s.updateTo)) + '</button>' : "") + '</div></div>' +
+      (s.updateTo ? '<button class="btn upd" id="upd">' + esc(L.update.replace("%V", s.updateTo)) + '</button>' : '<button class="btn chk" id="chk" title="' + esc(L.check) + '">' + esc(checkMsg || L.checkShort) + '</button>') + '</div></div>' +
       '<span class="pill ' + esc(s.kind) + '" title="' + esc(s.state) + '"><i></i>' + esc(s.state) + '</span>' +
       '<button class="x" id="close" aria-label="' + esc(L.close) + '" title="' + esc(L.close) + '">&#x2715;</button>';
     if ($("upd")) $("upd").onclick = call(window.update);
     $("close").onclick = function () { window.close(); };
+    if ($("chk")) $("chk").onclick = function () {
+      checkMsg = L.checking; sigs.head = ""; drawHead();
+      Promise.resolve(window.checkNow()).then(function (r) {
+        checkMsg = r === "current" ? L.upToDate : r === "error" ? L.checkFailed : ""; sigs.head = ""; refresh();
+        setTimeout(function () { checkMsg = ""; sigs.head = ""; refresh(); }, 4000);
+      }, function () { checkMsg = L.checkFailed; sigs.head = ""; refresh(); });
+    };
+  }
+
+  function localTimes(t) {
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return t.replace(/^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z) (agent: )?/gm, function (m, iso) {
+      var d = new Date(iso); return isNaN(d) ? m : p(d.getDate()) + "." + p(d.getMonth() + 1) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()) + "  ";
+    });
   }
 
   function drawTabs() {
@@ -158,13 +189,12 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 
   // ---- panels ----
   function generalHtml(s) {
-    var L = s.L;
+    var L = s.L, off = s.teamMode === "off";
     return '<div class="sec"><span class="lbl">' + esc(L.team) + '</span>' +
       seg("team", [["ask", L.ask, "accent", L.tipAsk], ["auto", L.auto, "success", L.tipAuto], ["off", L.off, "danger", L.tipOff]], s.teamMode) + '</div>' +
-      '<button class="btn mute" id="mute">' + esc(s.muteLabel) + '</button>' +
-      '<div class="sec"><div class="row' + (s.notify ? " on" : "") + '" id="notify" role="switch" tabindex="0" aria-checked="' + s.notify + '"><span>' + esc(L.notify) + '</span><i class="sw"></i></div>' +
+      '<button class="btn mute" id="mute"' + (off && !s.muted ? ' disabled title="' + esc(L.offReason) + '"' : "") + '>' + esc(s.muteLabel) + '</button>' +
+      '<div class="sec"><div class="row' + (s.notify ? " on" : "") + (off ? " dis" : "") + '" id="notify" role="switch" tabindex="0" aria-checked="' + s.notify + '"' + (off ? ' aria-disabled="true" title="' + esc(L.offReason) + '"' : "") + '><span>' + esc(L.notify) + '</span><i class="sw"></i></div>' +
       '<div class="row' + (s.autoUpdate ? " on" : "") + '" id="autoupdate" role="switch" tabindex="0" aria-checked="' + s.autoUpdate + '"><span>' + esc(L.autoUpdate) + '</span><i class="sw"></i></div>' +
-      '<div class="chkrow"><button class="btn chk" id="chk">' + esc(checkMsg || L.check) + '</button></div>' +
       '<div class="row' + (s.autostart ? " on" : "") + '" id="autostart" role="switch" tabindex="0" aria-checked="' + s.autostart + '"><span>' + esc(L.autostart) + '</span><i class="sw"></i></div></div>' +
       '<div class="sec"><span class="lbl">' + esc(L.theme) + '</span>' +
       seg("theme", [["system", L.sys, "accent"], ["dark", L.dark, "accent"], ["oled", L.oled, "accent"], ["light", L.light, "accent"]], s.themeSetting) + '</div>' +
@@ -174,14 +204,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   }
   function bindGeneral() {
     function toggle(id, f) { var el = $(id); el.onclick = call(function () { f(!el.classList.contains("on")); }); el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } }; }
-        if ($("chk")) $("chk").onclick = function () {
-      checkMsg = S.L.checking; sigs.panel = ""; refresh();
-      Promise.resolve(window.checkNow()).then(function (r) {
-        checkMsg = r === "current" ? S.L.upToDate : r === "error" ? S.L.checkFailed : ""; sigs.panel = ""; refresh();
-        setTimeout(function () { checkMsg = ""; sigs.panel = ""; refresh(); }, 4000);
-      }, function () { checkMsg = S.L.checkFailed; sigs.panel = ""; refresh(); });
-    };
-    toggle("notify", window.setNotify); toggle("autoupdate", window.setAutoUpdate); toggle("autostart", window.setAutostart);
+    if (S.teamMode !== "off") toggle("notify", window.setNotify); toggle("autoupdate", window.setAutoUpdate); toggle("autostart", window.setAutostart);
     $("mute").onclick = call(window.toggleMute);
     $("open").onclick = call(window.openApp); $("ai").onclick = call(window.openAI); $("uninstall").onclick = call(window.uninstall);
     $("showlog").onclick = function () { view = "log"; logText = null; window.getLog().then(function (t) { logText = t; drawPanel(true); }); drawPanel(); };
@@ -200,12 +223,12 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 
   function logHtml(L) {
     return '<div class="logbar"><button class="btn sm" id="back">' + esc(L.back) + '</button><b>Log</b><button class="btn sm' + (copied ? " ok" : "") + '" id="copylog">' + esc(copied ? L.copied : L.copyLog) + '</button></div>' +
-      '<pre class="logbox" id="logbox">' + (logText == null ? esc(L.loading) : logText ? esc(logText) : '<span class="mut">' + esc(L.logEmpty) + '</span>') + '</pre>';
+      '<pre class="logbox" id="logbox">' + (logText == null ? esc(L.loading) : logText ? esc(localTimes(logText)) : '<span class="mut">' + esc(L.logEmpty) + '</span>') + '</pre>';
   }
   function bindLog(scroll) {
     $("back").onclick = function () { view = ""; drawPanel(); };
     $("copylog").onclick = doCopy;
-    if (scroll) { var b = $("logbox"); b.scrollTop = b.scrollHeight; }
+    var b = $("logbox"); b.scrollTop = b.scrollHeight; // newest at the bottom, also after a re-render (copy feedback)
   }
 
   var SRC = { auto: "srcAuto", manual: "srcManual", clone: "srcClone", hook: "srcHook" };
@@ -213,7 +236,14 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     if (!repos) return '<div class="empty">' + esc(L.loading) + '</div>';
     if (repos.err) return '<div class="empty">' + esc(L.repoErr) + '</div>';
     if (!repos.rows.length) return '<div class="empty">' + esc(L.noProjects) + '</div>';
-    return '<div class="list">' + repos.rows.map(function (r) {
+    var stOf = function (r) {
+      var msg = repoMsg[r.key];
+      if (!r.repo) return '<span class="pill sm mut">' + esc(L.noRepo) + '</span>';
+      if (msg) return '<span class="pill sm bad" title="' + esc(msg.detail) + '">' + esc(L[msg.code] || msg.code) + '</span>';
+      if (!r.path) return '<span class="pill sm mut">' + esc(L.unmapped) + '</span>';
+      return r.ok ? '<span class="pill sm good">' + esc(L.ok) + '</span>' : '<span class="pill sm bad" title="' + esc(r.detail) + '">' + esc(L[r.problem] || r.problem) + '</span>';
+    };
+    return '<div class="list repos">' + repos.rows.map(function (r) {
       var l3, mapped = !!r.path;
       if (!r.repo) l3 = '<span class="st mut">' + esc(L.noRepo) + '</span>';
       else {
@@ -225,10 +255,10 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
         l3 = st + '<button class="btn sm" data-a="pick" data-k="' + esc(r.key) + '">' + esc(L.pick) + '</button>' +
           (mapped ? '<button class="btn sm danger" data-a="del" data-k="' + esc(r.key) + '">' + esc(L.remove) + '</button>' : "");
       }
-      return '<div class="item"><div class="l1"><b>' + esc(r.key) + '</b><span class="nm" title="' + esc(r.name) + '">' + esc(r.name) + '</span>' +
-        (mapped ? '<span class="badge">' + esc(L[SRC[r.source]] || r.source) + '</span>' : "") + '</div>' +
-        (mapped ? '<div class="path mono" title="' + esc(r.path) + '">' + esc(r.path) + '</div>' : "") +
-        '<div class="l3">' + l3 + '</div></div>';
+      return '<div class="repo"><div class="l1"><b>' + esc(r.key) + '</b><span class="nm" title="' + esc(r.name) + '">' + esc(r.name) + '</span>' + stOf(r) + '</div>' +
+        (mapped ? '<div class="path mono" title="' + esc(r.path) + '"><span>' + esc(r.path) + '</span></div><div class="src">' + esc(L[SRC[r.source] + "Long"] || L[SRC[r.source]] || r.source) + '</div>' : "") +
+        (r.repo ? '<div class="acts"><button class="btn link" data-a="pick" data-k="' + esc(r.key) + '">' + esc(mapped ? L.change : L.pick) + '</button>' +
+          (mapped ? '<button class="btn link danger" data-a="del" data-k="' + esc(r.key) + '">' + esc(L.remove) + '</button>' : "") + '</div>' : "") + '</div>';
     }).join("") + '</div>';
   }
   function bindRepos() {
@@ -252,10 +282,20 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   };
 
   var RES = { ok: ["ok", "resOk"], fail: ["danger", "resFail"], limit: ["warn", "resLimit"], declined: ["warn", "resDeclined"], muted: ["warn", "resMuted"] };
+  // "analiza|analizy|analiz" (pl) or "analysis|analyses" (en): one|few|many
+  function plural(n, forms) {
+    var f = forms.split("|"); if (f.length < 3) return n === 1 ? f[0] : (f[1] || f[0]);
+    if (n === 1) return f[0]; var d = n % 10, h = n % 100; return d >= 2 && d <= 4 && (h < 12 || h > 14) ? f[1] : f[2];
+  }
   function runsHtml(s) {
     var L = s.L, runs = (s.runs || []).slice().reverse();
     if (!runs.length) return '<div class="empty">' + esc(L.noRuns) + '</div>';
-    return '<div class="list">' + runs.map(function (r) {
+    var since = Date.now() - 30 * 864e5, day = Date.now() - 864e5, own = { n: 0, t: 0 }, oth = { n: 0, t: 0 }, othDay = 0;
+    runs.forEach(function (r) { if (r.time < since) return; var b = r.for ? oth : own; b.n++; b.t += r.tokens || 0; if (r.for && r.time >= day) othDay += r.tokens || 0; });
+    var stat = function (label, b) { return '<div class="stat"><span class="lbl">' + esc(label) + '</span><b>' + b.n + '</b><span class="mut">' + esc(plural(b.n, L.analysesN)) + ' · ' + esc(fmtTok(b.t)) + '</span></div>'; };
+    return '<div class="stats">' + stat(L.usageOwn, own) + stat(L.usageOthers, oth) + '</div>' +
+      '<div class="hintline">' + esc(L.usageNote.replace("%T", fmtTok(othDay))) + '</div>' +
+      '<span class="lbl">' + esc(L.recent) + '</span><div class="list">' + runs.map(function (r) {
       var rs = RES[r.result] || RES.fail, txt = L[rs[1]];
       var sub = [r.engine, r.model, fmtDur(r.durationMs), r.account].filter(Boolean).join(" · ");
       return '<div class="item"><div class="l1"><span class="mut mono">' + esc(fmtTime(r.time)) + '</span>' +
@@ -313,7 +353,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   });
   var hadFocus = document.hasFocus(); window.addEventListener("focus", function () { hadFocus = true; });
   // Closes on losing focus only after it really had focus (a window that never got it, e.g. started in the background, stays open).
-  window.addEventListener("blur", function () { if (hadFocus && !picking && Date.now() - born > 1200) window.close(); });
+  window.addEventListener("blur", function () { if (hadFocus && !picking && !(S && S.dev) && Date.now() - born > 1200) window.close(); });
   document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   setInterval(refresh, 1000);
   refresh();

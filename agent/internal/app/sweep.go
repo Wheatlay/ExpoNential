@@ -11,6 +11,12 @@ import (
 // ...-toast-<pid>) that a crashed or killed process left behind. A folder whose pid still runs is kept.
 func sweepWebviewTemp() {
 	defer func() { _ = recover() }()
+	removed := 0
+	defer func() {
+		if removed > 0 {
+			logf("removed %d leftover WebView2 folder(s)", removed)
+		}
+	}()
 	dirs, _ := filepath.Glob(filepath.Join(os.TempDir(), "exponential-agent-webview-*"))
 	for _, d := range dirs {
 		name := filepath.Base(d)
@@ -19,7 +25,7 @@ func sweepWebviewTemp() {
 			continue
 		}
 		if os.RemoveAll(d) == nil {
-			logf("removed leftover %s", name)
+			removed++
 		}
 	}
 }

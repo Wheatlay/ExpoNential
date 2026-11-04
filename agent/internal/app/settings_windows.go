@@ -54,10 +54,10 @@ func settingsLabels(lang string) map[string]string {
 	if lang == "pl" {
 		return map[string]string{"team": "Zlecenia zespołu", "ask": "Pytaj", "auto": "Bez pytania", "off": "Nie biorę",
 			"tipAsk": "Pytaj o zgodę przed analizą cudzego zlecenia", "tipAuto": "Uruchamiaj cudze zlecenia bez pytania", "tipOff": "Nie biorę cudzych zleceń",
-			"notify": "Powiadomienia o analizach dla innych", "autoUpdate": "Aktualizuj automatycznie", "check": "Sprawdź aktualizacje", "checking": "Sprawdzam…", "upToDate": "Masz najnowszą wersję", "checkFailed": "Nie udało się sprawdzić", "close": "Zamknij", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
+			"notify": "Powiadomienia o analizach dla innych", "autoUpdate": "Aktualizuj automatycznie", "check": "Sprawdź aktualizacje", "checkShort": "Sprawdź", "checking": "Sprawdzam…", "upToDate": "Aktualna", "checkFailed": "Nie udało się", "close": "Zamknij", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
 			"sys": "Systemowy", "dark": "Ciemny", "oled": "OLED", "light": "Jasny", "open": "Otwórz Exponential", "ai": "Ustawienia AI", "uninstall": "Odinstaluj…",
 			"version": "agent %V", "update": "Zaktualizuj do %V",
-			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Analizy", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
+			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Zużycie", "usageOwn": "Twoje (30 dni)", "usageOthers": "Dla innych (30 dni)", "analysesN": "analiza|analizy|analiz", "usageNote": "Dla innych w ostatniej dobie: %T", "recent": "Ostatnie analizy", "offReason": "Nie bierzesz zleceń innych, więc nie ma czego wyciszać", "change": "Zmień folder", "srcAutoLong": "znaleziony automatycznie", "srcManualLong": "wybrany ręcznie", "srcCloneLong": "sklonowany przez agenta", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
 			"loading": "Wczytuję…", "logEmpty": "Log jest pusty", "repoErr": "Brak połączenia z serwerem", "noProjects": "Brak projektów", "noRepo": "brak repo w projekcie", "unmapped": "brak mapowania",
 			"ok": "ok", "pick": "Wybierz folder", "remove": "Usuń", "srcAuto": "auto", "srcManual": "ręcznie", "srcClone": "klon", "srcHook": "hook",
 			"nofolder": "brak folderu", "notclone": "to nie klon repo", "norepo": "brak repo w projekcie", "noRuns": "Brak analiz",
@@ -65,10 +65,10 @@ func settingsLabels(lang string) map[string]string {
 	}
 	return map[string]string{"team": "Team jobs", "ask": "Ask", "auto": "Don't ask", "off": "Don't take",
 		"tipAsk": "Ask before running someone else's analysis", "tipAuto": "Run others' analyses without asking", "tipOff": "Never take others' analyses",
-		"notify": "Notifications for analyses for others", "autoUpdate": "Update automatically", "check": "Check for updates", "checking": "Checking…", "upToDate": "You're up to date", "checkFailed": "Could not check", "close": "Close", "autostart": "Start with Windows", "theme": "Theme",
+		"notify": "Notifications for analyses for others", "autoUpdate": "Update automatically", "check": "Check for updates", "checkShort": "Check", "checking": "Checking…", "upToDate": "Up to date", "checkFailed": "Could not check", "close": "Close", "autostart": "Start with Windows", "theme": "Theme",
 		"sys": "System", "dark": "Dark", "oled": "OLED", "light": "Light", "open": "Open Exponential", "ai": "AI settings", "uninstall": "Uninstall…",
 		"version": "agent %V", "update": "Update to %V",
-		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Analyses", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
+		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Usage", "usageOwn": "Yours (30 days)", "usageOthers": "For others (30 days)", "analysesN": "analysis|analyses", "usageNote": "For others in the last 24 h: %T", "recent": "Recent analyses", "offReason": "You do not take requests from others, so there is nothing to mute", "change": "Change folder", "srcAutoLong": "found automatically", "srcManualLong": "chosen by you", "srcCloneLong": "cloned by the agent", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
 		"loading": "Loading…", "logEmpty": "The log is empty", "repoErr": "Cannot reach the server", "noProjects": "No projects", "noRepo": "no repo in the project", "unmapped": "not mapped",
 		"ok": "ok", "pick": "Choose folder", "remove": "Remove", "srcAuto": "auto", "srcManual": "manual", "srcClone": "clone", "srcHook": "hook",
 		"nofolder": "folder missing", "notclone": "not a clone of the repo", "norepo": "no repo in the project", "noRuns": "No analyses yet",
@@ -196,7 +196,7 @@ func toggleMute() { setMuted(!isMuted()) }
 // openSettings shows the mini settings window (or brings the open one to the front).
 func openSettings() {
 	if !settingsOpen.CompareAndSwap(false, true) {
-		if h := settingsHwnd.Load(); h != 0 {
+		if h := settingsHwnd.Load(); h != 0 && !devMode() {
 			procSetForeground.Call(h)
 		}
 		return
@@ -218,7 +218,7 @@ func openSettings() {
 		offscreen(func() {
 			w = webview2.NewWithOptions(webview2.WebViewOptions{
 				DataPath:  dataPath,
-				AutoFocus: true,
+				AutoFocus: !devMode(), // dev: the test driver opens the window without taking the focus
 				WindowOptions: webview2.WindowOptions{
 					Title:  "Exponential",
 					Width:  uint(float64(settingsW) * sc),
@@ -240,7 +240,9 @@ func openSettings() {
 		wa := workArea()
 		margin := int32(12 * sc)
 		placeTopmost(hwnd, wa.Right-ww-margin, wa.Bottom-wh-margin, ww, wh, true)
-		procSetForeground.Call(hwnd)
+		if !devMode() {
+			procSetForeground.Call(hwnd)
+		}
 
 		_ = w.Bind("getState", func() settingsState {
 			defer guard("getState")

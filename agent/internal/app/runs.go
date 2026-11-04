@@ -10,7 +10,7 @@ import (
 
 // The last runs, kept locally in <dataDir>/runs.json for the "Analizy" tab of the settings window.
 
-const runsKeep = 20
+const runsKeep = 300 // enough for the 30-day usage summary
 
 // Results of a run.
 const (
