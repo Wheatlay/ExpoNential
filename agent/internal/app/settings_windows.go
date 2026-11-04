@@ -58,7 +58,7 @@ func settingsLabels(lang string) map[string]string {
 			"notify": "Powiadomienia o analizach dla innych", "autoUpdate": "Aktualizuj automatycznie", "check": "Sprawdź aktualizacje", "checkShort": "Sprawdź", "checking": "Sprawdzam…", "upToDate": "Aktualna", "checkFailed": "Nie udało się", "close": "Zamknij", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
 			"sys": "Systemowy", "dark": "Ciemny", "oled": "OLED", "light": "Jasny", "open": "Otwórz Exponential", "ai": "Ustawienia AI", "uninstall": "Odinstaluj…",
 			"version": "agent %V", "update": "Zaktualizuj do %V",
-			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Zużycie", "usageOwn": "Twoje (30 dni)", "usageOthers": "Dla innych (30 dni)", "analysesN": "analiza|analizy|analiz", "usageNote": "Dla innych w ostatniej dobie: %T", "limitLbl": "Limit dla innych na dobę", "noLimit": "Bez limitu", "perDay": "%T / dobę", "ofLimit": "z %L", "recent": "Ostatnie analizy", "offReason": "Nie bierzesz zleceń innych, więc nie ma czego wyciszać", "change": "Zmień folder", "srcAutoLong": "znaleziony automatycznie", "srcManualLong": "wybrany ręcznie", "srcCloneLong": "sklonowany przez agenta", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
+			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Zużycie", "usageOwn": "Twoje (30 dni)", "usageOthers": "Dla innych (30 dni)", "analysesN": "analiza|analizy|analiz", "usageNote": "Dla innych w ostatniej dobie: %T", "limitLbl": "Limit dla innych na dobę", "byPerson": "Dla kogo (30 dni)", "last24": "ostatnia doba: %T", "noLimit": "Bez limitu", "perDay": "%T / dobę", "ofLimit": "z %L", "recent": "Ostatnie analizy", "offReason": "Nie bierzesz zleceń innych, więc nie ma czego wyciszać", "change": "Zmień folder", "srcAutoLong": "znaleziony automatycznie", "srcManualLong": "wybrany ręcznie", "srcCloneLong": "sklonowany przez agenta", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
 			"loading": "Wczytuję…", "logEmpty": "Log jest pusty", "repoErr": "Brak połączenia z serwerem", "noProjects": "Brak projektów", "noRepo": "brak repo w projekcie", "unmapped": "brak mapowania",
 			"ok": "ok", "pick": "Wybierz folder", "remove": "Usuń", "srcAuto": "auto", "srcManual": "ręcznie", "srcClone": "klon", "srcHook": "hook",
 			"nofolder": "brak folderu", "notclone": "to nie klon repo", "norepo": "brak repo w projekcie", "noRuns": "Brak analiz",
@@ -69,7 +69,7 @@ func settingsLabels(lang string) map[string]string {
 		"notify": "Notifications for analyses for others", "autoUpdate": "Update automatically", "check": "Check for updates", "checkShort": "Check", "checking": "Checking…", "upToDate": "Up to date", "checkFailed": "Could not check", "close": "Close", "autostart": "Start with Windows", "theme": "Theme",
 		"sys": "System", "dark": "Dark", "oled": "OLED", "light": "Light", "open": "Open Exponential", "ai": "AI settings", "uninstall": "Uninstall…",
 		"version": "agent %V", "update": "Update to %V",
-		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Usage", "usageOwn": "Yours (30 days)", "usageOthers": "For others (30 days)", "analysesN": "analysis|analyses", "usageNote": "For others in the last 24 h: %T", "limitLbl": "Limit for others per day", "noLimit": "No limit", "perDay": "%T / day", "ofLimit": "of %L", "recent": "Recent analyses", "offReason": "You do not take requests from others, so there is nothing to mute", "change": "Change folder", "srcAutoLong": "found automatically", "srcManualLong": "chosen by you", "srcCloneLong": "cloned by the agent", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
+		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Usage", "usageOwn": "Yours (30 days)", "usageOthers": "For others (30 days)", "analysesN": "analysis|analyses", "usageNote": "For others in the last 24 h: %T", "limitLbl": "Limit for others per day", "byPerson": "For whom (30 days)", "last24": "last 24 h: %T", "noLimit": "No limit", "perDay": "%T / day", "ofLimit": "of %L", "recent": "Recent analyses", "offReason": "You do not take requests from others, so there is nothing to mute", "change": "Change folder", "srcAutoLong": "found automatically", "srcManualLong": "chosen by you", "srcCloneLong": "cloned by the agent", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
 		"loading": "Loading…", "logEmpty": "The log is empty", "repoErr": "Cannot reach the server", "noProjects": "No projects", "noRepo": "no repo in the project", "unmapped": "not mapped",
 		"ok": "ok", "pick": "Choose folder", "remove": "Remove", "srcAuto": "auto", "srcManual": "manual", "srcClone": "clone", "srcHook": "hook",
 		"nofolder": "folder missing", "notclone": "not a clone of the repo", "norepo": "no repo in the project", "noRuns": "No analyses yet",
@@ -254,6 +254,35 @@ func openSettings() {
 			w.Dispatch(func() { w.Eval("window.onShown && window.onShown()") })
 		}
 		settingsShow.Store(&reshow)
+		// Click outside: when another program's window comes to the foreground, hide this one (not in dev mode,
+		// where the test driver works in the background; the folder picker belongs to this process, so it does not count).
+		stopWatch := make(chan struct{})
+		defer close(stopWatch)
+		go func() {
+			t := time.NewTicker(200 * time.Millisecond)
+			defer t.Stop()
+			wasFront := false
+			for {
+				select {
+				case <-stopWatch:
+					return
+				case <-t.C:
+				}
+				if devMode() || !windowVisible(hwnd) {
+					wasFront = false
+					continue
+				}
+				fg := foregroundWindow()
+				if fg == hwnd {
+					wasFront = true
+					continue
+				}
+				if wasFront && fg != 0 && !ownWindow(fg) {
+					wasFront = false
+					hideWindow(hwnd)
+				}
+			}
+		}()
 		defer settingsShow.Store(nil)
 		var shown atomic.Bool
 		_ = w.Bind("ready", func() {

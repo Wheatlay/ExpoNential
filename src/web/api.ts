@@ -255,6 +255,7 @@ export function useLiveUpdates(enabled: boolean) {
         else if (key === 'deploy') void qc.invalidateQueries({ queryKey: ['deploy'] });
         else if (key === 'view') void qc.invalidateQueries({ queryKey: ['view'] });
         else if (key === 'online') void qc.invalidateQueries({ queryKey: ['online'] });
+        else if (key === 'agents') { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); }
         else if (key === 'meetings' || key === 'meeting_reminder') void qc.invalidateQueries({ queryKey: ['meetings'] });
         else if (key === 'projects') { void qc.invalidateQueries({ queryKey: ['projects'] }); void qc.invalidateQueries({ queryKey: ['project'] }); }
         else if (key === 'sprints') { void qc.invalidateQueries({ queryKey: ['sprints'] }); void qc.invalidateQueries({ queryKey: ['issues'] }); }

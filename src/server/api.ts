@@ -190,6 +190,8 @@ export async function registerApi(app: FastifyInstance) {
       if (b.teamMode !== undefined) await ag.setTeamMode(req.user!, req.params.id, b.teamMode);
       if (b.label !== undefined) await ag.renameAgent(req.user!, req.params.id, b.label);
       if (b.maxOthersTokensPerDay !== undefined) await ag.setAgentLimit(req.user!, req.params.id, b.maxOthersTokensPerDay);
+      // Open pages of this user refresh Settings without a reload (only the owner gets it).
+      await svc.publish({ type: 'agents', userIds: [req.user!.id] });
       return { ok: true };
     });
     // Przebieg agenta po zakończeniu (zużycie tokenów, zlecający).

@@ -3,6 +3,7 @@
 package app
 
 import (
+	"os"
 	"unsafe"
 
 	"golang.org/x/sys/windows/registry"
@@ -93,4 +94,21 @@ func systemLight() bool {
 	defer k.Close()
 	v, _, err := k.GetIntegerValue("AppsUseLightTheme")
 	return err == nil && v == 1
+}
+
+var (
+	procGetFgWin   = user32.NewProc("GetForegroundWindow")
+	procIsVisible  = user32.NewProc("IsWindowVisible")
+	procWinThrProc = user32.NewProc("GetWindowThreadProcessId")
+)
+
+func foregroundWindow() uintptr { h, _, _ := procGetFgWin.Call(); return h }
+
+func windowVisible(h uintptr) bool { r, _, _ := procIsVisible.Call(h); return r != 0 }
+
+// ownWindow: the window belongs to this process (e.g. the folder picker or a toast).
+func ownWindow(h uintptr) bool {
+	var pid uint32
+	procWinThrProc.Call(h, uintptr(unsafe.Pointer(&pid)))
+	return int(pid) == os.Getpid()
 }

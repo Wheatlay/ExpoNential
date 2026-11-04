@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.18], Agent [0.4.14] - 04.11.2026
+
+- The agent window closes when you click outside it (another program comes to the front).
+- Usage tab in the agent window shows who used how much (30 days, and the last 24 h).
+- Changing a PC's team mode or limit (on the web or in the agent window) updates your open pages right away, without a reload.
+
 ## Server [1.3.17], Agent [0.4.13] - 04.11.2026
 
 - The agent window opens instantly and without a white flash: closing only hides it, and the first open shows it once the page is drawn.

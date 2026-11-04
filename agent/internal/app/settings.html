@@ -294,12 +294,20 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     var since = Date.now() - 30 * 864e5, day = Date.now() - 864e5, own = { n: 0, t: 0 }, oth = { n: 0, t: 0 }, othDay = 0;
     runs.forEach(function (r) { if (r.time < since) return; var b = r.for ? oth : own; b.n++; b.t += r.tokens || 0; if (r.for && r.time >= day) othDay += r.tokens || 0; });
     var stat = function (label, b) { return '<div class="stat"><span class="lbl">' + esc(label) + '</span><b>' + b.n + '</b><span class="mut">' + esc(plural(b.n, L.analysesN)) + (b.t ? ' · ' + esc(fmtTok(b.t)) : '') + '</span></div>'; };
+    var who = {};
+    runs.forEach(function (r) { if (!r.for || r.time < since) return; var w = who[r.for] || (who[r.for] = { n: 0, t: 0, d: 0 }); w.n++; w.t += r.tokens || 0; if (r.time >= day) w.d += r.tokens || 0; });
+    var names = Object.keys(who).sort(function (a, b) { return who[b].t - who[a].t; });
+    var whoHtml = names.length ? '<span class="lbl">' + esc(L.byPerson) + '</span><div class="list">' + names.map(function (n) {
+      var w = who[n];
+      return '<div class="item"><div class="l1"><span class="nm">' + esc(n) + '</span><span class="tok">' + esc(plural(w.n, L.analysesN).replace(/^/, w.n + " ")) + (w.t ? " · " + esc(fmtTok(w.t)) : "") + '</span></div>' +
+        (w.d ? '<div class="sub">' + esc(L.last24.replace("%T", fmtTok(w.d))) + '</div>' : "") + '</div>';
+    }).join("") + '</div>' : "";
     return '<div class="stats">' + stat(L.usageOwn, own) + stat(L.usageOthers, oth) + '</div>' +
       '<div class="limrow"><span class="lbl">' + esc(L.limitLbl) + '</span><select class="sel" id="limit">' +
         [-1, 1e5, 5e5, 1e6, 5e6].concat(s.limit > 0 && [1e5, 5e5, 1e6, 5e6].indexOf(s.limit) < 0 ? [s.limit] : []).sort(function (a, b) { return a - b; })
           .map(function (n) { return '<option value="' + n + '"' + (n === s.limit ? " selected" : "") + '>' + esc(n < 0 ? L.noLimit : L.perDay.replace("%T", fmtTok(n))) + '</option>'; }).join("") + '</select></div>' +
       '<div class="hintline">' + esc(L.usageNote.replace("%T", fmtTok(othDay) || "0")) + (s.limit > 0 ? " " + esc(L.ofLimit.replace("%L", fmtTok(s.limit))) : "") + '</div>' +
-      '<span class="lbl">' + esc(L.recent) + '</span>' + (runs.length ? '' : '<div class="empty">' + esc(L.noRuns) + '</div>') + '<div class="list">' + runs.map(function (r) {
+      whoHtml + '<span class="lbl">' + esc(L.recent) + '</span>' + (runs.length ? '' : '<div class="empty">' + esc(L.noRuns) + '</div>') + '<div class="list">' + runs.map(function (r) {
       var rs = RES[r.result] || RES.fail, txt = L[rs[1]];
       var sub = [r.engine, r.model, fmtDur(r.durationMs), r.account].filter(Boolean).join(" · ");
       return '<div class="item"><div class="l1"><span class="mut mono">' + esc(fmtTime(r.time)) + '</span>' +
@@ -361,7 +369,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   });
   var hadFocus = document.hasFocus(); window.addEventListener("focus", function () { hadFocus = true; });
   // Closes on losing focus only after it really had focus (a window that never got it, e.g. started in the background, stays open).
-  window.addEventListener("blur", function () { if (hadFocus && !picking && !(S && S.dev) && Date.now() - born > 1200) window.close(); });
+  // Closing on a click outside is decided by the agent (the foreground window belongs to another program).
   document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   setInterval(refresh, 1000);
   refresh();
