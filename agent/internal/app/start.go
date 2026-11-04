@@ -288,6 +288,8 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 			forName = claim.Requester.Name
 			setAnalyzing(key, claim.Requester.Name)
 			notifyOther(key, claim.Requester.Name)
+		} else if own != 0 && claim.Requester.ID == own {
+			notifyOwn(key, claim.Requester.Name)
 		}
 	}
 	cfg = loadConfig()

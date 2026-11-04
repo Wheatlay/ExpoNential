@@ -496,8 +496,10 @@ textarea.md-edit {
   .issue-page { flex-direction: column; overflow-y: auto; }
   .issue-main { overflow: visible; flex: none; }
   .issue-content { padding: 28px 24px 60px; }
-  .props-panel { width: auto; border-left: 0; border-bottom: 1px solid var(--border-primary); padding: 12px 24px; order: -1; display: flex; flex-wrap: wrap; gap: 4px 12px; overflow: visible; }
-  .props-panel .props-group { margin-bottom: 8px; }
+  .props-panel { width: auto; border-left: 0; border-bottom: 1px solid var(--border-primary); padding: 12px 24px; order: -1; display: flex; flex-direction: column; overflow: visible; }
+  /* Groups stacked full width with a divider (side by side they wrapped into a jumble: labels next to status, relations next to parent). */
+  .props-panel .props-group { margin-bottom: 0; padding: 8px 0; }
+  .props-panel .props-group + .props-group { border-top: 1px solid var(--border-primary); }
   .props-panel h4 { display: none; }
 }
 
@@ -517,7 +519,7 @@ textarea.md-edit {
   .sidebar .deploy-text { transition: opacity 0.18s, max-height 0.18s; max-height: 80px; overflow: hidden; }
   .sidebar:not(.open) .deploy-status { border-color: transparent; background: none; }
   .sidebar:not(.open) .deploy-text { max-height: 18px; }
-  .sidebar:not(.open) .nav-item .count { position: absolute; left: 30px; top: 0; font-size: var(--text-xs); line-height: 1; }
+  .sidebar:not(.open) .nav-item .count { position: absolute; left: 24px; top: 0; max-width: 26px; font-size: var(--text-xs); line-height: 1; }
   .sidebar .nav-item { position: relative; }
   .rail-only, .sidebar-backdrop { display: inline-grid; }
 }
@@ -700,6 +702,12 @@ textarea.md-edit {
 .fold-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); }
 .fold-body { padding: 10px 12px 12px; background: var(--bg-secondary); animation: fade-in 0.15s ease-out both; }
 .fold-body .panel { border: 0; padding: 4px 6px; background: none; }
+/* Phone: the buttons wrap to a second row only when they do not fit (after the base rules, so they win). */
+@media (max-width: 760px) {
+  .fold-bar { flex-wrap: wrap; row-gap: 6px; padding-block: 8px; }
+  .fold-tools { margin-left: auto; }
+  .fold-tools:empty { display: none; }
+}
 
 /* ---------- nowe komentarze, odpowiedź, postęp, przeciąganie ---------- */
 .pill.unread { border-color: color-mix(in srgb, var(--info) 50%, transparent); color: var(--info-text); background: color-mix(in srgb, var(--info) 12%, transparent); font-weight: 500; }
@@ -955,12 +963,13 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
   .poll-votes .poll-list { display: flex; }
   .cal-slot { grid-row: auto !important; }
   .cal-sep { height: 1px; grid-row: auto; }
-  .calendar-panel { width: auto; border-left: 0; border-top: 1px solid var(--border-primary); }
+  /* Full width above the calendar (props-panel puts it first); the divider is its bottom border. */
+  .calendar-panel { width: auto; border-left: 0; }
 }
 .calendar-main .toolbar { white-space: nowrap; overflow-x: auto; }
 .calendar-main .toolbar .btn { flex-shrink: 0; }
 .poll-time > div { white-space: normal; }
-@media (max-width: 1400px) { .calendar-panel { width: 260px; padding-left: 14px; padding-right: 14px; } }
+@media (min-width: 901px) and (max-width: 1400px) { .calendar-panel { width: 260px; padding-left: 14px; padding-right: 14px; } }
 @media (max-width: 1200px) { .calendar-main .toolbar .hint { display: none; } }
 @media (max-width: 1100px) { .calendar-main .toolbar { flex-wrap: wrap; overflow-x: visible; height: auto; min-height: 44px; padding-block: 6px; } }
 .modal .foot .btn { white-space: nowrap; flex-shrink: 0; }

@@ -430,13 +430,14 @@ export async function setAnalysis(p: Project, actor: Actor, number: number, inpu
     const [l] = await db.select({ id: labels.id }).from(labels).where(and(eq(labels.projectId, p.id), dsql`lower(${labels.name}) = lower(${name})`));
     return l?.id ?? (await saveLabel(p, { name, color: TYPE_LABEL_COLORS[name] })).id;
   };
-  const want = await typeLabel(TYPE_LABEL_NAMES[data.type]);
-  const others = await Promise.all(Object.values(TYPE_LABEL_NAMES).filter((n) => n !== TYPE_LABEL_NAMES[data.type]).map(async (n) => {
+  // label=false (test or empty ticket): no type label at all, an earlier one is removed too.
+  const want = input.label === false ? null : await typeLabel(TYPE_LABEL_NAMES[data.type]);
+  const others = await Promise.all(Object.values(TYPE_LABEL_NAMES).filter((n) => want === null || n !== TYPE_LABEL_NAMES[data.type]).map(async (n) => {
     const [l] = await db.select({ id: labels.id }).from(labels).where(and(eq(labels.projectId, p.id), dsql`lower(${labels.name}) = lower(${n})`));
     return l?.id;
   }));
   const [{ ids }] = await db.select({ ids: dsql<number[]>`coalesce(array_agg(${issueLabels.labelId}), '{}')` }).from(issueLabels).where(eq(issueLabels.issueId, cur.id));
-  const labelIds = [...new Set([...ids.filter((id) => !others.includes(id)), want])];
+  const labelIds = [...new Set([...ids.filter((id) => !others.includes(id)), ...(want === null ? [] : [want])])];
   const changed = labelIds.length !== ids.length || labelIds.some((id) => !ids.includes(id));
   await updateIssue(p, actor, number, { analysis: render(data), analysisData: data, ...(changed ? { labelIds } : {}) });
   return data;

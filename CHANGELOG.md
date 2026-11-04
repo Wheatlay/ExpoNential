@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.20], Agent [0.4.15] - 04.11.2026
+
+- The agent shows a card when your own analysis starts on your PC (e.g. requested from the phone). Switch "Notifications for my analyses" off in the agent window to hide it.
+- An analysis that cannot confidently assign a type no longer adds a Bug / Feature / Investigate label.
+- Phone and fold: issue properties are grouped with dividers, the analysis bar keeps its buttons readable, the sidebar rail badge is no longer cut off, the calendar panel spans the full width.
+
 ## Server [1.3.19] - 04.11.2026
 
 - Project settings › AI agent: with the team queue off, the PCs in the list are grayed out and their mode is shown as inactive, with the reason on hover.

@@ -44,6 +44,7 @@ type settingsState struct {
 	Limit        int64             `json:"limit"` // -1 = no limit
 	TeamMode     string            `json:"teamMode"`
 	Notify       bool              `json:"notify"`
+	NotifyOwn    bool              `json:"notifyOwn"`
 	AutoUpdate   bool              `json:"autoUpdate"`
 	Autostart    bool              `json:"autostart"`
 	Muted        bool              `json:"muted"`
@@ -55,7 +56,7 @@ func settingsLabels(lang string) map[string]string {
 	if lang == "pl" {
 		return map[string]string{"team": "Zlecenia zespołu", "ask": "Pytaj", "auto": "Bez pytania", "off": "Nie biorę",
 			"tipAsk": "Pytaj o zgodę przed analizą cudzego zlecenia", "tipAuto": "Uruchamiaj cudze zlecenia bez pytania", "tipOff": "Nie biorę cudzych zleceń",
-			"notify": "Powiadomienia o analizach dla innych", "autoUpdate": "Aktualizuj automatycznie", "check": "Sprawdź aktualizacje", "checkShort": "Sprawdź", "checking": "Sprawdzam…", "upToDate": "Aktualna", "checkFailed": "Nie udało się", "close": "Zamknij", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
+			"notify": "Powiadomienia o analizach dla innych", "notifyOwn": "Powiadomienia o moich analizach", "autoUpdate": "Aktualizuj automatycznie", "check": "Sprawdź aktualizacje", "checkShort": "Sprawdź", "checking": "Sprawdzam…", "upToDate": "Aktualna", "checkFailed": "Nie udało się", "close": "Zamknij", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
 			"sys": "Systemowy", "dark": "Ciemny", "oled": "OLED", "light": "Jasny", "open": "Otwórz Exponential", "ai": "Ustawienia AI", "uninstall": "Odinstaluj…",
 			"version": "agent %V", "update": "Zaktualizuj do %V",
 			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Zużycie", "usageOwn": "Twoje (30 dni)", "usageOthers": "Dla innych (30 dni)", "analysesN": "analiza|analizy|analiz", "usageNote": "Dla innych w ostatniej dobie: %T", "limitLbl": "Limit dla innych na dobę", "byPerson": "Dla kogo (30 dni)", "last24": "ostatnia doba: %T", "noLimit": "Bez limitu", "perDay": "%T / dobę", "ofLimit": "z %L", "recent": "Ostatnie analizy", "offReason": "Nie bierzesz zleceń innych, więc nie ma czego wyciszać", "change": "Zmień folder", "srcAutoLong": "znaleziony automatycznie", "srcManualLong": "wybrany ręcznie", "srcCloneLong": "sklonowany przez agenta", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
@@ -66,7 +67,7 @@ func settingsLabels(lang string) map[string]string {
 	}
 	return map[string]string{"team": "Team jobs", "ask": "Ask", "auto": "Don't ask", "off": "Don't take",
 		"tipAsk": "Ask before running someone else's analysis", "tipAuto": "Run others' analyses without asking", "tipOff": "Never take others' analyses",
-		"notify": "Notifications for analyses for others", "autoUpdate": "Update automatically", "check": "Check for updates", "checkShort": "Check", "checking": "Checking…", "upToDate": "Up to date", "checkFailed": "Could not check", "close": "Close", "autostart": "Start with Windows", "theme": "Theme",
+		"notify": "Notifications for analyses for others", "notifyOwn": "Notifications for my analyses", "autoUpdate": "Update automatically", "check": "Check for updates", "checkShort": "Check", "checking": "Checking…", "upToDate": "Up to date", "checkFailed": "Could not check", "close": "Close", "autostart": "Start with Windows", "theme": "Theme",
 		"sys": "System", "dark": "Dark", "oled": "OLED", "light": "Light", "open": "Open Exponential", "ai": "AI settings", "uninstall": "Uninstall…",
 		"version": "agent %V", "update": "Update to %V",
 		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Usage", "usageOwn": "Yours (30 days)", "usageOthers": "For others (30 days)", "analysesN": "analysis|analyses", "usageNote": "For others in the last 24 h: %T", "limitLbl": "Limit for others per day", "byPerson": "For whom (30 days)", "last24": "last 24 h: %T", "noLimit": "No limit", "perDay": "%T / day", "ofLimit": "of %L", "recent": "Recent analyses", "offReason": "You do not take requests from others, so there is nothing to mute", "change": "Change folder", "srcAutoLong": "found automatically", "srcManualLong": "chosen by you", "srcCloneLong": "cloned by the agent", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
@@ -98,7 +99,7 @@ func buildSettingsState() (st settingsState) {
 		Theme: currentTheme(), ThemeSetting: ts, L: settingsLabels(lang),
 		Who:   strings.TrimSpace(cfg.UserName + " · " + hostOf(cfg.URL)),
 		State: text, Kind: kind, Version: Version, UpdateTo: upd, Dev: devMode(), Limit: othersLimit.Load(),
-		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), AutoUpdate: autoUpdateOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
+		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), NotifyOwn: notifyOwnOn(), AutoUpdate: autoUpdateOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
 		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted), Runs: loadRuns(),
 	}
 }
@@ -308,6 +309,9 @@ func openSettings() {
 		})
 		_ = w.Bind("setNotify", func(on bool) {
 			bg("setNotify", func() { setNotifyOthers(on) })
+		})
+		_ = w.Bind("setNotifyOwn", func(on bool) {
+			bg("setNotifyOwn", func() { setNotifyOwn(on) })
 		})
 		_ = w.Bind("setAutoUpdate", func(on bool) {
 			bg("setAutoUpdate", func() { setAutoUpdate(on) })

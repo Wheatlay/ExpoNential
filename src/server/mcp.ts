@@ -262,14 +262,15 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
         'feature: current. investigate: answer. All types: system (other places in the code that use the same thing), risk, related. todo and after are legacy, do not write them.'),
       decisions: z.array(decisionSchema).max(5).optional().describe('Questions for a human, 2-4 options each, mark one recommended. Empty when none.'),
       analysis: z.string().optional().describe('Legacy markdown analysis; ignored when type is given'),
+      label: z.boolean().optional().describe('false when the type cannot be confidently assigned (e.g. test, empty or unclear issue): no type label is set. Default true.'),
     },
-    async ({ id, type, sections, decisions, analysis }) => {
+    async ({ id, type, sections, decisions, analysis, label }) => {
       const { p, n } = await ref(me, id);
       if (type) {
-        const parsed = analysisInputSchema.safeParse({ type, sections: sections ?? {}, decisions: decisions ?? [] });
+        const parsed = analysisInputSchema.safeParse({ type, sections: sections ?? {}, decisions: decisions ?? [], label });
         if (!parsed.success) throw new RuleError(`Invalid analysis: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`, 'invalid');
         await svc.setAnalysis(p, me, n, parsed.data);
-        return `Analysis saved on ${id} (label: ${TYPE_LABEL_NAMES[type]})`;
+        return `Analysis saved on ${id} (label: ${parsed.data.label === false ? 'none' : TYPE_LABEL_NAMES[type]})`;
       } else {
         if (!analysis?.trim()) throw new RuleError('Provide type + sections (preferred) or analysis', 'invalid');
         await svc.updateIssue(p, me, n, { analysis });

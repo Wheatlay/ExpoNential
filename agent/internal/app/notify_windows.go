@@ -54,6 +54,18 @@ func notifyOther(key, name string) {
 	if !notifyOthersOn() || isMuted() {
 		return
 	}
+	showInfoCard(key, name)
+}
+
+// notifyOwn shows the same card for an own analysis (started from the phone or another browser), when switched on.
+func notifyOwn(key, name string) {
+	if !notifyOwnOn() || isMuted() {
+		return
+	}
+	showInfoCard(key, name)
+}
+
+func showInfoCard(key, name string) {
 	go func() {
 		defer func() { _ = recover() }()
 		if toastEnsure() {

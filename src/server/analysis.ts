@@ -39,6 +39,8 @@ export const analysisInputSchema = z.object({
   type: z.enum(ANALYSIS_TYPES),
   sections: z.object(Object.fromEntries(SECTION_KEYS.map((k) => [k, z.string().trim().max(4000).optional()])) as Record<SectionKey, z.ZodOptional<z.ZodString>>),
   decisions: z.array(decisionSchema).max(5).default([]),
+  // false: type not confidently assigned (test, empty, unclear), so no type label on the issue.
+  label: z.boolean().optional(),
 }).superRefine((a, ctx) => {
   a.decisions.forEach((d, i) => {
     if (d.options.filter((o) => o.recommended).length > 1) ctx.addIssue({ code: 'custom', path: ['decisions', i], message: 'At most one recommended option' });

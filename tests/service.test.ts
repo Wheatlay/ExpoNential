@@ -340,6 +340,9 @@ describe('structured analysis', () => {
     expect((await svc.getMeta(P)).labels.filter((l) => l.name === 'Bug')).toHaveLength(1);
     expect(d.analysis).toContain('**Does it happen:** Tak · zapis bez daty');
     expect(d.analysis).toContain('**Przy zapisie (recommended):** zawsze');
+    // label=false (test ticket): type label removed, human label stays.
+    await svc.setAnalysis(P, null, row.number, { ...input(), type: 'investigate', label: false });
+    expect(await names()).toEqual(['Ręczna']);
   });
 
   it('records a choice in data, markdown and history; re-analysis keeps it by question and option name', async () => {

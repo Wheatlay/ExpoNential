@@ -193,6 +193,8 @@ func setAutoUpdate(on bool) { updateConfig(func(c *Config) { c.AutoUpdate = &on 
 
 func setNotifyOthers(on bool) { updateConfig(func(c *Config) { c.NotifyOthers = &on }); notifyStatus() }
 
+func setNotifyOwn(on bool) { updateConfig(func(c *Config) { c.NotifyOwn = &on }); notifyStatus() }
+
 // Theme.
 func validTheme(t string) bool { return t == "system" || t == "dark" || t == "oled" || t == "light" }
 

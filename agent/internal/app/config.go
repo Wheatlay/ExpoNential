@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set by main (ldflags -X main.version).
-var Version = "0.4.14"
+var Version = "0.4.15"
 
 type RepoEntry struct {
 	Path   string `json:"path"`
@@ -39,6 +39,7 @@ type Config struct {
 	UserName        string               `json:"userName,omitempty"`        // account name shown in dialogs (Go agent)
 	UserID          int                  `json:"userId,omitempty"`          // own account id (to tell own analyses from others)
 	NotifyOthers    *bool                `json:"notifyOthers,omitempty"`    // toast when an analysis runs for someone else (default on)
+	NotifyOwn       *bool                `json:"notifyOwn,omitempty"`       // card when an own analysis starts on this PC (default on)
 	AskOthers       *bool                `json:"askOthers,omitempty"`       // legacy, migrated to teamMode
 	AllowUntil      map[string]float64   `json:"allowUntil,omitempty"`      // requester id -> ms until which analyses for them are allowed
 	Declined        map[string]float64   `json:"declined,omitempty"`        // "KEY|requestedAt" -> ms of the decline
@@ -54,7 +55,7 @@ type Config struct {
 	raw map[string]json.RawMessage
 }
 
-var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers", "askOthers", "allowUntil", "declined", "goal", "mutedUntil", "teamMode", "theme", "lang", "updateDismissed", "updatedTo"}
+var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers", "notifyOwn", "askOthers", "allowUntil", "declined", "goal", "mutedUntil", "teamMode", "theme", "lang", "updateDismissed", "updatedTo"}
 
 func dataDir() string {
 	base := os.Getenv("LOCALAPPDATA")
@@ -176,6 +177,12 @@ func autoUpdateOn() bool {
 func notifyOthersOn() bool {
 	c := loadConfig()
 	return c.NotifyOthers == nil || *c.NotifyOthers
+}
+
+// notifyOwnOn: the card for own analyses (e.g. started from the phone) is on unless switched off.
+func notifyOwnOn() bool {
+	c := loadConfig()
+	return c.NotifyOwn == nil || *c.NotifyOwn
 }
 
 // forgetOnServer: on uninstall, remove this computer from the server so it does not linger in the list. Best effort.

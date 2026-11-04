@@ -15,7 +15,9 @@ i odrzuciłeś, zostaje u Ciebie.
 
 1. `get_issue` i `list_comments`.
 2. Ustal typ: `bug` (coś działa źle), `feature` (czegoś brakuje albo ma działać inaczej),
-   `investigate` (pytanie "czemu", "sprawdzić", "ustalić").
+   `investigate` (pytanie "czemu", "sprawdzić", "ustalić"). Gdy typu nie da się pewnie ustalić
+   (np. zgłoszenie testowe, puste, niejasne): wybierz najbliższy typ i daj `label: false`, wtedy
+   zgłoszenie nie dostaje etykiety typu.
 3. Znajdź w kodzie miejsce, które o tym decyduje, i to, z czym się łączy (przeszukaj repo i przeczytaj kod). Szukaj
    tyle, żeby wypełnić sekcje, nie więcej.
 4. **Opis krótki, pusty albo niejasny:** przyjmij najbardziej prawdopodobne odczytanie, ale
