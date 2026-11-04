@@ -97,7 +97,7 @@ export function SetupWizardHost() {
   }, [live, qc]);
   const projects = useProjects(live);
 
-  const [client, setClient] = useState<ClientName>('Claude Code');
+  const [client, setClient] = useState<ClientName>(() => (meNow?.aiStatus?.clientName === 'Codex' || meNow?.aiStatus?.clientName === 'Cursor' ? meNow.aiStatus.clientName : 'Claude Code') as ClientName);
   const [where, setWhere] = useState<Where>('VS Code');
   const [slow, setSlow] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -117,10 +117,11 @@ export function SetupWizardHost() {
   const goal: Goal = picked ?? defaultGoal(ai);
   const cursor = client === 'Cursor';
   // Przy Cursorze krok 1 jest zrobiony dopiero, gdy podłączonym klientem jest Cursor (nie Claude Code).
-  const done: Record<Goal, boolean> = { 1: cursor ? ai?.clientName === 'Cursor' : !!ai?.client, 2: !!ai?.workTrace, 3: !!ai?.agent };
+  const mine = ai?.clients?.[client];
+  const done: Record<Goal, boolean> = { 1: mine ? mine.connected : (cursor ? ai?.clientName === 'Cursor' : ai?.clientName === client), 2: !!ai?.workTrace, 3: !!ai?.agent };
   const claude = client === 'Claude Code';
   // Ślad pracy dotyczy tylko Claude Code: przy Codex krok jest wyszarzony i nie liczy się do postępu.
-  const off2 = !claude && !done[2];
+  const off2 = !claude;
   // Asystent Cursora łączy się sam (link instalacyjny, logowanie OAuth); ślad pracy i agent wymagają Claude Code albo Codex.
   const needed = ([1, 2, 3] as Goal[]).filter((n) => n <= goal && !(n === 2 && off2) && !(n > 1 && cursor));
   const doneCount = needed.filter((n) => done[n]).length;
@@ -157,7 +158,7 @@ export function SetupWizardHost() {
 
   const stepTitle: Record<Goal, string> = { 1: t('Connect a client'), 2: t('Turn on work trace'), 3: t('Agent on this PC') };
   const doneText: Record<Goal, string> = {
-    1: `${ai?.clientName ?? t('Client')} · ${ai?.clientAt ? t('connected {when}', { when: timeAgo(ai.clientAt) }) : t('connected')}`,
+    1: `${client} · ${mine?.at ? t('connected {when}', { when: timeAgo(mine.at) }) : t('connected')}`,
     2: t('Work trace is on'),
     3: t('A PC is online and up to date'),
   };
@@ -216,7 +217,7 @@ export function SetupWizardHost() {
   );
   const bodies: Record<Goal, ReactNode> = { 1: step1, 2: step2, 3: step3 };
 
-  const chipText: Record<Goal, string> = { 1: ai?.clientName ?? t('Client'), 2: t('Work trace'), 3: t('Agent') };
+  const chipText: Record<Goal, string> = { 1: client, 2: t('Work trace'), 3: t('Agent') };
   const level = (n: Goal) => ([1, 2, 3] as Goal[]).filter((x) => x <= n).every((x) => done[x]);
 
   return (
@@ -284,9 +285,9 @@ export function SetupWizardHost() {
                         <span className="grow">{chipText[n]}</span>
                         {done[n] ? <span className="wiz-ok">{t('Done')}</span> : <span className="wiz-wait"><span className="wiz-pulse" aria-hidden="true" />{t('Waiting')}</span>}
                       </div>
-                    ) : cursor ? (
-                      // Poziom niedostępny dla Cursora: wyszarzony z powodem, nie ukryty.
-                      <Tooltip key={n} text={t('Cursor supports only step 1. Work trace and the agent need Claude Code or Codex.')}>
+                    ) : (cursor || (n === 2 && off2)) ? (
+                      // Poziom niedostępny dla wybranego klienta: wyszarzony z powodem, nie ukryty.
+                      <Tooltip key={n} text={cursor ? t('Cursor supports only step 1. Work trace and the agent need Claude Code or Codex.') : t('Work trace needs Claude Code.')}>
                         <div className="wiz-line wiz-off" aria-disabled="true">
                           <span className="wiz-mark" aria-hidden="true" />
                           <span className="grow">{chipText[n]}</span>

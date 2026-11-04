@@ -544,6 +544,22 @@ export async function aiStatus(user: User, mine?: AgentLite[]) {
   const setupMcp = reported.some((s) => s.claude.some((c) => c.mcp));
   const setupClient = setupMcp ? 'Claude Code' : reported.some((s) => s.codex) ? 'Codex' : reported.some((s) => s.cursor) ? 'Cursor' : null;
   const client = !!grant || !!token || !!setupClient;
+  // Stan osobno dla każdego klienta (kreator pokazuje stan wybranego, nie "jakiegokolwiek").
+  const grants = await db.select({ name: oauthClients.name, at: oauthGrants.firstMcpAt }).from(oauthGrants)
+    .innerJoin(oauthClients, eq(oauthClients.id, oauthGrants.clientId))
+    .where(and(eq(oauthGrants.userId, user.id), isNull(oauthGrants.revokedAt), NOT_AGENT_CLIENT, dsql`${oauthGrants.firstMcpAt} is not null`,
+      dsql`greatest(${oauthGrants.lastUsedAt}, ${oauthGrants.firstMcpAt}) > ${recent}::timestamptz`));
+  const tokens = await db.select({ name: apiTokens.name, at: apiTokens.lastUsedAt }).from(apiTokens)
+    .where(and(eq(apiTokens.userId, user.id), dsql`${apiTokens.lastUsedAt} > ${recent}::timestamptz`));
+  const kind = (name: string) => /cursor/i.test(name) ? 'Cursor' : /codex/i.test(name) ? 'Codex' : 'Claude Code';
+  const clients: Record<'Claude Code' | 'Codex' | 'Cursor', { connected: boolean; at: Date | null }> = {
+    'Claude Code': { connected: setupMcp, at: null }, Codex: { connected: reported.some((s) => s.codex), at: null }, Cursor: { connected: reported.some((s) => s.cursor), at: null },
+  };
+  for (const r of [...grants, ...tokens]) {
+    const c = clients[kind(r.name)];
+    c.connected = true;
+    if (r.at && (!c.at || r.at > c.at)) c.at = r.at;
+  }
   const workTrace = reported.length ? reported.some((s) => s.claude.some((c) => c.plugin)) : !!wl;
   // Co wymaga sprawdzenia (kółko przy Settings, AI i konkretnym komputerze).
   const attention: string[] = [];
@@ -558,6 +574,7 @@ export async function aiStatus(user: User, mine?: AgentLite[]) {
     clientName: grant ? grant.name : token ? 'Claude Code' : setupClient,
     clientAt: grant?.at ?? token?.at ?? null,
     workTrace,
+    clients,
     agent: computers.some((a) => a.online && !a.outdated),
   };
 }

@@ -36,7 +36,8 @@ afterAll(async () => { await dbmod?.sql.end(); });
 
 describe('aiStatus', () => {
   it('starts with everything off', async () => {
-    expect(await ag.aiStatus(u)).toEqual({ attention: ['connect'], client: false, clientName: null, clientAt: null, workTrace: false, agent: false });
+    expect(await ag.aiStatus(u)).toEqual({ attention: ['connect'], client: false, clientName: null, clientAt: null, workTrace: false, agent: false,
+      clients: { 'Claude Code': { connected: false, at: null }, Codex: { connected: false, at: null }, Cursor: { connected: false, at: null } } });
   });
 
   it('client turns on with the first MCP call of an OAuth grant, and off again when it is revoked', async () => {
@@ -51,6 +52,10 @@ describe('aiStatus', () => {
     expect(s.client).toBe(true);
     expect(s.clientName).toBe('Codex');
     expect(s.clientAt).toBeTruthy();
+    // Stan per klient: Codex podłączony, Claude Code i Cursor nie (kreator pokazuje stan wybranego klienta).
+    expect(s.clients.Codex.connected).toBe(true);
+    expect(s.clients['Claude Code'].connected).toBe(false);
+    expect(s.clients.Cursor.connected).toBe(false);
     await db.update(schema.oauthGrants).set({ revokedAt: new Date() }).where(dz(g.id));
     expect((await ag.aiStatus(u)).client).toBe(false);
   });

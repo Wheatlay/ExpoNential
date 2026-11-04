@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.10] - 04.11.2026
+
+- Connect AI shows the state of the client you picked (Claude Code, Codex or Cursor), not of whichever client is connected; work trace is grayed out for clients other than Claude Code and does not count toward progress; the wizard opens on the client you already use.
+
 ## Server [1.3.9] - 04.11.2026
 
 - Connect AI: "Other ways to connect" always opens a step; finished steps show their status instead of "Waiting"; one download button and one client switch; "Download again" once everything is set up; one footer button (Later / Done).
