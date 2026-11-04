@@ -572,9 +572,9 @@ function ProjectGeneral() {
   const c = useProject();
   const sprintData = useSprints().data;
   const [days, setDays] = useState<number | null>(null);
+  const demo = !!useMe().data?.demo;
   if (!c) return null;
   const { p, ro, patch, qc } = c;
-  const demo = !!useMe().data?.demo;
   const off = p.reviewMeeting ? null : t('Turn on the sprint review meeting first');
   return (
     <div className="s-card">
@@ -1031,9 +1031,8 @@ function Accounts() {
               }} /> {t('Admin')}
             </label>
           </Tooltip>
-          {/* Zawsze w tym samym miejscu (wyszarzony bez hasła), żeby wiersze się nie rozjeżdżały. */}
-          <Tooltip text={demo ? t('Disabled in the demo') : u.hasPassword ? t('Creates a one-time link (24 h) to set a new password and copies it') : t('This account logs in without a password')}>
-            <button className="btn sm" disabled={demo || !u.hasPassword} onClick={() => void api<{ url: string }>(`/api/admin/users/${u.id}/reset-link`, { method: 'POST' }).then((r) => copyText(r.url, t('Password link copied')))}>{t('Reset password')}</button>
+          <Tooltip text={demo ? t('Disabled in the demo') : t('Creates a one-time link (24 h) to set a new password and copies it')}>
+            <button className="btn sm" disabled={demo} onClick={() => void api<{ url: string }>(`/api/admin/users/${u.id}/reset-link`, { method: 'POST' }).then((r) => copyText(r.url, t('Password link copied')))}>{t('Reset password')}</button>
           </Tooltip>
           <Tooltip text={demo ? t('Disabled in the demo') : u.id === me?.id ? t('You cannot deactivate yourself') : null}>
             <button className="btn sm" disabled={demo || u.id === me?.id} onClick={() => void (u.active

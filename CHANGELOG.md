@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.22] - 04.11.2026
+
+- An account added by e-mail in Settings › Accounts sets its password on the first login: enter the e-mail and a new password on the login page.
+- "Reset password" in Accounts also works for accounts without a password.
+- Settings › General no longer crashes the page when you switch projects.
+
 ## Server [1.3.21] - 04.11.2026
 
 - Issue page: a label can be removed with the ✕ on its chip (on hover; always visible on touch).

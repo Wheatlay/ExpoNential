@@ -245,7 +245,7 @@ describe('e-mail and password', () => {
 
   it('logs in with the right password and gives one error for every failure', async () => {
     await dbmod.db.insert(schema.users).values({ login: 'pw1', name: 'Pw', email: 'pw1@example.com', passwordHash: await pw.hashPassword('right-password-1') });
-    await dbmod.db.insert(schema.users).values({ login: 'nopw', name: 'NoPw', email: 'nopw@example.com' });
+    await dbmod.db.insert(schema.users).values({ login: 'nopw', name: 'NoPw', email: 'nopw@example.com', googleId: 'g-nopw' });
     await dbmod.db.insert(schema.users).values({ login: 'off', name: 'Off', email: 'off@example.com', active: false, passwordHash: await pw.hashPassword('right-password-1') });
     const ok = await login('PW1@example.com', 'right-password-1');
     expect(ok.statusCode).toBe(200);
@@ -311,9 +311,17 @@ describe('e-mail and password', () => {
     expect((await login('resetme@example.com', 'new-password-123')).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: `/auth/reset/${token}`, payload: { password: 'another-password-1' } })).statusCode).toBe(404);
   });
-  it('no reset link for an account without a password', async () => {
+  it('password link also for an account without a password (pre-added, never logged in)', async () => {
     const u = await mkUser('oauth-only');
-    expect((await app.inject({ method: 'POST', url: `/api/admin/users/${u.id}/reset-link`, headers: await bearer(owner.id) })).statusCode).toBe(422);
+    expect((await app.inject({ method: 'POST', url: `/api/admin/users/${u.id}/reset-link`, headers: await bearer(owner.id) })).statusCode).toBe(200);
+  });
+  it('pre-added e-mail account sets its password on the first login, then needs it', async () => {
+    await app.inject({ method: 'POST', url: '/api/admin/users', headers: await bearer(owner.id), payload: { login: 'first.login@example.com' } });
+    const login = (password: string) => app.inject({ method: 'POST', url: '/auth/password', payload: { email: 'First.Login@example.com', password } });
+    expect((await login('short')).statusCode).toBe(422);
+    expect((await login('first-password-123')).statusCode).toBe(200);
+    expect((await login('other-password-456')).statusCode).toBe(401);
+    expect((await login('first-password-123')).statusCode).toBe(200);
   });
   it('workspace "Allow" creates only the account, without project membership', async () => {
     const asAdmin = await bearer(owner.id);

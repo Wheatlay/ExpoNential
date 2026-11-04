@@ -279,7 +279,7 @@ export async function registerAuth(app: FastifyInstance) {
     const key = `${req.ip}|${email}`;
     const emailKey = `email|${email}`;
     if (loginLimiter.blocked(key) || emailLimiter.blocked(emailKey)) return reply.code(429).send({ error: 'Too many failed attempts, try again in 15 minutes', code: 'rate' });
-    const id = await loginWithPassword(email, body.password);
+    const id = await loginWithPassword(email, body.password) ?? await claimPreAddedAccount(email, body.password);
     if (!id) {
       loginLimiter.fail(key);
       emailLimiter.fail(emailKey);
@@ -437,6 +437,23 @@ export async function loginWithPassword(email: string, password: string) {
   const [u] = await db.select().from(users).where(dsql`lower(${users.email}) = lower(${email})`);
   const ok = await verifyPassword(password, u?.passwordHash ?? (await dummyHash()));
   return u && u.passwordHash && u.active && ok ? u.id : null;
+}
+
+/**
+ * Pierwsze logowanie na konto dodane ręcznie w Accounts (e-mail, bez hasła, nigdy niezalogowane):
+ * wpisane hasło staje się hasłem konta. Decyzja właściciela repo (04.11.2026): wygoda ponad to,
+ * że aplikacja nie sprawdza skrzynki (kto pierwszy wpisze e-mail, ustawia hasło).
+ * Za słabe hasło: błąd z regułą, żeby osoba wiedziała, czemu nie weszła.
+ */
+export async function claimPreAddedAccount(email: string, password: string) {
+  const [u] = await db.select().from(users).where(dsql`lower(${users.email}) = lower(${email})`);
+  if (!u || !u.active || u.passwordHash || u.githubId || u.googleId) return null;
+  const problem = passwordProblem(password);
+  if (problem) throw new RuleError(problem, 'invalid');
+  const passwordHash = await hashPassword(password);
+  const [row] = await db.update(users).set({ passwordHash })
+    .where(and(eq(users.id, u.id), isNull(users.passwordHash), isNull(users.githubId), isNull(users.googleId))).returning({ id: users.id });
+  return row?.id ?? null;
 }
 
 const taken = () => new RuleError('This e-mail already has an account. Log in to accept the invite.', 'conflict');

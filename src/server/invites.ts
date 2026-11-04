@@ -80,10 +80,9 @@ export async function consumeInvite(token: string, userId: number, exec: Exec = 
 
 /** Jednorazowy link do zmiany hasła (24 h), tworzy admin globalny. */
 export async function createResetLink(actorId: number, userId: number) {
-  const [u] = await db.select({ id: users.id, passwordHash: users.passwordHash }).from(users).where(eq(users.id, userId));
+  const [u] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId));
   if (!u) throw new RuleError('Account not found', 'not_found');
-  // Reset ma sens tylko dla konta z hasłem; konto z GitHubem albo Google loguje się bez niego.
-  if (!u.passwordHash) throw new RuleError('This account has no password to reset', 'invalid');
+  // Także dla konta bez hasła: dodane ręcznie albo bez dostępu do Google inaczej nie ma jak się zalogować.
   const token = randomBytes(24).toString('base64url');
   const expiresAt = new Date(Date.now() + RESET_HOURS * 36e5);
   await db.insert(projectInvites).values({ kind: 'password_reset', tokenHash: hashToken(token), userId, createdBy: actorId, expiresAt });

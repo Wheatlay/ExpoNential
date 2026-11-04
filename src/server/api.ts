@@ -617,6 +617,7 @@ export async function registerApi(app: FastifyInstance) {
         isAdmin: z.boolean().optional(), active: z.boolean().optional(),
       }).parse(req.body);
       // Workspace zakłada samo konto; do projektu dodaje Projekt › Ludzie albo zaproszenie.
+      // Konto z e-mailem ustawia hasło przy pierwszym logowaniu (/auth/password).
       await svc.saveUser(null, body);
       return { ok: true };
     });
