@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.9] - 04.11.2026
+
+- Connect AI: "Other ways to connect" always opens a step; finished steps show their status instead of "Waiting"; one download button and one client switch; "Download again" once everything is set up; one footer button (Later / Done).
+
 ## Server [1.3.8] - 04.11.2026
 
 - Board cards show which PC is running the analysis ("Running on DESKTOP-…").

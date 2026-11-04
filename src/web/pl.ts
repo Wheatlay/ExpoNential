@@ -994,6 +994,7 @@ export const pl: Record<string, string> = {
   'Type your login to confirm': 'Wpisz swój login, żeby potwierdzić',
   'Make someone else a workspace admin first': 'Najpierw ustaw kogoś innego jako admina workspace',
   'Download and run': 'Pobierz i uruchom',
+  'Download again': 'Pobierz ponownie',
   'Windows may warn about an unsigned file: More info, then Run anyway.': 'Windows może ostrzec o niepodpisanym pliku: Więcej informacji, a potem Uruchom mimo to.',
   'Other ways to connect': 'Inne sposoby podłączenia',
   'Cursor supports only step 1. Work trace and the agent need Claude Code or Codex.': 'Cursor obsługuje tylko krok 1. Ślad pracy i agent wymagają Claude Code albo Codex.',

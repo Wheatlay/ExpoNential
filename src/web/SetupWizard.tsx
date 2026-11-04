@@ -127,7 +127,7 @@ export function SetupWizardHost() {
   const current = needed.find((n) => !done[n]) ?? null;
   // Kliknięty krok (np. agent przed śladem pracy albo drugi klient po pierwszym) wygrywa z bieżącym.
   const setStep = (n: Goal | null) => set({ ...snap, step: n });
-  const openStep = pickedStep && needed.includes(pickedStep) ? pickedStep : current;
+  const openStep = pickedStep && needed.includes(pickedStep) ? pickedStep : (current ?? needed[needed.length - 1] ?? null);
   const full = doneCount === needed.length;
 
   // Po 2 minutach czekania na krok pokazujemy typowe przyczyny.
@@ -165,23 +165,20 @@ export function SetupWizardHost() {
   const step1 = (
     <>
       <div className="wiz-tabs">
-        <div className="seg" role="group" aria-label={t('Client')}>
-          {(['Claude Code', 'Codex'] as ClientName[]).map((c) => <button key={c} className={client === c ? 'on' : ''} onClick={() => setClient(c)}>{c}</button>)}
-        </div>
-        <div className="seg" role="group" aria-label={t('Where')}>
+        {claude && <div className="seg" role="group" aria-label={t('Where')}>
           {(['VS Code', 'Cursor', 'Terminal'] as Where[]).map((w) => <button key={w} className={where === w ? 'on' : ''} onClick={() => setWhere(w)}>{w}</button>)}
-        </div>
+        </div>}
       </div>
       {(where === 'Cursor' || cursor) && <div className="wiz-line"><a className="btn primary" href={cursorLink()}>{t('Open in Cursor')}</a>{!cursor && <span className="hint">{t('Use a command instead')}</span>}</div>}
       {!cursor && <Cmd lines={claude ? [claudeCmd()] : codexCmds()} />}
-      <Wait text={t('Waiting for the first call…')} hintText={clientHint} slow={slow} />
+      {done[1] ? <p className="wiz-ok">{doneText[1]}</p> : <Wait text={t('Waiting for the first call…')} hintText={clientHint} slow={slow} />}
     </>
   );
 
   const step2 = (
     <>
       <Cmd lines={pluginCmds()} />
-      <Wait text={t('Waiting for the first session with an issue number…')} hintText={t('Restart Claude Code and start work on any issue; the plugin loads on start.')} slow={slow} />
+      {done[2] ? <p className="wiz-ok">{doneText[2]}</p> : <Wait text={t('Waiting for the first session with an issue number…')} hintText={t('Restart Claude Code and start work on any issue; the plugin loads on start.')} slow={slow} />}
     </>
   );
 
@@ -205,12 +202,6 @@ export function SetupWizardHost() {
 
   const step3 = (
     <>
-      <div className="wiz-line">
-        <a className="btn primary" href={`/agent/download?engine=${client === 'Codex' ? 'codex' : 'claude'}&goal=${goal}`}><Icon.download size={13} /> {t('Download and run')}</a>
-        <Tooltip text={t('Windows may warn about an unsigned file: More info, then Run anyway.')}>
-          <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Windows may warn about an unsigned file: More info, then Run anyway.')}><Icon.question size={14} /></span>
-        </Tooltip>
-      </div>
       {(agents.data ?? []).map((a) => (
         <div key={a.id} className="wiz-computer">
           <div className="wiz-line">
@@ -220,7 +211,7 @@ export function SetupWizardHost() {
           {rows(a)}
         </div>
       ))}
-      <Wait text={t('Waiting for the agent to come online…')} hintText={t('Run the downloaded file again and check that the agent is in the tray.')} slow={slow} />
+      {done[3] ? <p className="wiz-ok">{doneText[3]}</p> : <Wait text={t('Waiting for the agent to come online…')} hintText={t('Run the downloaded file again and check that the agent is in the tray.')} slow={slow} />}
     </>
   );
   const bodies: Record<Goal, ReactNode> = { 1: step1, 2: step2, 3: step3 };
@@ -281,7 +272,7 @@ export function SetupWizardHost() {
                       </div>
                     ) : (
                     <div className="wiz-line">
-                      <a className="btn primary" href={`/agent/download?engine=${client === 'Codex' ? 'codex' : 'claude'}&goal=${goal}`}><Icon.download size={13} /> {t('Download and run')}</a>
+                      <a className={full ? 'btn' : 'btn primary'} href={`/agent/download?engine=${client === 'Codex' ? 'codex' : 'claude'}&goal=${goal}`}><Icon.download size={13} /> {full ? t('Download again') : t('Download and run')}</a>
                       <Tooltip text={t('Windows may warn about an unsigned file: More info, then Run anyway.')}>
                         <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Windows may warn about an unsigned file: More info, then Run anyway.')}><Icon.question size={14} /></span>
                       </Tooltip>
@@ -307,7 +298,7 @@ export function SetupWizardHost() {
                   <button type="button" className="wiz-link" aria-expanded={manual} onClick={() => setManual(!manual)}>{t('Other ways to connect')}</button>
                   {manual && <>
                   {/* Kroki celu jako zakładki (ten sam przełącznik co wybór klienta): widać, że da się klikać i który jest otwarty. */}
-                  {needed.length > 1 && (
+                  {needed.length > 0 && (
                     <div className="seg wiz-steptabs" role="tablist" aria-label={t('Steps')}>
                       {needed.map((n) => (
                         <button key={n} type="button" role="tab" aria-selected={openStep === n} className={openStep === n ? 'on' : ''} title={done[n] ? doneText[n] : stepTitle[n]} onClick={() => setStep(n)}>
@@ -339,8 +330,7 @@ export function SetupWizardHost() {
               </div>
             )}
             <span className="spacer" />
-            <button className="btn" onClick={closeSetupWizard}>{t('Later')}</button>
-            <button className="btn primary" onClick={finish}>{complete ? t('Done') : t('Close')}</button>
+            {complete ? <button className="btn primary" onClick={finish}>{t('Done')}</button> : <button className="btn" onClick={closeSetupWizard}>{t('Later')}</button>}
           </div>
         </div>
       </div>
