@@ -359,6 +359,7 @@ export const pl: Record<string, string> = {
   'Assign': 'Przypisz',
   'Add to sprint': 'Dodaj do sprintu',
   'Change labels (L)': 'Zmień etykiety (L)',
+  'Remove label {name}': 'Usuń etykietę {name}',
   'Parent': 'Zadanie nadrzędne',
   'Set parent issue…': 'Ustaw zadanie nadrzędne…',
   'No parent': 'Bez nadrzędnego',

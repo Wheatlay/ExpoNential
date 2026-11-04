@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.21] - 04.11.2026
+
+- Issue page: a label can be removed with the ✕ on its chip (on hover; always visible on touch).
+
 ## Server [1.3.20], Agent [0.4.15] - 04.11.2026
 
 - The agent shows a card when your own analysis starts on your PC (e.g. requested from the phone). Switch "Notifications for my analyses" off in the agent window to hide it.

@@ -331,7 +331,10 @@ export function IssuePage({ number }: { number: number }) {
           <h4>{t('Labels')}</h4>
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center' }} data-prop="labels">
             {issue.labelIds.map((id) => meta.labels.find((l) => l.id === id)).map((l) => l && (
-              <span key={l.id} className="label-chip"><span className="dot" style={{ background: l.color }} />{l.name}</span>
+              <span key={l.id} className="label-chip"><span className="dot" style={{ background: l.color }} />{l.name}
+                <button className="label-x" aria-label={t('Remove label {name}', { name: l.name })} title={t('Remove label {name}', { name: l.name })}
+                  onClick={() => save({ labelIds: issue.labelIds.filter((x) => x !== l.id) })}><Icon.close size={12} /></button>
+              </span>
             ))}
             <button className="icon-btn" title={t('Change labels (L)')} aria-label={t('Change labels (L)')} onClick={(e) => openMenu(e.currentTarget, labelMenu(meta, target, save))}><Icon.plus size={14} /></button>
           </div>
