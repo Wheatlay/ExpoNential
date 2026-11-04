@@ -440,7 +440,7 @@ function ClaudeConnect() {
           {(agentList.data?.length ?? 0) === 0 && (
             <div className="s-row">
               <span className="hint grow">{t('No PC with the agent')}</span>
-              <button className="btn primary" onClick={() => openSetupWizard(3)}>{t('Connect this PC')}</button>
+              <button type="button" className="wiz-link" onClick={() => openSetupWizard(3)}>{t('Connect this PC')}</button>
             </div>
           )}
           {(agentList.data ?? []).map((a) => {

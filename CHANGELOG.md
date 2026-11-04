@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.15] - 04.11.2026
+
+- My AI: one main "Connect AI" button; an empty "Your PCs" card offers a "Connect this PC" link (opens the wizard at the agent step).
+
 ## Server [1.3.14] - 04.11.2026
 
 - My AI: with nothing connected, "Connect AI" sits in the empty row like "Connect this PC" (it had a hidden dot that pushed its label off-center).
