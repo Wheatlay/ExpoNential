@@ -208,7 +208,6 @@ func setupAccess(engine, base string) error {
 		return errors.New(ltx("nie znaleziono ", "not found: ") + map[bool]string{true: "Codex", false: "Claude Code"}[engine == "codex"])
 	}
 	if engine == "codex" {
-		_, _ = runCmd(bin, []string{"mcp", "remove", legacyName}, "-", 60*time.Second, "") // the old name, best effort
 		out, err := runCmd(bin, []string{"mcp", "add", mcpName, "--url", base + "/mcp"}, "-", 60*time.Second, "")
 		if err != nil && !strings.Contains(strings.ToLower(out), "already") {
 			return errors.New(shortOut(out, err))
@@ -217,6 +216,7 @@ func setupAccess(engine, base string) error {
 		if err != nil {
 			return errors.New(shortOut(out, err))
 		}
+		_, _ = runCmd(bin, []string{"mcp", "remove", legacyName}, "-", 60*time.Second, "") // the old name only after "expo" works
 		return nil
 	}
 	a, err := getAuth()
@@ -229,10 +229,11 @@ func setupAccess(engine, base string) error {
 	}
 	var bad []string
 	for _, d := range claudeConfigDirs() {
-		_, _ = runCmd(bin, claudeLegacyMcpRemoveArgs(), d, 60*time.Second, tok)
 		_, _ = runCmd(bin, claudeMcpRemoveArgs(), d, 60*time.Second, tok)
 		out, err := runCmd(bin, claudeMcpAddArgs(base, tok), d, 60*time.Second, tok)
 		if mcpConfigHas(readFile(configFile(d)), base) {
+			// the old name goes only once "expo" is in the config (a failed add keeps "tracker" working)
+			_, _ = runCmd(bin, claudeLegacyMcpRemoveArgs(), d, 60*time.Second, tok)
 			continue // claude may exit silently, the config is what counts
 		}
 		bad = append(bad, accountName(d)+": "+shortOut(out, err))
@@ -251,9 +252,6 @@ func setupTrace(base string) error {
 	var bad []string
 	for _, d := range claudeConfigDirs() {
 		last := ""
-		for _, args := range claudeLegacyPluginSteps() { // best effort: the old "tracker" plugin goes away first
-			_, _ = runCmd(bin, args, d, 90*time.Second, "")
-		}
 		for _, args := range claudePluginSteps(base) {
 			out, err := runCmd(bin, args, d, 90*time.Second, "")
 			if err != nil && !strings.Contains(strings.ToLower(out), "already") {
@@ -269,6 +267,10 @@ func setupTrace(base string) error {
 				last = shortOut(out, err)
 			}
 			bad = append(bad, accountName(d)+": "+last)
+			continue // "expo" did not install: keep the old "tracker" plugin and its worklog hook
+		}
+		for _, args := range claudeLegacyPluginSteps() { // best effort, only after "expo" is installed
+			_, _ = runCmd(bin, args, d, 90*time.Second, "")
 		}
 	}
 	if len(bad) > 0 {

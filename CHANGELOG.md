@@ -16,6 +16,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Choose your editor (VS Code, Cursor, Windsurf or terminal) in Settings; Start work opens the repo window in it through the agent on your PC, or copies the prompt when no PC is online.
 - Plugin and MCP server renamed from tracker to expo: skills are now expo:analyze-ticket and expo:close-ticket, tools mcp__expo__*. Reinstall the plugin (`claude plugin install expo@expo`) and re-add the MCP server under the name expo.
 - Agent window: Pair again, Rescan and a list of consents.
+- Login in two steps (e-mail, then password; an account added by e-mail sets its password here). The "Allow" field is gone from Settings › Accounts; Accounts shows each account's projects and role.
+- Issue page: activity newest first with an order toggle, images in the description edited as short `![image N]`, title and description flash when someone else changes them, analysis toast stays until the analysis ends (can be turned off).
+- Settings is at the bottom of the sidebar, the bell is bigger, people with no issues are shown on the board by default, Settings entries a non-admin cannot change are grayed out.
+- Mouse wheel over the project name scrolls projects like a drum; the calendar day header and long titles in pills and toasts no longer overlap.
+- Issue cards have their shadow back (the token was never defined).
+- Start work goes through the agent only with agent 0.4.16+ and one PC online; otherwise the editor link opens as before.
+- Agent: the old tracker plugin and MCP server are removed only after expo installs; custom project prompts are migrated to the new names.
 
 ## Server [1.3.22] - 04.11.2026
 

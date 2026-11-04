@@ -189,7 +189,8 @@ export async function registerApi(app: FastifyInstance) {
       const { p, number } = await issueRef(req, String(ref));
       const prompt = await renderPrompt(p, number, 'start');
       const mine = await ag.agentsLite(req.user!);
-      if (!mine.some((a) => a.online && !a.outdated)) return { viaAgent: false, prompt };
+      // Kolejka jest per osoba, nie per PC: przy dwóch PC online edytor mógłby się otworzyć na złym, więc wtedy link w przeglądarce.
+      if (mine.filter((a) => a.online && a.opensEditor).length !== 1) return { viaAgent: false, prompt };
       const [u] = await db.select({ editor: users.editor }).from(users).where(eq(users.id, req.user!.id));
       ag.queueOpenRequest(req.user!.id, { editor: u?.editor ?? 'vscode', repo: p.githubRepo, prompt });
       return { viaAgent: true };

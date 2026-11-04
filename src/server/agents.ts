@@ -22,10 +22,12 @@ type User = { id: number };
 /** Najstarszy agent z agent/ (exponential-agent.exe, wersja semver), który jeszcze dostaje pracę. */
 export const MIN_EXE_AGENT = '0.4.4';
 const semver = (v: string) => /^(\d+)\.(\d+)\.(\d+)$/.exec(v)?.slice(1).map(Number);
-/** Aktualny agent: agent .exe nie starszy niż MIN_EXE_AGENT. */
-export function agentUpToDate(version: string | null | undefined) {
+/** Najstarszy agent, który odpytuje /api/agent/open-requests (Start work przez agenta). */
+export const MIN_OPEN_AGENT = '0.4.16';
+/** Aktualny agent: agent .exe nie starszy niż MIN_EXE_AGENT (albo podanego minimum). */
+export function agentUpToDate(version: string | null | undefined, minVersion = MIN_EXE_AGENT) {
   if (!version) return false;
-  const v = semver(version), min = semver(MIN_EXE_AGENT)!;
+  const v = semver(version), min = semver(minVersion)!;
   if (!v) return false;
   for (let i = 0; i < 3; i++) if (v[i] !== min[i]) return v[i] > min[i];
   return true;
@@ -491,7 +493,7 @@ function shownError(a: AgentRow) {
 const agentCore = (a: AgentRow, others24: number, othersTokens24: number) => ({ id: a.id, maxOthersTokensPerDay: a.maxOthersTokensPerDay,
   forOthers24h: others24, forOthersTokens24h: othersTokens24, limitReached24h: a.maxOthersTokensPerDay != null && othersTokens24 >= a.maxOthersTokensPerDay,
   lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5,
-  outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version), setup: a.setup ?? null,
+  outdated: !agentUpToDate(a.version), opensEditor: agentUpToDate(a.version, MIN_OPEN_AGENT), legacy: !!a.version && !semver(a.version), setup: a.setup ?? null,
   lastError: shownError(a) });
 export type AgentLite = ReturnType<typeof agentCore>;
 
