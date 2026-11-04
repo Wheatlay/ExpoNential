@@ -18,6 +18,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Your PCs: team requests and the limit can be changed while the PC is offline; "Without asking" is turned on only in the agent window on that PC (grayed out on the web with the reason). Claude Code setup reads "tracker and work trace in all accounts (3)".
 
+## Agent [0.4.8] - 04.11.2026
+
+- The agent window no longer hangs after a click: setting changes run in the background, the state read answers within 2 s (last known state otherwise), and any action slower than 3 s is written to the log by name.
+
 ## Agent [0.4.7] - 04.11.2026
 
 - "Exponential agent" in the Start menu: starts the agent if it is not running and opens its window (also added to existing installs at start; removed on uninstall).

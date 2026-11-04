@@ -113,7 +113,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   function fmtDur(ms) { if (!ms) return ""; var s = Math.round(ms / 1000); return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + pad(s % 60) + "s"; }
 
   // Run a binding, then refresh the state shortly after.
-  function call(fn) { return function () { fn(); setTimeout(refresh, 80); }; }
+  function call(fn) { return function () { fn(); setTimeout(refresh, 80); setTimeout(refresh, 600); }; }
 
   function drawHead() {
     var s = S, L = s.L;

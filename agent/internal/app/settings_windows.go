@@ -102,6 +102,48 @@ func buildSettingsState() (st settingsState) {
 }
 
 // guard is deferred at the top of a binding: a panic is logged instead of leaving the page waiting.
+// bg runs a window action off the window thread: the window never waits for config writes, locks or tray
+// updates. An action slower than 3 s is logged by name, so a hang shows up in the log.
+func bg(name string, f func()) {
+	go func() {
+		defer guard(name)
+		done := make(chan struct{})
+		go func() {
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				logf("settings %s: still running after 3 s", name)
+			}
+		}()
+		f()
+		close(done)
+	}()
+}
+
+var lastState atomic.Pointer[settingsState]
+
+// stateWithin builds the window state but answers within 2 s: on a slow build it returns the last known state
+// (and logs it), so the window keeps working.
+func stateWithin() settingsState {
+	ch := make(chan settingsState, 1)
+	go func() {
+		defer guard("getState")
+		st := buildSettingsState()
+		lastState.Store(&st)
+		ch <- st
+	}()
+	select {
+	case st := <-ch:
+		return st
+	case <-time.After(2 * time.Second):
+		logf("settings getState: slower than 2 s, showing the last known state")
+		if p := lastState.Load(); p != nil {
+			return *p
+		}
+		return <-ch
+	}
+}
+
 func guard(name string) {
 	if r := recover(); r != nil {
 		logf("settings %s: %v", name, r)
@@ -197,47 +239,37 @@ func openSettings() {
 
 		_ = w.Bind("getState", func() settingsState {
 			defer guard("getState")
-			return buildSettingsState()
+			return stateWithin()
 		})
 		_ = w.Bind("setTeamMode", func(m string) {
-			defer guard("setTeamMode")
-			setTeamMode(m)
+			bg("setTeamMode", func() { setTeamMode(m) })
 		})
 		_ = w.Bind("setNotify", func(on bool) {
-			defer guard("setNotify")
-			setNotifyOthers(on)
+			bg("setNotify", func() { setNotifyOthers(on) })
 		})
 		_ = w.Bind("setAutoUpdate", func(on bool) {
-			defer guard("setAutoUpdate")
-			setAutoUpdate(on)
+			bg("setAutoUpdate", func() { setAutoUpdate(on) })
 		})
 		_ = w.Bind("setAutostart", func(on bool) {
-			defer guard("setAutostart")
-			setAutostart(on)
+			bg("setAutostart", func() { setAutostart(on) })
 		})
 		_ = w.Bind("toggleMute", func() {
-			defer guard("toggleMute")
-			toggleMute()
+			bg("toggleMute", func() { toggleMute() })
 		})
 		_ = w.Bind("setTheme", func(t string) {
-			defer guard("setTheme")
-			setTheme(t)
+			bg("setTheme", func() { setTheme(t) })
 		})
 		_ = w.Bind("openApp", func() {
-			defer guard("openApp")
-			openApp()
+			bg("openApp", func() { openApp() })
 		})
 		_ = w.Bind("openAI", func() {
-			defer guard("openAI")
-			openAISettings()
+			bg("openAI", func() { openAISettings() })
 		})
 		_ = w.Bind("uninstall", func() {
-			defer guard("uninstall")
-			launchUninstall()
+			bg("uninstall", func() { launchUninstall() })
 		})
 		_ = w.Bind("update", func() {
-			defer guard("update")
-			runUpdate()
+			bg("update", func() { runUpdate() })
 		})
 		_ = w.Bind("getLog", func() string {
 			defer guard("getLog")
