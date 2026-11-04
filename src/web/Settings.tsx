@@ -412,10 +412,10 @@ function ClaudeConnect() {
       <div className="s-card" id="claude-connect">
         <div className="s-row s-row-head">
           <b className="grow">{t('AI clients')}</b>
-          <button className={`btn${anyClient ? '' : ' primary'}`} onClick={() => openSetupWizard()}>{anyClient ? t('Connect another') : t('Connect AI')}{!demo && me?.aiStatus?.attention?.includes('connect') && <span className="nav-dot" role="img" aria-label={t('Needs attention')} />}</button>
+          {anyClient && <button className="btn" onClick={() => openSetupWizard()}>{t('Connect another')}</button>}
         </div>
         {!anyClient && (
-          <div className="s-row"><span className="hint grow">{t('No AI client connected')}</span></div>
+          <div className="s-row"><span className="hint grow">{t('No AI client connected')}</span><button className="btn primary" onClick={() => openSetupWizard()}>{t('Connect AI')}</button></div>
         )}
         {(grants.data ?? []).map((g) => (
           <div key={g.id} className="s-row">

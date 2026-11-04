@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.14] - 04.11.2026
+
+- My AI: with nothing connected, "Connect AI" sits in the empty row like "Connect this PC" (it had a hidden dot that pushed its label off-center).
+
 ## Server [1.3.13] - 04.11.2026
 
 - Your PCs: the Claude Code setup line is gone; a "Claude Code: incomplete setup" warning appears only when an account is missing the tracker or the work trace.
