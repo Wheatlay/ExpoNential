@@ -5,5 +5,5 @@
 - Klik przełącza sekcję i na 1,6 s podświetla docelową kartę (`.s-card.flash`: obramowanie `accent`) albo wiersz (`.s-row.flash`: tło `bg-hover`). Cel to `id` karty w kodzie.
 - Podpowiedź tylko do ustawień w innej sekcji, nigdy do tej samej. Lista w `HINTS`; nowa sekcja ustawień = sprawdź, czy ktoś będzie jej szukał gdzie indziej.
 - Niedostępna sekcja (np. Workspace › Konta dla nie-admina): wiersz wyszarzony z powodem w `Tooltip`, nie ukryty.
-- Wyszukiwarka ustawień (`SettingsSearch`) nad menu Ustawień: „Search settings”, wynik = nazwa ustawienia z podświetleniem (`<mark>`) i ścieżka jak w „Szukasz może?”; klik albo Enter przełącza sekcję i podświetla cel (to samo `goToSetting`). Lista w `SEARCH`; wpisy tylko dla admina są ukryte dla pozostałych. Nowe ustawienie = nowy wpis w `SEARCH`.
+- Wyszukiwarka ustawień (`SettingsSearch`) nad menu Ustawień: „Search settings”, wynik = nazwa ustawienia z podświetleniem (`<mark>`) i ścieżka jak w „Szukasz może?”; klik albo Enter przełącza sekcję i podświetla cel (to samo `goToSetting`). Wpisy tylko dla admina są ukryte dla pozostałych.
 - Indeks wyszukiwarki to `SEARCH` w `Settings.tsx`; każda sekcja i każda karta/wiersz z `id` musi tam mieć wpis, pilnuje tego `tests/settings-search.test.ts`.

@@ -6,7 +6,6 @@
   --bg-primary: lch(5.52% 0.4 272);
   --bg-secondary: lch(7.32% 0.85 272);
   --bg-tertiary: lch(8.22% 1.3 272);
-  --bg-quaternary: lch(9.345% 0.85 272);
   --bg-card: lch(8.6% 1 272);
   --bg-card-hover: lch(10.5% 1.2 272);
   --bg-hover: lch(11% 1.3 272);
@@ -44,7 +43,6 @@
   --bg-primary: #000;
   --bg-secondary: #0a0a0b;
   --bg-tertiary: #101012;
-  --bg-quaternary: #121214;
   --bg-card: #0f0f12;
   --bg-card-hover: #151518;
   --bg-hover: #16161a;
@@ -66,7 +64,6 @@
   --bg-primary: lch(98.5% 0.5 282);
   --bg-secondary: lch(96% 0.5 282);
   --bg-tertiary: lch(92.44% 0.5 282);
-  --bg-quaternary: lch(90.94% 0.5 282);
   --bg-card: #fff;
   --bg-card-hover: lch(99% 0.3 282);
   --bg-hover: lch(92.5% 0.5 282);
@@ -99,6 +96,7 @@
 :root {
   --radius-sm: 4px; --radius-md: 6px; --radius-lg: 8px; --radius-xl: 12px; --radius-full: 9999px;
   --control-sm: 28px; --control-md: 32px; --control-lg: 36px;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.15);
   --text-xs: 11px; --text-sm: 12px; --text-md: 13px; --text-lg: 14px; --text-xl: 16px; --text-2xl: 20px; --text-3xl: 24px;
   /* Kolory tożsamości (projekty, spotkania w kalendarzu); nigdy stan. */
   --project-1: #5e6ad2; --project-2: #2563eb; --project-3: #26b5ce; --project-4: #059669; --project-5: #d97706; --project-6: #e5484d; --project-7: #a855f7;
@@ -1440,7 +1438,7 @@ textarea.md-edit.md-md { min-height: 120px; }
 
 /* ---------- zmiana z zewnątrz (SSE), kolejność aktywności, błąd analizy ---------- */
 @keyframes remote-flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
-.remote-flash { animation: remote-flash 1.2s ease-out; border-radius: var(--radius-md); }
+.remote-flash { animation: remote-flash 1.6s ease-out; border-radius: var(--radius-md); }
 .activity-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
 .ev-error { color: var(--danger-text); }
 .wiz-ext { display: flex; flex-direction: column; gap: 6px; }
@@ -1453,6 +1451,6 @@ textarea.md-edit.md-md { min-height: 120px; }
 .drum-row.d1 { opacity: 0.7; }
 .drum-row.d2 { opacity: 0.4; }
 .notify-error { color: var(--danger-text); }
-.settings-nav .nav-item.locked { opacity: 0.45; cursor: not-allowed; }
+.settings-nav .nav-item.locked { opacity: 0.5; cursor: not-allowed; }
 .settings-nav .nav-item.locked:hover { background: none; }
 .card-meta .pill { min-width: 0; }

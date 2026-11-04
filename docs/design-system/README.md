@@ -1,4 +1,4 @@
-Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, sprintów i spotkań, zbudowane na wzór Lineara (nazwa to mrugnięcie do niego: nie liniowo, a wykładniczo): gęste, ciemne, spokojne, z jednym kolorem marki i kolorami znaczeń, które mówią, co wymaga uwagi. Ten system jest **obowiązujący**: kod w `src/web` (repo `Wheatlay/tracker`) używa tylko tokenów i komponentów opisanych tutaj. Odstępstwo (nowy kolor, rozmiar, promień, wysokość kontrolki albo nowy wzór komponentu) wymaga zgody Krzysztofa przed scaleniem.
+Exponential (adres i nazwy techniczne: `tracker`) to narzędzie zespołu do zgłoszeń, sprintów i spotkań, zbudowane na wzór Lineara (nazwa to mrugnięcie do niego: nie liniowo, a wykładniczo): gęste, ciemne, spokojne, z jednym kolorem marki i kolorami znaczeń, które mówią, co wymaga uwagi. Ten system jest **obowiązujący**: kod w `src/web` (repo `Wheatlay/ExpoNential`) używa tylko tokenów i komponentów opisanych tutaj. Odstępstwo (nowy kolor, rozmiar, promień, wysokość kontrolki albo nowy wzór komponentu) wymaga zgody Krzysztofa przed scaleniem.
 
 ## Zasady dla agentów i ludzi
 
@@ -58,7 +58,7 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
 - Najechanie nie przesuwa układu (np. „+” w komórce boardu zajmuje miejsce zawsze, tylko jest niewidoczny).
 - Potwierdzenia przez `askConfirm` (okno aplikacji), nigdy systemowe `confirm()`/`alert()`.
 - Filtry w kolumnach: lejek w nagłówku kolumny i popover.
-- Animacje krótkie (80–200 ms), wyłączone przy `prefers-reduced-motion`.
+- Animacje krótkie (80–200 ms), wyłączone przy `prefers-reduced-motion`. Wyjątek: podświetlenie celu albo zmiany (`.s-card.flash`, `.remote-flash`) trwa 1,6 s, żeby dało się je zauważyć (zatwierdzone 05.11.2026).
 - Strona zgłoszenia (zatwierdzone 04.11.2026): aktywność domyślnie od najnowszej, przełącznik kolejności (`.icon-btn` przy nagłówku, pamiętany w `localStorage`); w polu opisu obrazki jako krótkie `![image N]`, pełny adres wraca przy zapisie; zmiana tytułu lub opisu przez kogoś innego miga tłem (`.remote-flash`).
 - „Settings” w pasku bocznym jest na dole, obok profilu (zatwierdzone 04.11.2026).
 
@@ -68,9 +68,10 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
 - `#e4e4e7`, `rgb(0 0 0 / …)`, `rgb(255 255 255 / …)` na przyciskach nakładanych na obrazki i w podglądzie obrazu (zawsze na ciemnym tle).
 - Cienie i przyciemnienia tła (`rgb(0 0 0 / x)`) w `shadow-*` i `.backdrop`.
 - Poświata wyróżnienia (`box-shadow` z `color-mix` koloru znaczenia): karta i baner pytania do mnie (`warning`), element podświetlony w turze demo (`accent`). Zatwierdzone 04.11.2026.
-- Szerokości układu (kolumny boardu 336/168, panel 300/320, okna 420/560/640/720).
+- Szerokości układu (kolumny boardu 336/168, panel 300/320, okna 420/560/640/720, bęben projektów 240).
+- Przygaszenie wierszy bębna projektów (`opacity` 0.7 / 0.4) i przesunięcie kropki przy „Settings” w pasku (4px). Zatwierdzone 05.11.2026.
 - Kolory zapisywane w danych, nie w wyglądzie: domyślny kolor nowej etykiety i projektu (`#5e6ad2`), listy `AVATAR_COLORS` i `COLORS` (= `avatar-*`, `project-*`).
 
 ## Ikony
 
-Własny zestaw w `src/web/icons.tsx` (`Icon.*`): obrysowe, 16×16, kreska 1.4, kolor z `currentColor`. Nowej ikony nie rysuj z pamięci innego zestawu; dodaj ją do `icons.tsx` w tym samym stylu. Znak marki (H1): sama sylwetka pola pod krzywą wykładniczą, bez kafla: płaski ogon z lewej, stromy klif z prawej; wypełnienie `accent`, krawędź krzywej `accent-hover` (`assets/Logos/exponential-mark.svg`, w kodzie `BrandMark` z `icons.tsx`, favicon w `index.html`). Nazwa pisana zawsze „Exponential”. W tytule karty przeglądarki: „<Projekt> · Exponential”, na stronie zgłoszenia „<ID> <tytuł> · <Projekt> · Exponential”. Nazwy techniczne (repo `tracker`, adres, protokół `tracker://`) zostają bez zmian. Plugin i serwer MCP nazywają się `expo` (od Server 1.3.23).
+Własny zestaw w `src/web/icons.tsx` (`Icon.*`): obrysowe, 16×16, kreska 1.4, kolor z `currentColor`. Nowej ikony nie rysuj z pamięci innego zestawu; dodaj ją do `icons.tsx` w tym samym stylu. Znak marki (H1): sama sylwetka pola pod krzywą wykładniczą, bez kafla: płaski ogon z lewej, stromy klif z prawej; wypełnienie `accent`, krawędź krzywej `accent-hover` (`assets/Logos/exponential-mark.svg`, w kodzie `BrandMark` z `icons.tsx`, favicon w `index.html`). Nazwa pisana zawsze „Exponential”. W tytule karty przeglądarki: „<Projekt> · Exponential”, na stronie zgłoszenia „<ID> <tytuł> · <Projekt> · Exponential”. Nazwy techniczne (adres, protokół `tracker://`) zostają bez zmian. Plugin i serwer MCP nazywają się `expo` (od Server 1.3.23).
