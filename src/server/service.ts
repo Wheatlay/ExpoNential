@@ -68,6 +68,7 @@ export async function listIssues(p: Project, filter: {
     assigneeId: issues.assigneeId, creatorId: issues.creatorId, priority: issues.priority, parentId: issues.parentId,
     sprintId: issues.sprintId, sortOrder: issues.sortOrder,
     analysisRequestedAt: issues.analysisRequestedAt, analysisClaimedAt: issues.analysisClaimedAt,
+    analysisClaimedDeviceName: dsql<string | null>`(select coalesce(nullif(a.label, ''), nullif(a.name, '')) from agents a where a.id = "issues"."analysis_claimed_device")`,
     hasAnalysis: dsql<boolean>`${issues.analysis} <> ''`,
     hasChangeNotes: dsql<boolean>`${issues.changeHuman} <> '' and ${issues.changeAi} <> ''`,
     createdAt: issues.createdAt, updatedAt: issues.updatedAt, completedAt: issues.completedAt,

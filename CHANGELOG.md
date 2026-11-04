@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.8] - 04.11.2026
+
+- Board cards show which PC is running the analysis ("Running on DESKTOP-…").
+- The highlight glow is back on "asked you" cards, the question banner and the demo tour.
+
 ## Server [1.3.7] - 04.11.2026
 
 UI and UX consistency pass.

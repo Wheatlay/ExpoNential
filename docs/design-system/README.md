@@ -65,6 +65,7 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
 - `1px` promienie i grubości kresek dekoracyjnych.
 - `#e4e4e7`, `rgb(0 0 0 / …)`, `rgb(255 255 255 / …)` na przyciskach nakładanych na obrazki i w podglądzie obrazu (zawsze na ciemnym tle).
 - Cienie i przyciemnienia tła (`rgb(0 0 0 / x)`) w `shadow-*` i `.backdrop`.
+- Poświata wyróżnienia (`box-shadow` z `color-mix` koloru znaczenia): karta i baner pytania do mnie (`warning`), element podświetlony w turze demo (`accent`). Zatwierdzone 04.11.2026.
 - Szerokości układu (kolumny boardu 336/168, panel 300/320, okna 420/560/640/720).
 - Kolory zapisywane w danych, nie w wyglądzie: domyślny kolor nowej etykiety i projektu (`#5e6ad2`), listy `AVATAR_COLORS` i `COLORS` (= `avatar-*`, `project-*`).
 

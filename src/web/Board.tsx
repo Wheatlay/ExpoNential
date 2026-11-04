@@ -761,7 +761,7 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
         {show.ai && issue.analysisRequestedAt && (issue.analysisClaimedAt
           ? (Date.now() - new Date(issue.analysisClaimedAt).getTime() > CLAIM_TTL_MIN * 60_000
             ? <span className="pill stalled" title={t('Analysis stalled: open the issue to analyze again or cancel')}><Icon.sparkle size={12} /> {t('Stalled')}</span>
-            : <span className="pill ai" title={t('A PC is running the AI analysis')}><Icon.sparkle size={12} /> {t('Running')}</span>)
+            : <span className="pill ai" title={t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') })}><Icon.sparkle size={12} /> {issue.analysisClaimedDeviceName ? t('Running on {name}', { name: issue.analysisClaimedDeviceName }) : t('Running')}</span>)
           : <span className="pill ai" title={t('Waiting for AI analysis')}><Icon.sparkle size={12} /> {t('Waiting')}</span>)}
         {show.ai && !issue.analysisRequestedAt && issue.hasAnalysis && <span className="pill ai done" title={t('AI analysis available')}><Icon.sparkle size={12} /></span>}
         {notesMissing && <span className="pill notes-missing" title={t('Done without HUMAN / AI change notes')}>{t('Notes missing')}</span>}

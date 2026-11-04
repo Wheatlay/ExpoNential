@@ -233,7 +233,6 @@ export const pl: Record<string, string> = {
   'Asking {name}': 'Pytanie do: {name}',
   'Sub-issues': 'Podzadania',
   'Waiting for AI analysis': 'Czeka na analizę AI',
-  'A PC is running the AI analysis': 'PC wykonuje analizę AI',
   'AI analysis available': 'Analiza AI gotowa',
   'Done without HUMAN / AI change notes': 'Zrobione bez notatek HUMAN / AI',
   'Notes missing': 'Brak notatek',
