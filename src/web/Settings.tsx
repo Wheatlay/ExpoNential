@@ -444,7 +444,7 @@ function ClaudeConnect() {
             </div>
           )}
           {(agentList.data ?? []).map((a) => {
-            const teamOff = !a.online ? t('PC is offline') : a.outdated ? t('Update the agent first') : null;
+            const teamOff = a.outdated ? t('Update the agent first') : null;
             return (
             <div key={a.id} className="my-pc">
               <div className="my-pc-line">
@@ -470,7 +470,8 @@ function ClaudeConnect() {
                   {a.label && a.computerName && <span className="hint">{t('Windows name: {name}', { name: a.computerName })}</span>}
                   {a.setup && a.setup.claude.length > 0 && (
                     <Tooltip text={a.setup.claude.map((c) => `${c.name}: ${t('issues')} ${c.mcp ? '✓' : '✗'} · ${t('work trace')} ${c.plugin ? '✓' : '✗'}`).join('\n')}>
-                      <span className="hint">{t('Claude Code: issues {a}/{n} · work trace {b}/{n}', { a: a.setup.claude.filter((c) => c.mcp).length, b: a.setup.claude.filter((c) => c.plugin).length, n: a.setup.claude.length })}</span>
+                      <span className="hint">{(() => { const n = a.setup!.claude.length, m = a.setup!.claude.filter((c) => c.mcp).length, p = a.setup!.claude.filter((c) => c.plugin).length;
+                        return m === n && p === n ? t('Claude Code: tracker and work trace in all accounts ({n})', { n }) : t('Claude Code: tracker in {m} of {n} accounts, work trace in {p} of {n}', { m, n, p }); })()}</span>
                     </Tooltip>
                   )}
                   {a.usage30d.runs > 0 && (
@@ -487,10 +488,14 @@ function ClaudeConnect() {
                 <Tooltip text={teamOff ?? t('Requests from other people in projects with a team queue.')}><span className="hint" tabIndex={teamOff ? 0 : undefined}>{t('Team requests')}</span></Tooltip>
                 <Tooltip text={teamOff}>
                   <div className="seg" role="group" aria-label={t('Team requests')}>
-                    {TEAM_MODES.map((m) => (
-                      <button key={m} className={a.teamMode === m ? 'on' : ''} aria-pressed={a.teamMode === m} disabled={!!teamOff}
-                        onClick={() => { if (a.teamMode !== m) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { teamMode: m } }).then(refreshTeam); }}>{TEAM_MODE_LABEL[m]()}</button>
-                    ))}
+                    {TEAM_MODES.map((m) => {
+                      const localOnly = m === 'auto' && a.teamMode !== 'auto';
+                      const btn = (
+                        <button key={m} className={a.teamMode === m ? 'on' : ''} aria-pressed={a.teamMode === m} disabled={!!teamOff || localOnly}
+                          onClick={() => { if (a.teamMode !== m) void api(`/api/agents/${a.id}`, { method: 'PATCH', body: { teamMode: m } }).then(refreshTeam); }}>{TEAM_MODE_LABEL[m]()}</button>
+                      );
+                      return localOnly && !teamOff ? <Tooltip key={m} text={t('For safety, turn this on in the agent window on this PC.')}>{btn}</Tooltip> : btn;
+                    })}
                   </div>
                 </Tooltip>
                 <Tooltip text={teamOff ?? t('Runs for other people on this PC in 24 hours. Your own are never limited.')}>

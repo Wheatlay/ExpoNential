@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.12] - 04.11.2026
+
+- Your PCs: team requests and the limit can be changed while the PC is offline; "Without asking" is turned on only in the agent window on that PC (grayed out on the web with the reason). Claude Code setup reads "tracker and work trace in all accounts (3)".
+
 ## Agent [0.4.7] - 04.11.2026
 
 - "Exponential agent" in the Start menu: starts the agent if it is not running and opens its window (also added to existing installs at start; removed on uninstall).
