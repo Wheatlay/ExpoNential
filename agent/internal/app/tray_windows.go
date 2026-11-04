@@ -31,7 +31,6 @@ func runWithTray(loop func()) {
 		systray.SetOnTapped(openSettings)
 		cfg := loadConfig()
 		settings := systray.AddMenuItem(tx("Ustawienia…", "Settings…"), "")
-		systray.AddSeparator()
 		who := strings.TrimSpace(cfg.UserName + " · " + hostOf(cfg.URL))
 		head := systray.AddMenuItem(who, "")
 		head.Disable()
@@ -39,32 +38,12 @@ func runWithTray(loop func()) {
 		state := systray.AddMenuItem("", "")
 		state.Disable()
 		open := systray.AddMenuItem(tx("Otwórz Exponential", "Open Exponential"), "")
-		aiSettings := systray.AddMenuItem(tx("Ustawienia AI", "AI settings"), "")
-		systray.AddSeparator()
-		teamHead := systray.AddMenuItem(tx("Zlecenia zespołu", "Team jobs"), "")
-		teamHead.Disable()
-		teamItems := map[string]*systray.MenuItem{
-			teamAsk:  systray.AddMenuItemCheckbox(tx("Pytaj", "Ask"), "", false),
-			teamAuto: systray.AddMenuItemCheckbox(tx("Bez pytania", "Don't ask"), "", false),
-			teamOff:  systray.AddMenuItemCheckbox(tx("Nie biorę", "Don't take"), "", false),
-		}
-		mute := systray.AddMenuItem("", "")
-		systray.AddSeparator()
-		notif := systray.AddMenuItemCheckbox(tx("Powiadomienia o analizach dla innych", "Notifications for analyses for others"), "", false)
-		auto := systray.AddMenuItemCheckbox(tx("Uruchamiaj z Windows", "Start with Windows"), "", false)
-		systray.AddSeparator()
 		upd := systray.AddMenuItem("", "")
 		upd.Hide()
-		uninstall := systray.AddMenuItem(tx("Odinstaluj…", "Uninstall…"), "")
+		mute := systray.AddMenuItem("", "")
+		systray.AddSeparator()
 		quit := systray.AddMenuItem(tx("Zakończ agenta", "Quit agent"), "")
 
-		check := func(it *systray.MenuItem, on bool) {
-			if on {
-				it.Check()
-			} else {
-				it.Uncheck()
-			}
-		}
 		dotShown := false
 		// sync brings every item in line with config and live state (called after any change, also from the settings window).
 		sync := func() {
@@ -74,12 +53,6 @@ func runWithTray(loop func()) {
 			state.SetTitle(text + " · agent " + Version + updateSuffix(lang))
 			until, muted := mutedUntilOf(c, time.Now())
 			mute.SetTitle(muteItemTitle(lang, until, muted))
-			mode := teamModeOf(c)
-			for m, it := range teamItems {
-				check(it, m == mode)
-			}
-			check(notif, notifyOthersOn())
-			check(auto, strings.HasPrefix(autostartState(), "on"))
 			trayMu.Lock()
 			uv := updateVer
 			trayMu.Unlock()
@@ -118,24 +91,10 @@ func runWithTray(loop func()) {
 					openSettings()
 				case <-open.ClickedCh:
 					openApp()
-				case <-aiSettings.ClickedCh:
-					openAISettings()
-				case <-teamItems[teamAsk].ClickedCh:
-					setTeamMode(teamAsk)
-				case <-teamItems[teamAuto].ClickedCh:
-					setTeamMode(teamAuto)
-				case <-teamItems[teamOff].ClickedCh:
-					setTeamMode(teamOff)
 				case <-mute.ClickedCh:
 					toggleMute()
-				case <-auto.ClickedCh:
-					setAutostart(!auto.Checked())
-				case <-notif.ClickedCh:
-					setNotifyOthers(!notif.Checked())
 				case <-upd.ClickedCh:
 					runUpdate()
-				case <-uninstall.ClickedCh:
-					launchUninstall()
 				case <-quit.ClickedCh:
 					systray.Quit()
 					return

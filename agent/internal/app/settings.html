@@ -7,7 +7,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(--text-primary); overflow: hidden; user-select: none; -webkit-user-select: none; cursor: default;
   font: 13px/1.4 Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
-.wrap { height: 100%; padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 12px; }
+.wrap { height: 100%; padding: 12px 14px 10px; display: flex; flex-direction: column; gap: 9px; }
 .head { display: flex; gap: 12px; align-items: center; }
 .tile { flex: none; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--bg-secondary); border: 1px solid var(--border-secondary); }
 .tile svg { width: 24px; height: 24px; }
@@ -22,7 +22,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .pill.danger { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .pill.sm { height: 20px; padding: 0 8px; font-size: 11px; }
 .pill.res { max-width: 150px; }
-.sec { display: flex; flex-direction: column; gap: 6px; }
+.sec { display: flex; flex-direction: column; gap: 4px; }
 .lbl { font-size: 12px; color: var(--text-tertiary); font-weight: 500; }
 .seg { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); flex: none; }
 .seg button { flex: 1; height: 28px; border-radius: 6px; border: 1px solid transparent; background: none; color: var(--text-tertiary); font: 500 13px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; cursor: pointer; }
@@ -31,7 +31,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .seg button.on.accent { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-text); }
 .seg button.on.success { background: color-mix(in srgb, var(--success) 14%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); }
 .seg button.on.neutral { background: var(--bg-tertiary); border-color: var(--border-tertiary); color: var(--text-secondary); }
-.row { display: flex; align-items: center; gap: 10px; height: 32px; cursor: pointer; color: var(--text-secondary); }
+.row { display: flex; align-items: center; gap: 10px; height: 28px; cursor: pointer; color: var(--text-secondary); }
 .row span { flex: 1; }
 .sw { flex: none; width: 32px; height: 18px; border-radius: 9999px; background: var(--bg-tertiary); border: 1px solid var(--border-tertiary); position: relative; transition: background .15s; }
 .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--text-tertiary); transition: transform .15s, background .15s; }
@@ -48,19 +48,22 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .btn.link { border-color: transparent; color: var(--text-secondary); padding: 0 8px; }
 .btn.danger { border-color: transparent; color: var(--danger-text); }
 .btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
-.btn:focus-visible, .seg button:focus-visible, .row:focus-visible, .lk:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 1px; }
+.btn:focus-visible, .tabs button:focus-visible, .seg button:focus-visible, .row:focus-visible, .lk:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 1px; }
 .btns { display: flex; gap: 8px; }
 .btns .btn { flex: 1; }
-.foot { margin-top: auto; display: flex; gap: 2px; border-top: 1px solid var(--border-primary); padding-top: 10px; flex: none; }
+.foot { margin-top: auto; display: flex; gap: 2px; border-top: 1px solid var(--border-primary); padding-top: 8px; flex: none; }
 .foot .danger { margin-left: auto; }
-.tabs { flex: none; }
-.panel { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; margin: 0 -6px; padding: 0 6px; }
+.tabs { flex: none; display: flex; gap: 16px; border-bottom: 1px solid var(--border-secondary); }
+.tabs button { height: 30px; padding: 0 2px; margin-bottom: -1px; background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--text-tertiary); font: 500 13px Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; cursor: pointer; }
+.tabs button:hover { color: var(--text-primary); }
+.tabs button.on { color: var(--text-primary); border-bottom-color: var(--accent); }
+.panel { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 9px; margin: 0 -6px; padding: 0 6px; }
 .panel::-webkit-scrollbar { width: 6px; }
 .panel::-webkit-scrollbar-thumb { background: var(--border-tertiary); border-radius: 9999px; }
 .mut { color: var(--text-tertiary); }
-.empty { color: var(--text-tertiary); padding: 24px 0; text-align: center; }
+.empty { color: var(--text-tertiary); padding: 18px 0; text-align: center; }
 .list { display: flex; flex-direction: column; }
-.item { display: flex; flex-direction: column; gap: 4px; padding: 10px 0; border-top: 1px solid var(--border-primary); }
+.item { display: flex; flex-direction: column; gap: 3px; padding: 8px 0; border-top: 1px solid var(--border-primary); }
 .item:first-child { border-top: 0; padding-top: 2px; }
 .l1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .l1 b { font-weight: 600; flex: none; }
@@ -87,7 +90,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 <body>
 <div class="wrap">
   <div class="head" id="head"></div>
-  <div class="seg tabs" id="tabs"></div>
+  <div class="tabs" id="tabs" role="tablist"></div>
   <div class="panel" id="panel"></div>
 </div>
 <script>
@@ -95,7 +98,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   var MARK = '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3 L22 22 Z" fill="#5e6ad2"/><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3" fill="none" stroke="#7180ff" stroke-width="1.6"/></svg>';
   var $ = function (id) { return document.getElementById(id); };
   var headEl = $("head"), tabsEl = $("tabs"), panelEl = $("panel");
-  var S = null, tab = "general", view = "", repos = null, repoMsg = {}, logText = null, copied = false, picking = false, busy = false;
+  var S = null, tab = "general", view = "", repos = null, repoMsg = {}, logText = null, copied = false, picking = false, busy = false, seq = 0;
   var sigs = { head: "", tabs: "", panel: "" };
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -130,7 +133,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     if (sig === sigs.tabs) return;
     sigs.tabs = sig;
     tabsEl.innerHTML = [["general", L.tabGeneral], ["repos", L.tabRepos], ["runs", L.tabRuns]].map(function (t) {
-      return '<button data-v="' + t[0] + '" class="' + (tab === t[0] ? "on accent" : "") + '">' + esc(t[1]) + '</button>';
+      return '<button role="tab" aria-selected="' + (tab === t[0]) + '" data-v="' + t[0] + '" class="' + (tab === t[0] ? "on" : "") + '">' + esc(t[1]) + '</button>';
     }).join("");
     Array.prototype.forEach.call(tabsEl.children, function (b) { b.onclick = function () { go(b.dataset.v); }; });
   }
@@ -152,7 +155,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
       '<div class="row' + (s.autostart ? " on" : "") + '" id="autostart" role="switch" tabindex="0" aria-checked="' + s.autostart + '"><span>' + esc(L.autostart) + '</span><i class="sw"></i></div></div>' +
       '<button class="btn mute" id="mute">' + esc(s.muteLabel) + '</button>' +
       '<div class="sec"><span class="lbl">' + esc(L.theme) + '</span>' +
-      seg("theme", [["system", L.sys, "accent"], ["dark", L.dark, "accent"], ["light", L.light, "accent"]], s.themeSetting) + '</div>' +
+      seg("theme", [["system", L.sys, "accent"], ["dark", L.dark, "accent"], ["oled", L.oled, "accent"], ["light", L.light, "accent"]], s.themeSetting) + '</div>' +
       '<div class="btns"><button class="btn" id="showlog">' + esc(L.showLog) + '</button><button class="btn' + (copied ? " ok" : "") + '" id="copylog">' + esc(copied ? L.copied : L.copyLog) + '</button></div>' +
       '<div class="foot"><button class="btn link" id="open">' + esc(L.open) + '</button><button class="btn link" id="ai">' + esc(L.ai) + '</button>' +
       '<button class="btn danger" id="uninstall">' + esc(L.uninstall) + '</button></div>';
@@ -215,10 +218,11 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
         var k = b.dataset.k;
         if (b.dataset.a === "del") { window.removeRepo(k).then(loadRepos); return; }
         picking = true;
+        var done = function () { picking = false; born = Date.now(); };
         window.pickFolder(k).then(function (p) {
-          picking = false; born = Date.now();
+          done();
           if (p) window.saveRepo(k, p);
-        }, function () { picking = false; born = Date.now(); });
+        }, done);
       };
     });
   }
@@ -271,13 +275,23 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 
   function refresh() {
     if (busy) return; busy = true;
+    var my = ++seq;
+    var dog = setTimeout(function () { if (my === seq) busy = false; }, 3000);
     window.getState().then(function (s) {
+      clearTimeout(dog);
+      if (my !== seq) return; // a newer refresh already took over
       busy = false; S = s;
       drawHead(); drawTabs(); drawPanel();
-    }, function () { busy = false; });
+    }, function () { clearTimeout(dog); if (my === seq) busy = false; });
   }
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") window.close(); });
   var born = Date.now();
+  window.onerror = function (msg, src, line, col) {
+    try { window.jsError(String(msg) + " (" + line + ":" + col + ")"); } catch (e) {}
+  };
+  window.addEventListener("unhandledrejection", function (e) {
+    try { window.jsError("unhandled rejection: " + String(e.reason)); } catch (x) {}
+  });
   window.addEventListener("blur", function () { if (!picking && Date.now() - born > 1200) window.close(); });
   document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   setInterval(refresh, 1000);

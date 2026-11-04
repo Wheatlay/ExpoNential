@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.6] - 04.11.2026
+
+- The agent window is the one place for settings; the right-click tray menu keeps only shortcuts (Settings, Open Exponential, Mute for 24 h, Quit).
+- The window tabs look like tabs; the window is shorter; OLED theme added.
+- The window no longer stops updating when an answer from the agent gets lost; window errors are written to the log.
+
 ## Agent [0.4.5] - 04.11.2026
 
 - Updates install by themselves by default (after a running analysis finishes); "Update automatically" in the agent window turns it off, then the update is only offered. The agent checks for new versions every 6 h.

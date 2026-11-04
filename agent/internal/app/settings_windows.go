@@ -54,7 +54,7 @@ func settingsLabels(lang string) map[string]string {
 		return map[string]string{"team": "Zlecenia zespołu", "ask": "Pytaj", "auto": "Bez pytania", "off": "Nie biorę",
 			"tipAsk": "Pytaj o zgodę przed analizą cudzego zlecenia", "tipAuto": "Uruchamiaj cudze zlecenia bez pytania", "tipOff": "Nie biorę cudzych zleceń",
 			"notify": "Powiadomienia o analizach dla innych", "autoUpdate": "Aktualizuj automatycznie", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
-			"sys": "Systemowy", "dark": "Ciemny", "light": "Jasny", "open": "Otwórz Exponential", "ai": "Ustawienia AI", "uninstall": "Odinstaluj…",
+			"sys": "Systemowy", "dark": "Ciemny", "oled": "OLED", "light": "Jasny", "open": "Otwórz Exponential", "ai": "Ustawienia AI", "uninstall": "Odinstaluj…",
 			"version": "agent %V", "update": "Zaktualizuj do %V",
 			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Analizy", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
 			"loading": "Wczytuję…", "logEmpty": "Log jest pusty", "repoErr": "Brak połączenia z serwerem", "noProjects": "Brak projektów", "noRepo": "brak repo w projekcie", "unmapped": "brak mapowania",
@@ -65,7 +65,7 @@ func settingsLabels(lang string) map[string]string {
 	return map[string]string{"team": "Team jobs", "ask": "Ask", "auto": "Don't ask", "off": "Don't take",
 		"tipAsk": "Ask before running someone else's analysis", "tipAuto": "Run others' analyses without asking", "tipOff": "Never take others' analyses",
 		"notify": "Notifications for analyses for others", "autoUpdate": "Update automatically", "autostart": "Start with Windows", "theme": "Theme",
-		"sys": "System", "dark": "Dark", "light": "Light", "open": "Open Exponential", "ai": "AI settings", "uninstall": "Uninstall…",
+		"sys": "System", "dark": "Dark", "oled": "OLED", "light": "Light", "open": "Open Exponential", "ai": "AI settings", "uninstall": "Uninstall…",
 		"version": "agent %V", "update": "Update to %V",
 		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Analyses", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
 		"loading": "Loading…", "logEmpty": "The log is empty", "repoErr": "Cannot reach the server", "noProjects": "No projects", "noRepo": "no repo in the project", "unmapped": "not mapped",
@@ -74,7 +74,13 @@ func settingsLabels(lang string) map[string]string {
 		"resOk": "ok", "resFail": "error", "resLimit": "Claude limit", "resDeclined": "declined", "resMuted": "muted"}
 }
 
-func buildSettingsState() settingsState {
+func buildSettingsState() (st settingsState) {
+	defer func() {
+		if r := recover(); r != nil {
+			logf("settings state: %v", r)
+			st = settingsState{Theme: "dark", ThemeSetting: "system", L: settingsLabels("en"), TeamMode: teamAsk, Runs: []runRecord{}}
+		}
+	}()
 	lang := uiLang()
 	cfg := loadConfig()
 	text, kind := statusParts(lang)
@@ -92,6 +98,13 @@ func buildSettingsState() settingsState {
 		State: text, Kind: kind, Version: Version, UpdateTo: upd,
 		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), AutoUpdate: autoUpdateOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
 		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted), Runs: loadRuns(),
+	}
+}
+
+// guard is deferred at the top of a binding: a panic is logged instead of leaving the page waiting.
+func guard(name string) {
+	if r := recover(); r != nil {
+		logf("settings %s: %v", name, r)
 	}
 }
 
@@ -182,19 +195,56 @@ func openSettings() {
 		placeTopmost(hwnd, wa.Right-ww-margin, wa.Bottom-wh-margin, ww, wh, true)
 		procSetForeground.Call(hwnd)
 
-		_ = w.Bind("getState", func() settingsState { return buildSettingsState() })
-		_ = w.Bind("setTeamMode", func(m string) { setTeamMode(m) })
-		_ = w.Bind("setNotify", func(on bool) { setNotifyOthers(on) })
-		_ = w.Bind("setAutoUpdate", func(on bool) { setAutoUpdate(on) })
-		_ = w.Bind("setAutostart", func(on bool) { setAutostart(on) })
-		_ = w.Bind("toggleMute", func() { toggleMute() })
-		_ = w.Bind("setTheme", func(t string) { setTheme(t) })
-		_ = w.Bind("openApp", func() { openApp() })
-		_ = w.Bind("openAI", func() { openAISettings() })
-		_ = w.Bind("uninstall", func() { launchUninstall() })
-		_ = w.Bind("update", func() { runUpdate() })
-		_ = w.Bind("getLog", func() string { return logTail() })
+		_ = w.Bind("getState", func() settingsState {
+			defer guard("getState")
+			return buildSettingsState()
+		})
+		_ = w.Bind("setTeamMode", func(m string) {
+			defer guard("setTeamMode")
+			setTeamMode(m)
+		})
+		_ = w.Bind("setNotify", func(on bool) {
+			defer guard("setNotify")
+			setNotifyOthers(on)
+		})
+		_ = w.Bind("setAutoUpdate", func(on bool) {
+			defer guard("setAutoUpdate")
+			setAutoUpdate(on)
+		})
+		_ = w.Bind("setAutostart", func(on bool) {
+			defer guard("setAutostart")
+			setAutostart(on)
+		})
+		_ = w.Bind("toggleMute", func() {
+			defer guard("toggleMute")
+			toggleMute()
+		})
+		_ = w.Bind("setTheme", func(t string) {
+			defer guard("setTheme")
+			setTheme(t)
+		})
+		_ = w.Bind("openApp", func() {
+			defer guard("openApp")
+			openApp()
+		})
+		_ = w.Bind("openAI", func() {
+			defer guard("openAI")
+			openAISettings()
+		})
+		_ = w.Bind("uninstall", func() {
+			defer guard("uninstall")
+			launchUninstall()
+		})
+		_ = w.Bind("update", func() {
+			defer guard("update")
+			runUpdate()
+		})
+		_ = w.Bind("getLog", func() string {
+			defer guard("getLog")
+			return logTail()
+		})
 		_ = w.Bind("copyLog", func() bool {
+			defer guard("copyLog")
 			if err := setClipboard(logTail()); err != nil {
 				logf("copy log: %v", err)
 				return false
@@ -202,6 +252,7 @@ func openSettings() {
 			return true
 		})
 		_ = w.Bind("openIssue", func(key string) {
+			defer guard("openIssue")
 			if u := loadConfig().URL; u != "" && keyRe.MatchString(key) {
 				openURL(issueURL(u, key))
 			}
@@ -209,6 +260,7 @@ func openSettings() {
 		push := func(js string) { w.Dispatch(func() { w.Eval(js) }) }
 		// The repo list asks the server and runs git: off the window thread, the answer is pushed to the page.
 		_ = w.Bind("loadRepos", func() {
+			defer guard("loadRepos")
 			go func() {
 				defer func() { _ = recover() }()
 				res := map[string]any{"rows": []repoRow{}}
@@ -231,6 +283,7 @@ func openSettings() {
 			}()
 		})
 		_ = w.Bind("pickFolder", func(key string) string {
+			defer guard("pickFolder")
 			title := "Exponential · " + key
 			p, err := pickFolder(hwnd, title)
 			if err != nil {
@@ -240,6 +293,7 @@ func openSettings() {
 			return p
 		})
 		_ = w.Bind("saveRepo", func(key, path string) {
+			defer guard("saveRepo")
 			go func() {
 				defer func() { _ = recover() }()
 				code, detail, err := saveManualRepo(key, path)
@@ -250,8 +304,15 @@ func openSettings() {
 				push("onRepoSaved(" + k + "," + c + "," + d + ")")
 			}()
 		})
-		_ = w.Bind("removeRepo", func(key string) { removeRepo(key) })
-		_ = w.Bind("close", func() { w.Dispatch(func() { w.Terminate() }) })
+		_ = w.Bind("removeRepo", func(key string) {
+			defer guard("removeRepo")
+			removeRepo(key)
+		})
+		_ = w.Bind("jsError", func(msg string) { logf("settings js: %s", msg) })
+		_ = w.Bind("close", func() {
+			defer guard("close")
+			w.Dispatch(func() { w.Terminate() })
+		})
 		w.SetHtml(applyUI(settingsHTML, currentTheme()))
 		w.Run()
 	}()

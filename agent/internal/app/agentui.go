@@ -20,6 +20,21 @@ const uiCSS = `
   --shadow-popover: 0 8px 30px rgb(0 0 0 / 0.5), 0 0 0 1px var(--border-secondary);
   color-scheme: dark;
 }
+:root[data-theme="oled"] {
+  --bg-primary: #000; --bg-secondary: #000; --bg-tertiary: #0a0a0b; --bg-hover: #141416;
+  --bg-popover: #000;
+  --border-primary: lch(14% 1.48 272); --border-secondary: lch(20% 1.48 272); --border-tertiary: lch(25% 1.48 272);
+  --text-primary: lch(100% 0 272); --text-secondary: lch(90.451% 1.2 272); --text-tertiary: lch(61.803% 1.2 272);
+  --accent: #5e6ad2; --accent-hover: #7180ff; --accent-text: #aab0ff; --on-accent: #ffffff;
+  --danger: #eb5757; --danger-text: #f87171;
+  --success: #4cb782; --success-text: #4cb782;
+  --warning: #f2994a; --warning-text: #f2b06a;
+  --progress: #f2c94c; --progress-text: #f2c94c;
+  --ai: #a855f7; --ai-text: #c084fc;
+  --info: #3b82f6; --info-text: #93c5fd;
+  --shadow-popover: 0 8px 30px rgb(0 0 0 / 0.5), 0 0 0 1px var(--border-secondary);
+  color-scheme: dark;
+}
 :root[data-theme="light"] {
   --bg-primary: lch(98.5% 0.5 282); --bg-secondary: lch(96% 0.5 282); --bg-tertiary: lch(92.44% 0.5 282); --bg-hover: lch(92.5% 0.5 282);
   --bg-popover: #fff;
@@ -39,7 +54,7 @@ const uiCSS = `
 
 // applyUI fills the placeholders of a page: {{THEME}} and the /*{{CSS}}*/ marker.
 func applyUI(page, theme string) string {
-	if theme != "light" {
+	if theme != "light" && theme != "oled" {
 		theme = "dark"
 	}
 	return strings.NewReplacer("{{THEME}}", theme, "/*{{CSS}}*/", uiCSS).Replace(page)

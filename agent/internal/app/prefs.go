@@ -163,13 +163,15 @@ func setAutoUpdate(on bool) { updateConfig(func(c *Config) { c.AutoUpdate = &on 
 func setNotifyOthers(on bool) { updateConfig(func(c *Config) { c.NotifyOthers = &on }); notifyStatus() }
 
 // Theme.
-func validTheme(t string) bool { return t == "system" || t == "dark" || t == "light" }
+func validTheme(t string) bool { return t == "system" || t == "dark" || t == "oled" || t == "light" }
 
-// resolveTheme turns the setting into "dark" or "light"; "system" (or anything unknown) follows Windows.
+// resolveTheme turns the setting into "dark", "oled" or "light"; "system" (or anything unknown) follows Windows.
 func resolveTheme(setting string, systemLight bool) string {
 	switch setting {
 	case "dark":
 		return "dark"
+	case "oled":
+		return "oled"
 	case "light":
 		return "light"
 	}
