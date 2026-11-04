@@ -670,6 +670,7 @@ export const pl: Record<string, string> = {
   'OLED black': 'Czarny OLED',
   'Light': 'Jasny',
   'Language': 'Język',
+  "Team queue is off: PCs only run their owners' analyses in this project.": 'Kolejka zespołu jest wyłączona: PC biorą w tym projekcie tylko analizy swoich właścicieli.',
   'Help translate…': 'Pomóż tłumaczyć…',
   'created {when}': 'utworzony {when}',
   'used {when}': 'użyty {when}',

@@ -1065,6 +1065,9 @@ function TeamQueue() {
   if (!c) return null;
   const { p, ro: roBase, patch } = c;
   const ro = roBase ?? (demo ? t('Disabled in the demo') : null);
+  // Queue off: nobody takes others' analyses in this project, whatever each PC is set to (rows grayed, reason on hover).
+  const off = !p.agentTeamQueue;
+  const offWhy = off ? t("Team queue is off: PCs only run their owners' analyses in this project.") : null;
   return (
     <div className="s-card" id="team-queue">
       <div className="s-row">
@@ -1075,10 +1078,10 @@ function TeamQueue() {
         </Tooltip>
       </div>
       {(online.data ?? []).map((a, i) => (
-        <div key={i} className="s-row">
+        <div key={i} className={`s-row${off ? ' is-off' : ''}`}>
           <span className="grow">{a.name || t('Unnamed PC')} · {a.owner}</span>
           {a.busy && <span className="hint">{t('running an analysis')}</span>}
-          <span className={a.teamMode === 'off' ? 'pill ended' : 'pill ok'}>{TEAM_MODE_STATE[a.teamMode]()}</span>
+          <Tooltip text={offWhy}><span className={off || a.teamMode === 'off' ? 'pill ended' : 'pill ok'} tabIndex={off ? 0 : undefined}>{TEAM_MODE_STATE[a.teamMode]()}</span></Tooltip>
           <Tooltip text={byRequesterText(a.usage30d)}><span className="hint">{t('30 days: {runs} analyses · {tokens}', { runs: a.usage30d.runs, tokens: t('{n} tokens', { n: tok(a.usage30d.tokens) }) })}</span></Tooltip>
         </div>
       ))}

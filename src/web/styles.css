@@ -1354,6 +1354,7 @@ textarea.md-edit.md-md { min-height: 120px; }
 .np-grid { display: grid; grid-template-columns: max-content 1fr; gap: 12px; align-items: center; padding: 12px 0; }
 .np-key { display: flex; gap: 8px; align-items: center; }
 .np-key .input { text-transform: uppercase; }
+.s-row.is-off > .grow, .s-row.is-off .hint { color: var(--text-quaternary); }
 /* == end settings == */
 
 /* == UX pass: calendar, dialogs, shared == */

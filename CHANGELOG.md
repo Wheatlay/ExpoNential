@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.19] - 04.11.2026
+
+- Project settings › AI agent: with the team queue off, the PCs in the list are grayed out and their mode is shown as inactive, with the reason on hover.
+
 ## Server [1.3.18], Agent [0.4.14] - 04.11.2026
 
 - The agent window closes when you click outside it (another program comes to the front).
