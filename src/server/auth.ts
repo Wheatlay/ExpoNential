@@ -114,6 +114,8 @@ const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
   [/^POST$/, /^\/api\/issues\/[^/]+\/worklog$/],
   [/^GET$/, /^\/api\/agent\/work$/],
   [/^POST$/, /^\/api\/agent\/runs$/],
+  [/^POST$/, /^\/api\/agent\/consent-pending$/],
+  [/^GET$/, /^\/api\/agent\/open-requests$/],
   [/^POST$/, /^\/api\/agent\/mcp-key$/], // klucz MCP dla instalatora agenta (pairing.ts sprawdza klienta grantu)
   [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
   [/^(DELETE|PATCH)$/, /^\/api\/agents\/[^/]+$/], // PATCH: tylko teamMode (api.ts)
@@ -122,6 +124,8 @@ const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
 const AGENT_ONLY: Array<[RegExp, RegExp]> = [
   [/^GET$/, /^\/api\/agent\/work$/],
   [/^POST$/, /^\/api\/agent\/runs$/],
+  [/^POST$/, /^\/api\/agent\/consent-pending$/],
+  [/^GET$/, /^\/api\/agent\/open-requests$/],
   [/^(POST|DELETE)$/, /^\/api\/issues\/[^/]+\/analyze\/claim$/],
   [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
   [/^(DELETE|PATCH)$/, /^\/api\/agents\/[^/]+$/],
@@ -290,6 +294,13 @@ export async function registerAuth(app: FastifyInstance) {
     return { ok: true };
   });
 
+  // Krok 1 logowania: czy ten e-mail ustawia hasło (konto dodane ręcznie, nigdy niezalogowane).
+  // Każdy inny przypadek (konto z hasłem, z Google, brak konta) daje to samo: nie zdradza, czy konto istnieje.
+  app.post('/auth/password/check', async (req) => {
+    const { email } = z.object({ email: z.string().min(1).max(320) }).parse(req.body);
+    return { setPassword: await isPreAddedAccount(email.trim().toLowerCase()) };
+  });
+
   // Rejestracja tylko z ważnym zaproszeniem: konto + zużycie zaproszenia w jednej transakcji.
   app.post<{ Params: { token: string } }>('/auth/invite/:token/register', async (req, reply) => {
     const body = z.object({ name: z.string().trim().min(1).max(100), email: z.string().trim().max(320), password: z.string().max(1000) }).parse(req.body);
@@ -445,9 +456,15 @@ export async function loginWithPassword(email: string, password: string) {
  * że aplikacja nie sprawdza skrzynki (kto pierwszy wpisze e-mail, ustawia hasło).
  * Za słabe hasło: błąd z regułą, żeby osoba wiedziała, czemu nie weszła.
  */
-export async function claimPreAddedAccount(email: string, password: string) {
+async function preAddedAccount(email: string) {
   const [u] = await db.select().from(users).where(dsql`lower(${users.email}) = lower(${email})`);
-  if (!u || !u.active || u.passwordHash || u.githubId || u.googleId) return null;
+  return u && u.active && !u.passwordHash && !u.githubId && !u.googleId ? u : null;
+}
+export const isPreAddedAccount = async (email: string) => !!(await preAddedAccount(email));
+
+export async function claimPreAddedAccount(email: string, password: string) {
+  const u = await preAddedAccount(email);
+  if (!u) return null;
   const problem = passwordProblem(password);
   if (problem) throw new RuleError(problem, 'invalid');
   const passwordHash = await hashPassword(password);

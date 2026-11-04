@@ -47,3 +47,24 @@ export async function disablePush() {
   await api('/api/push/subscription', { method: 'DELETE', body: { endpoint: sub.endpoint } });
   await sub.unsubscribe();
 }
+
+/** Subskrypcja tej przeglądarki (bez zakładania nowej), albo null. */
+export async function getSubscription(): Promise<PushSubscription | null> {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.getRegistration();
+  return (await reg?.pushManager.getSubscription()) ?? null;
+}
+
+/** Czy serwer zna subskrypcję tej przeglądarki (zgoda w przeglądarce nie wystarczy: serwer mógł ją usunąć). */
+export async function pushSubscriptionOnServer(): Promise<boolean> {
+  const sub = await getSubscription();
+  if (!sub) return false;
+  try { return (await api<{ exists: boolean }>(`/api/push/subscription?endpoint=${encodeURIComponent(sub.endpoint)}`)).exists; } catch { return false; }
+}
+
+/** Wysyła próbne powiadomienie na tę przeglądarkę; błąd serwera wraca w `error`. */
+export async function sendPushTest(): Promise<{ ok: boolean; error?: string }> {
+  const sub = await getSubscription();
+  if (!sub) return { ok: false, error: 'No subscription in this browser' };
+  return api<{ ok: boolean; error?: string }>('/api/push/test', { method: 'POST', body: { endpoint: sub.endpoint } });
+}

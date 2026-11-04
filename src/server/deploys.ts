@@ -10,6 +10,8 @@ import { requireMember, canManage, type Project } from './projects.ts';
 import { RuleError } from './rules.ts';
 import { projectKeyOf } from './api.ts';
 import { coolifyConfigured } from './coolify.ts';
+import { sendDiscord } from './notify.ts';
+import { st } from './i18n.ts';
 
 /** Stan ostatniego deployu projektu, niezależnie od tego, skąd o nim wiemy (webhook, GitHub, Coolify). */
 export type DeployStatus = {
@@ -99,6 +101,11 @@ export async function reportDeploy(p: Project, next: NonNullable<DeployStatus>, 
   const prev = current.get(key);
   current.set(key, next);
   if (JSON.stringify(prev ?? null) !== JSON.stringify(next)) await publish({ type: 'deploy', projectKey: p.key });
+  // Nieudany deploy: jedna wiadomość na kanał Discord projektu na przejście (to samo zgłoszenie 'failed' drugi raz niczego nie wysyła).
+  if (next.status === 'failed' && (!prev || prev.status !== 'failed' || prev.commit !== next.commit)) {
+    await sendDiscord(p, { title: st('Deploy failed: {env} {commit}', { env: env.name, commit: (next.commit ?? '').slice(0, 7) }).trim(), description: next.message?.split('\n')[0] || p.name, color: 0xeb5757 }, log as { warn: (o: object, m: string) => void } | undefined)
+      .catch((e) => log?.warn(e, 'discord deploy failed message failed'));
+  }
   // recordDeploy jest idempotentny po sha, więc powtórne zgłoszenie tego samego deployu niczego nie psuje.
   if (next.status === 'finished' && next.commit && (!prev || prev.status !== 'finished' || prev.commit !== next.commit)) {
     await recordDeploy(p, next.commit, env).catch((e) => log?.warn(e, 'recordDeploy failed'));

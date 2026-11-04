@@ -77,6 +77,13 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .limrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 2px; }
 .sel { height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-secondary); background: var(--bg-secondary); color: var(--text-primary); font: inherit; font-size: 12px; }
 .hintline { color: var(--text-tertiary); font-size: 12px; margin: 2px 0 10px; }
+.inp { flex: 1; min-width: 0; height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-secondary); background: var(--bg-secondary); color: var(--text-primary); font: inherit; font-size: 12px; user-select: text; -webkit-user-select: text; cursor: text; }
+.inp:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 1px; }
+.pairrow { display: flex; gap: 6px; align-items: center; }
+.cons .l1 { display: flex; align-items: center; gap: 8px; }
+.cons .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cons .mut { color: var(--text-tertiary); font-size: 12px; }
+.bar { display: flex; justify-content: flex-end; }
 .repos { gap: 8px; }
 .repo { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); }
 .repo .l1 .nm { flex: 1; min-width: 0; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -126,7 +133,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   var MARK = '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3 L22 22 Z" fill="#5e6ad2"/><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3" fill="none" stroke="#7180ff" stroke-width="1.6"/></svg>';
   var $ = function (id) { return document.getElementById(id); };
   var headEl = $("head"), tabsEl = $("tabs"), panelEl = $("panel");
-  var checkMsg = "", S = null, tab = "general", view = "", repos = null, repoMsg = {}, logText = null, copied = false, picking = false, busy = false, seq = 0;
+  var checkMsg = "", S = null, tab = "general", view = "", repos = null, repoMsg = {}, logText = null, copied = false, picking = false, busy = false, seq = 0, pairOpen = false, pairVal = "", pairMsg = "", pairState = "", rescanning = false;
   var sigs = { head: "", tabs: "", panel: "" };
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -201,11 +208,43 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
       '<div class="row' + (s.autostart ? " on" : "") + '" id="autostart" role="switch" tabindex="0" aria-checked="' + s.autostart + '"><span>' + esc(L.autostart) + '</span><i class="sw"></i></div></div>' +
       '<div class="sec"><span class="lbl">' + esc(L.theme) + '</span>' +
       seg("theme", [["system", L.sys, "accent"], ["dark", L.dark, "accent"], ["oled", L.oled, "accent"], ["light", L.light, "accent"]], s.themeSetting) + '</div>' +
+      consentsHtml(s) + pairHtml(L) +
       '<div class="btns"><button class="btn" id="showlog">' + esc(L.showLog) + '</button><button class="btn' + (copied ? " ok" : "") + '" id="copylog">' + esc(copied ? L.copied : L.copyLog) + '</button></div>' +
       '<div class="foot"><button class="btn link" id="open">' + esc(L.open) + '</button><button class="btn link" id="ai">' + esc(L.ai) + '</button>' +
       '<button class="btn danger" id="uninstall">' + esc(L.uninstall) + '</button></div>';
   }
+  function consentsHtml(s) {
+    var L = s.L, list = s.consents || [];
+    if (!list.length) return "";
+    return '<div class="sec cons"><span class="lbl">' + esc(L.consents) + '</span><div class="list">' + list.map(function (c) {
+      return '<div class="item"><div class="l1"><span class="nm" title="' + esc(c.name) + '">' + esc(c.name) + '</span><span class="mut">' + esc(L.until.replace("%D", fmtTime(c.until))) + '</span>' +
+        '<button class="btn sm danger" data-revoke="' + esc(c.id) + '">' + esc(L.revoke) + '</button></div></div>';
+    }).join("") + '</div></div>';
+  }
+  function pairHtml(L) {
+    if (!pairOpen) return '<div class="btns"><button class="btn" id="pairopen">' + esc(L.pairAgain) + '</button></div>';
+    return '<div class="sec"><span class="lbl">' + esc(L.pairAgain) + '</span><div class="pairrow"><input class="inp" id="paircode" type="text" autocomplete="off" spellcheck="false" placeholder="' + esc(L.pairHint) + '" value="' + esc(pairVal) + '"' + (pairState === "busy" ? " disabled" : "") + '>' +
+      '<button class="btn sm" id="pairgo"' + (pairState === "busy" ? " disabled" : "") + '>' + esc(pairState === "busy" ? L.pairing : L.pairGo) + '</button></div>' +
+      (pairMsg ? '<div class="hintline" style="color:var(' + (pairState === "ok" ? "--success-text" : "--danger-text") + ')">' + esc(pairMsg) + '</div>' : "") + '</div>';
+  }
+  function doPair() {
+    var code = ($("paircode") ? $("paircode").value : pairVal).trim();
+    pairVal = code; pairState = "busy"; pairMsg = ""; drawPanel();
+    Promise.resolve(window.pairAgain(code)).then(function (r) {
+      if (r) { pairState = "err"; pairMsg = r; } else { pairState = "ok"; pairMsg = S.L.pairOk; pairVal = ""; }
+      drawPanel(); setTimeout(refresh, 300);
+    }, function () { pairState = "err"; pairMsg = "?"; drawPanel(); });
+  }
   function bindGeneral() {
+    Array.prototype.forEach.call(panelEl.querySelectorAll("[data-revoke]"), function (b) {
+      b.onclick = call(function () { window.revokeConsent(b.dataset.revoke); });
+    });
+    if ($("pairopen")) $("pairopen").onclick = function () { pairOpen = true; drawPanel(); if ($("paircode")) $("paircode").focus(); };
+    if ($("paircode")) {
+      $("paircode").oninput = function () { pairVal = $("paircode").value; };
+      $("paircode").onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); doPair(); } else if (e.key === "Escape") { e.stopPropagation(); pairOpen = false; pairMsg = ""; pairState = ""; drawPanel(); } };
+      $("pairgo").onclick = doPair;
+    }
     function toggle(id, f) { var el = $(id); el.onclick = call(function () { f(!el.classList.contains("on")); }); el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } }; }
     if (S.teamMode !== "off") toggle("notify", window.setNotify); toggle("notifyown", window.setNotifyOwn); toggle("autoupdate", window.setAutoUpdate); toggle("autostart", window.setAutostart);
     $("mute").onclick = call(window.toggleMute);
@@ -235,7 +274,14 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   }
 
   var SRC = { auto: "srcAuto", manual: "srcManual", clone: "srcClone", hook: "srcHook" };
+  function rescanBar(L) {
+    return '<div class="bar"><button class="btn sm" id="rescan"' + (rescanning ? " disabled" : "") + '>' + esc(rescanning ? L.rescanning : L.rescan) + '</button></div>';
+  }
   function reposHtml(L) {
+    var h = reposBody(L);
+    return repos && !repos.err ? rescanBar(L) + h : h;
+  }
+  function reposBody(L) {
     if (!repos) return '<div class="empty">' + esc(L.loading) + '</div>';
     if (repos.err) return '<div class="empty">' + esc(L.repoErr) + '</div>';
     if (!repos.rows.length) return '<div class="empty">' + esc(L.noProjects) + '</div>';
@@ -265,6 +311,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     }).join("") + '</div>';
   }
   function bindRepos() {
+    if ($("rescan")) $("rescan").onclick = function () { rescanning = true; drawPanel(); window.rescanRepos(); };
     Array.prototype.forEach.call(panelEl.querySelectorAll("[data-a]"), function (b) {
       b.onclick = function () {
         var k = b.dataset.k;
@@ -279,7 +326,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     });
   }
   function loadRepos() { window.loadRepos(); }
-  window.onRepos = function (d) { repos = d; repoMsg = {}; drawPanel(); };
+  window.onRepos = function (d) { rescanning = false; repos = d; repoMsg = {}; drawPanel(); };
   window.onRepoSaved = function (key, code, detail) {
     if (code) { repoMsg[key] = { code: code, detail: detail }; drawPanel(); } else { delete repoMsg[key]; loadRepos(); }
   };
@@ -332,10 +379,11 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     if (!S) return;
     var L = S.L, html, sig;
     if (tab === "general" && view === "log") { sig = JSON.stringify(["log", logText, copied, L.back]); html = logHtml(L); }
-    else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.teamMode, S.notify, S.notifyOwn, S.autoUpdate, S.autostart, S.muteLabel, S.themeSetting, copied]); html = generalHtml(S); }
-    else if (tab === "repos") { sig = JSON.stringify(["r", repos, repoMsg, L.pick]); html = reposHtml(L); }
+    else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.consents, pairOpen, pairMsg, pairState, S.teamMode, S.notify, S.notifyOwn, S.autoUpdate, S.autostart, S.muteLabel, S.themeSetting, copied]); html = generalHtml(S); }
+    else if (tab === "repos") { sig = JSON.stringify(["r", repos, repoMsg, L.pick, rescanning]); html = reposHtml(L); }
     else { sig = JSON.stringify(["u", S.runs, S.limit, L.noRuns]); html = runsHtml(S); }
     if (sig === sigs.panel && !scrollLog) return;
+    var hadPair = document.activeElement && document.activeElement.id === "paircode";
     var keep = sigs.panel.charAt(2) === sig.charAt(2) ? panelEl.scrollTop : 0;
     sigs.panel = sig;
     panelEl.innerHTML = html;
@@ -344,6 +392,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     else if (tab === "general") bindGeneral();
     else if (tab === "repos") bindRepos();
     else bindRuns();
+    if (hadPair && $("paircode")) $("paircode").focus();
   }
 
   function refresh() {

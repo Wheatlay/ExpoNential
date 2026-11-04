@@ -38,7 +38,7 @@ func stopAgent(path string) {
 	for _, p := range procsByImage(path) {
 		killPID(p)
 	}
-	if pid := agentPID(); pid != 0 {
+	if pid := agentPID(); pid != 0 && pid != os.Getpid() {
 		killPID(uint32(pid))
 	}
 	time.Sleep(700 * time.Millisecond)
@@ -79,13 +79,15 @@ func sameContent(a, b string, limitA int64) bool {
 func installApp(self string, trailerSize int64) (string, error) {
 	target := installedPath()
 	if !strings.EqualFold(self, target) {
+		// Always stop the running agent first, also when the binary is the same: a stale process would otherwise
+		// keep the old config in memory and make the fresh start exit as "already running".
+		stopAgent(target)
 		st, err := os.Stat(self)
 		if err != nil {
 			return "", err
 		}
 		want := st.Size() - trailerSize
 		if !sameContent(self, target, want) {
-			stopAgent(target)
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return "", err
 			}

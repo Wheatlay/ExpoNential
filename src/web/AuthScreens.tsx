@@ -36,6 +36,8 @@ export function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Dwa kroki: e-mail, potem hasło. Konto dodane ręcznie (bez hasła) w kroku 2 ustawia nowe hasło.
+  const [step, setStep] = useState<'email' | 'password' | 'set'>('email');
   const messages: Record<string, string> = {
     not_allowed: t('Your account is not on the team list. Ask an admin to add you.'),
     state: t('Login expired, try again.'),
@@ -47,6 +49,12 @@ export function Login() {
     e.preventDefault();
     setBusy(true);
     setError('');
+    if (step === 'email') {
+      api<{ setPassword: boolean }>('/auth/password/check', { method: 'POST', body: { email: email.trim() } })
+        .then((r) => { setStep(r.setPassword ? 'set' : 'password'); setBusy(false); })
+        .catch((x) => { setError(errText(x)); setBusy(false); });
+      return;
+    }
     api('/auth/password', { method: 'POST', body: { email: email.trim(), password } })
       .then(() => location.assign('/'))
       .catch((x) => { setError(errText(x)); setBusy(false); });
@@ -58,10 +66,17 @@ export function Login() {
         <h1>{t('Log in to Exponential')}</h1>
         {err && <div className="err">{messages[err] ?? t('Login failed')}</div>}
         <form className="login-card" onSubmit={submit}>
-          <input className="input" type="email" autoComplete="username" placeholder={t('E-mail')} aria-label={t('E-mail')} value={email} onChange={(e) => setEmail(e.target.value)} />
-          <input className="input" type="password" autoComplete="current-password" placeholder={t('Password')} aria-label={t('Password')} value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input className="input" type="email" autoComplete="username" placeholder={t('E-mail')} aria-label={t('E-mail')} value={email} readOnly={step !== 'email'}
+            onClick={() => step !== 'email' && (setStep('email'), setPassword(''), setError(''))} onChange={(e) => setEmail(e.target.value)} />
+          {step !== 'email' && (
+            <input className="input" type="password" autoFocus autoComplete={step === 'set' ? 'new-password' : 'current-password'}
+              placeholder={step === 'set' ? t('New password') : t('Password')} aria-label={step === 'set' ? t('New password') : t('Password')} value={password} onChange={(e) => setPassword(e.target.value)} />
+          )}
+          {step === 'set' && <div className="hint">{t('At least 10 characters.')}</div>}
           {error && <div className="err">{error}</div>}
-          <button className="btn primary" type="submit" disabled={busy || !email.trim() || !password}>{t('Log in')}</button>
+          <button className="btn primary" type="submit" disabled={busy || !email.trim() || (step !== 'email' && !password)}>
+            {step === 'email' ? t('Next') : step === 'set' ? t('Save password') : t('Log in')}
+          </button>
         </form>
         <ProviderButtons />
         {demo && <a className="btn primary" href="/auth/demo?tour=1" style={providerStyle}>{t('Try the live demo')}</a>}

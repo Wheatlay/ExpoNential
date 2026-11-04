@@ -112,7 +112,7 @@ export function Calendar() {
     return (
       <div key={day.toISOString()} className={`cal-day ${today ? 'today' : ''} ${nextWeek ? 'next' : ''}`}
         onDoubleClick={(e) => { if (e.target === e.currentTarget) openNewMeeting(day); }}>
-        <div className="cal-day-head">{fmtDay(day)} {today ? <span className="hint">{t('today')}</span> : nextWeek ? <span className="hint">{t('next week')}</span> : null}</div>
+        <div className="cal-day-head"><span className="cal-day-name" title={fmtDay(day)}>{fmtDay(day)}</span>{today ? <span className="hint">{t('today')}</span> : nextWeek ? <span className="hint">{t('next week')}</span> : null}</div>
         {/* "+" od razu pod nagłówkiem dnia: zawsze w tym samym miejscu, niezależnie od liczby spotkań. */}
         <button className="cell-add" aria-label={t('New meeting on {day}', { day: fmtDay(day) })} title={t('New meeting on {day}', { day: fmtDay(day) })} onClick={() => openNewMeeting(day)}>
           <Icon.plus size={14} />

@@ -4,10 +4,10 @@ import path from 'node:path';
 import { crc32, deflateRawSync } from 'node:zlib';
 
 /**
- * Plugin Claude Code "tracker" (skille analizy i zamykania + hook śladu pracy) z katalogu `plugin/`,
+ * Plugin Claude Code "expo" (skille analizy i zamykania + hook śladu pracy) z katalogu `plugin/`,
  * serwowany jako zip i marketplace pod /agent/. Jedno źródło dla wszystkich projektów i komputerów:
  *   claude plugin marketplace add <BASE_URL>/agent/marketplace.json
- *   claude plugin install tracker@tracker
+ *   claude plugin install expo@expo
  * Wersja to skrót treści, więc każda zmiana w `plugin/` po deployu jest nową wersją.
  */
 const ROOT = path.join(process.cwd(), 'plugin');
@@ -63,12 +63,12 @@ export function pluginArchive() {
 export function marketplace(baseUrl: string) {
   const { sha256, version } = pluginArchive();
   return {
-    name: 'tracker',
+    name: 'expo',
     description: 'Tracker zespołu: analiza zgłoszeń, zamykanie (HUMAN/TECH) i ślad pracy w zgłoszeniu',
-    owner: { name: 'Tracker' },
+    owner: { name: 'Exponential' },
     plugins: [{
-      name: 'tracker',
-      description: 'Skille analyze-tracker-ticket i close-ticket oraz hook śladu pracy (worklog) dla projektów trackera',
+      name: 'expo',
+      description: 'Skille analyze-ticket i close-ticket oraz hook śladu pracy (worklog) dla projektów trackera',
       version,
       source: { source: 'archive', url: `${baseUrl}/agent/plugin.zip`, sha256 },
     }],

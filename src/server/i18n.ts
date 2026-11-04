@@ -11,6 +11,7 @@ const pl: Record<string, string> = {
   'Anything to do': 'Czy jest co robić', 'Also affects': 'Co jeszcze to dotyka', 'After the change': 'Po zmianie', 'Watch out for': 'Uwaga na',
   'Related': 'Powiązane', 'Decided': 'Ustalono', 'recommended': 'polecam', 'To decide': 'Do decyzji',
   'Deleted user': 'Usunięty użytkownik',
+  'Deploy failed: {env} {commit}': 'Deploy nieudany: {env} {commit}',
   'Make someone else admin of {project} first': 'Najpierw daj komuś admina w {project}',
   'Make someone else a workspace admin first': 'Najpierw daj komuś admina workspace',
   'Poll: {title}': 'Ankieta: {title}',

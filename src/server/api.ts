@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { and, asc, desc, eq, inArray, isNull, notInArray, sql as dsql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.ts';
-import { TAG_COLORS, apiTokens, inboxItems, issues, projectMembers, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
+import { TAG_COLORS, apiTokens, inboxItems, issues, labels, projectMembers, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
 import { clearSessionCookie, createApiToken, requireAdmin, requireUser } from './auth.ts';
 import * as inv from './invites.ts';
 import { hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
@@ -17,6 +17,9 @@ import { RuleError, parseIdentifier } from './rules.ts';
 import { validTagName } from './mentions.ts';
 import { deployWebhookSecret } from './hooks.ts';
 import { DEFAULT_MODELS, DEFAULT_PROMPTS, MODELS, PROMPT_KINDS, analysisModel, renderPrompt } from './prompts.ts';
+import { TYPE_LABEL_COLORS } from './analysis.ts';
+
+export const EDITORS = ['vscode', 'cursor', 'windsurf', 'terminal'] as const;
 
 export const issueInputSchema = z.object({
   title: z.string().max(500).optional(),
@@ -103,14 +106,14 @@ export async function registerApi(app: FastifyInstance) {
     const meShape = async (req: FastifyRequest) => {
       const [u] = await db.select({
         setupDoneAt: users.setupDoneAt, lang: users.lang, passwordHash: users.passwordHash,
-        avatarUrl: users.avatarUrl, avatarCustom: users.avatarCustom, providerAvatarUrl: users.providerAvatarUrl, githubId: users.githubId,
+        avatarUrl: users.avatarUrl, avatarCustom: users.avatarCustom, providerAvatarUrl: users.providerAvatarUrl, githubId: users.githubId, editor: users.editor,
       }).from(users).where(eq(users.id, req.user!.id));
       const mine = await ag.agentsLite(req.user!, true);
       const lastSeen = mine.map((a) => a.lastSeenAt).filter((d): d is Date => !!d).sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
       // provider: skąd wraca zdjęcie po "Use … photo"; null = konto bez zdjęcia od dostawcy (zostają inicjały).
       return { ...req.user, avatarUrl: u?.avatarUrl ?? null, avatarCustom: !!u?.avatarCustom, provider: u?.providerAvatarUrl ? (u.githubId ? 'github' : 'google') : null,
         hasPassword: !!u?.passwordHash, hasAgent: mine.length > 0, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
-        setupDoneAt: u?.setupDoneAt ?? null, lang: u?.lang ?? null, aiStatus: await ag.aiStatus(req.user!, mine),
+        setupDoneAt: u?.setupDoneAt ?? null, lang: u?.lang ?? null, editor: u?.editor ?? 'vscode', aiStatus: await ag.aiStatus(req.user!, mine),
         // Któryś komputer ma agenta starszego niż MIN_EXE_AGENT.
         agentOutdated: mine.some((a) => a.outdated), demo: process.env.DEMO_MODE === '1' };
     };
@@ -118,7 +121,7 @@ export async function registerApi(app: FastifyInstance) {
 
     // Własny profil: nazwa i zdjęcie (avatar: ścieżka z /api/uploads albo null = zdjęcie od dostawcy). Bez projectKey, żeby odświeżyli się wszyscy.
     r.put('/api/me', async (req) => {
-      const body = z.object({ name: z.string().max(200).optional(), avatar: z.string().max(300).nullable().optional(), lang: z.enum(['en', 'pl']).nullable().optional() }).parse(req.body);
+      const body = z.object({ name: z.string().max(200).optional(), avatar: z.string().max(300).nullable().optional(), lang: z.enum(['en', 'pl']).nullable().optional(), editor: z.enum(EDITORS).optional() }).parse(req.body);
       await acc.updateProfile(req.user!.id, body);
       await svc.publish({ type: 'meta' });
       return meShape(req);
@@ -170,6 +173,26 @@ export async function registerApi(app: FastifyInstance) {
     r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
       const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);
       return ag.claimStartJob(req.user!, intParam(req.params.id), deviceId);
+    });
+    // Agent czeka na zgodę właściciela PC na cudze zlecenie (albo już nie czeka): pasek analizy pokazuje "awaiting_consent".
+    r.post('/api/agent/consent-pending', async (req) => {
+      const b = z.object({ issueId: z.number().int().positive(), pending: z.boolean() }).parse(req.body);
+      return ag.setConsentPending(req.user!, b.issueId, b.pending);
+    });
+    // Prośby o otwarcie edytora ("Start" z przeglądarki): agent odpytuje, odpowiedź czyści kolejkę tej osoby.
+    r.get('/api/agent/open-requests', async (req) => ag.takeOpenRequests(req.user!.id));
+    // "Start work": gdy mam komputer online, agent otwiera edytor z poleceniem; inaczej przeglądarka dostaje polecenie do skopiowania.
+    r.post('/api/start-work', async (req) => {
+      const b = z.object({ issueId: z.union([z.string(), z.number()]).optional(), issueNumber: z.union([z.string(), z.number()]).optional() }).parse(req.body);
+      const ref = b.issueId ?? b.issueNumber;
+      if (ref === undefined) throw new RuleError('issueId required', 'invalid');
+      const { p, number } = await issueRef(req, String(ref));
+      const prompt = await renderPrompt(p, number, 'start');
+      const mine = await ag.agentsLite(req.user!);
+      if (!mine.some((a) => a.online && !a.outdated)) return { viaAgent: false, prompt };
+      const [u] = await db.select({ editor: users.editor }).from(users).where(eq(users.id, req.user!.id));
+      ag.queueOpenRequest(req.user!.id, { editor: u?.editor ?? 'vscode', repo: p.githubRepo, prompt });
+      return { viaAgent: true };
     });
     // Telefon zleca otwarcie Claude Code na moim komputerze (agent odbierze w kilka sekund).
     r.post<{ Params: { id: string } }>('/api/issues/:id/start-on-pc', async (req) => {
@@ -327,6 +350,31 @@ export async function registerApi(app: FastifyInstance) {
       await svc.publish({ type: 'meta', projectKey: project.key });
       return t;
     });
+    // Członkowie taga: admin projektu dodaje i usuwa każdego, pozostali tylko siebie (to samo robi PUT /api/me/tags).
+    const tagMemberScope = async (req: FastifyRequest, tagId: number, userId: number) => {
+      const { project, role } = await ctx(req);
+      const [t] = await db.select().from(userTags).where(and(eq(userTags.id, tagId), eq(userTags.projectId, project.id)));
+      if (!t) throw new RuleError('Tag not found', 'not_found');
+      if (!pr.canManage(req.user!, role) && userId !== req.user!.id) throw new RuleError('Only a project admin can change other people’s tags', 'forbidden');
+      const [m] = await db.select({ id: projectMembers.userId }).from(projectMembers).where(and(eq(projectMembers.projectId, project.id), eq(projectMembers.userId, userId)));
+      return { project, isMember: !!m };
+    };
+    r.post<{ Params: { id: string } }>('/api/tags/:id/members', async (req) => {
+      const { userId } = z.object({ userId: z.number().int() }).parse(req.body);
+      const id = intParam(req.params.id);
+      const { project, isMember } = await tagMemberScope(req, id, userId);
+      if (!isMember) throw new RuleError('This person is not a member of the project', 'invalid');
+      await db.insert(userTagMembers).values({ tagId: id, userId }).onConflictDoNothing();
+      await svc.publish({ type: 'meta', projectKey: project.key });
+      return { ok: true };
+    });
+    r.delete<{ Params: { id: string; userId: string } }>('/api/tags/:id/members/:userId', async (req) => {
+      const id = intParam(req.params.id), userId = intParam(req.params.userId);
+      const { project } = await tagMemberScope(req, id, userId);
+      await db.delete(userTagMembers).where(and(eq(userTagMembers.tagId, id), eq(userTagMembers.userId, userId)));
+      await svc.publish({ type: 'meta', projectKey: project.key });
+      return { ok: true };
+    });
     // Usuwanie: admin projektu albo twórca taga. Członkowie znikają kaskadą, pytania do taga tracą adresata (set null).
     r.delete<{ Params: { id: string } }>('/api/tags/:id', async (req) => {
       const { project, role } = await ctx(req);
@@ -383,7 +431,12 @@ export async function registerApi(app: FastifyInstance) {
       return { ok: true };
     });
 
-    r.get('/api/issues', async (req) => svc.listIssues((await ctx(req)).project, { viewerId: req.user!.id }));
+    r.get('/api/issues', async (req) => {
+      const { project } = await ctx(req);
+      const rows = await svc.listIssues(project, { viewerId: req.user!.id });
+      const reasons = await ag.waitReasons(project, rows);
+      return rows.map((row, i) => ({ ...row, analysisWaitReason: reasons[i] }));
+    });
     // Widok boardu: domyślny projektu + mój (nadpisuje). Treść widoku to dane aplikacji, serwer jej nie interpretuje.
     const viewBody = z.object({ view: z.record(z.string(), z.unknown()) }).refine((b) => JSON.stringify(b.view).length < 20_000, 'View too large');
     r.get('/api/view', async (req) => {
@@ -423,7 +476,8 @@ export async function registerApi(app: FastifyInstance) {
       // Token (agent, MCP) czytający zgłoszenie nie oznacza go jako przeczytanego przez człowieka.
       if (req.authVia !== 'token') await svc.markSeen(req.user!.id, d.id);
       const runner = await ag.analysisRunner(p, d);
-      return { ...d, projectKey: p.key, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, analysisNoCapablePc: runner.noCapablePc, teamQueue: p.agentTeamQueue };
+      const [waitReason] = await ag.waitReasons(p, [d]);
+      return { ...d, projectKey: p.key, projectHasRepo: !!p.githubRepo, analysisWaitReason: waitReason, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, analysisNoCapablePc: runner.noCapablePc, teamQueue: p.agentTeamQueue };
     });
 
     r.post('/api/issues', async (req) => {
@@ -442,9 +496,11 @@ export async function registerApi(app: FastifyInstance) {
       await svc.deleteIssue(p, number);
       return { ok: true };
     });
-    r.post<{ Params: { id: string } }>('/api/issues/:id/analyze', async (req) => {
+    r.post<{ Params: { id: string } }>('/api/issues/:id/analyze', async (req, reply) => {
       const { p, number } = await issueRef(req, req.params.id);
       const b = z.object({ deep: z.boolean().default(false), local: z.boolean().default(false) }).parse(req.body ?? {});
+      // Analiza czyta kod repo, więc projekt bez repo nie ma czego analizować.
+      if (!p.githubRepo) return reply.code(400).send({ error: 'no_repo' });
       await svc.requestAnalysis(p, req.user, number, b.deep, b.local);
       return { ok: true };
     });
@@ -564,6 +620,14 @@ export async function registerApi(app: FastifyInstance) {
       return { ok: true };
     });
 
+    // Etykieta z poziomu zgłoszenia: każdy członek projektu. Istniejąca etykieta o tej nazwie wraca bez zmian (kolor zmienia tylko admin).
+    r.post('/api/labels', async (req) => {
+      const b = z.object({ projectKey: z.string().optional(), name: z.string().trim().min(1).max(50), color: z.string().min(4).max(20).optional() }).parse(req.body);
+      const { project } = await ctx(req, b.projectKey);
+      const [existing] = await db.select().from(labels).where(and(eq(labels.projectId, project.id), dsql`lower(${labels.name}) = lower(${b.name})`));
+      if (existing) return existing;
+      return svc.saveLabel(project, { name: b.name, color: b.color ?? Object.values(TYPE_LABEL_COLORS)[0] });
+    });
     // słowniki projektu: admin projektu albo admin globalny
     r.post('/api/admin/labels', async (req) =>
       svc.saveLabel(await manage(req), z.object({ id: z.number().int().optional(), name: z.string().min(1), color: z.string().min(4) }).parse(req.body)));

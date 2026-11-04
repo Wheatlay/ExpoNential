@@ -50,6 +50,7 @@ type settingsState struct {
 	Muted        bool              `json:"muted"`
 	MuteLabel    string            `json:"muteLabel"`
 	Runs         []runRecord       `json:"runs"`
+	Consents     []consentRow      `json:"consents"`
 }
 
 func settingsLabels(lang string) map[string]string {
@@ -63,7 +64,8 @@ func settingsLabels(lang string) map[string]string {
 			"loading": "Wczytuję…", "logEmpty": "Log jest pusty", "repoErr": "Brak połączenia z serwerem", "noProjects": "Brak projektów", "noRepo": "brak repo w projekcie", "unmapped": "brak mapowania",
 			"ok": "ok", "pick": "Wybierz folder", "remove": "Usuń", "srcAuto": "auto", "srcManual": "ręcznie", "srcClone": "klon", "srcHook": "hook",
 			"nofolder": "brak folderu", "notclone": "to nie klon repo", "norepo": "brak repo w projekcie", "noRuns": "Brak analiz",
-			"resOk": "ok", "resFail": "błąd", "resLimit": "limit Claude", "resDeclined": "odmowa", "resMuted": "wyciszone"}
+			"resOk": "ok", "resFail": "błąd", "resLimit": "limit Claude", "resDeclined": "odmowa", "resMuted": "wyciszone",
+			"consents": "Zgody na 24 h", "until": "do %D", "revoke": "Cofnij", "pairAgain": "Połącz ponownie", "pairHint": "Kod z Ustawienia > Moje AI", "pairGo": "Połącz", "pairing": "Łączę…", "pairOk": "Połączono ponownie", "rescan": "Skanuj ponownie", "rescanning": "Skanuję…"}
 	}
 	return map[string]string{"team": "Team jobs", "ask": "Ask", "auto": "Don't ask", "off": "Don't take",
 		"tipAsk": "Ask before running someone else's analysis", "tipAuto": "Run others' analyses without asking", "tipOff": "Never take others' analyses",
@@ -74,14 +76,15 @@ func settingsLabels(lang string) map[string]string {
 		"loading": "Loading…", "logEmpty": "The log is empty", "repoErr": "Cannot reach the server", "noProjects": "No projects", "noRepo": "no repo in the project", "unmapped": "not mapped",
 		"ok": "ok", "pick": "Choose folder", "remove": "Remove", "srcAuto": "auto", "srcManual": "manual", "srcClone": "clone", "srcHook": "hook",
 		"nofolder": "folder missing", "notclone": "not a clone of the repo", "norepo": "no repo in the project", "noRuns": "No analyses yet",
-		"resOk": "ok", "resFail": "error", "resLimit": "Claude limit", "resDeclined": "declined", "resMuted": "muted"}
+		"resOk": "ok", "resFail": "error", "resLimit": "Claude limit", "resDeclined": "declined", "resMuted": "muted",
+		"consents": "24 h consents", "until": "until %D", "revoke": "Revoke", "pairAgain": "Pair again", "pairHint": "Code from Settings > My AI", "pairGo": "Pair", "pairing": "Pairing…", "pairOk": "Paired again", "rescan": "Rescan", "rescanning": "Scanning…"}
 }
 
 func buildSettingsState() (st settingsState) {
 	defer func() {
 		if r := recover(); r != nil {
 			logf("settings state: %v", r)
-			st = settingsState{Theme: "dark", ThemeSetting: "system", L: settingsLabels("en"), TeamMode: teamAsk, Runs: []runRecord{}}
+			st = settingsState{Theme: "dark", ThemeSetting: "system", L: settingsLabels("en"), TeamMode: teamAsk, Runs: []runRecord{}, Consents: []consentRow{}}
 		}
 	}()
 	lang := agentLang()
@@ -100,7 +103,7 @@ func buildSettingsState() (st settingsState) {
 		Who:   strings.TrimSpace(cfg.UserName + " · " + hostOf(cfg.URL)),
 		State: text, Kind: kind, Version: Version, UpdateTo: upd, Dev: devMode(), Limit: othersLimit.Load(),
 		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), NotifyOwn: notifyOwnOn(), AutoUpdate: autoUpdateOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
-		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted), Runs: loadRuns(),
+		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted), Runs: loadRuns(), Consents: activeConsents(cfg, time.Now()),
 	}
 }
 
@@ -364,10 +367,9 @@ func openSettings() {
 		})
 		push := func(js string) { w.Dispatch(func() { w.Eval(js) }) }
 		// The repo list asks the server and runs git: off the window thread, the answer is pushed to the page.
-		_ = w.Bind("loadRepos", func() {
-			defer guard("loadRepos")
-			go func() {
-				defer func() { _ = recover() }()
+		loadRepoRows := func() {
+			defer func() { _ = recover() }()
+			{
 				res := map[string]any{"rows": []repoRow{}}
 				a, err := getAuth()
 				if err == nil && a == nil {
@@ -385,7 +387,28 @@ func openSettings() {
 				}
 				b, _ := json.Marshal(res)
 				push("onRepos(" + string(b) + ")")
+			}
+		}
+		_ = w.Bind("loadRepos", func() {
+			defer guard("loadRepos")
+			go loadRepoRows()
+		})
+		_ = w.Bind("rescanRepos", func() {
+			defer guard("rescanRepos")
+			go func() {
+				defer func() { _ = recover() }()
+				if a, err := getAuth(); err == nil && a != nil {
+					logf("repo rescan: %d new mapping(s)", forceDiscoverRepos(a))
+				}
+				loadRepoRows()
 			}()
+		})
+		_ = w.Bind("revokeConsent", func(id string) {
+			bg("revokeConsent", func() { revokeConsent(id) })
+		})
+		_ = w.Bind("pairAgain", func(code string) string {
+			defer guard("pairAgain")
+			return pairAgain(code)
 		})
 		_ = w.Bind("pickFolder", func(key string) string {
 			defer guard("pickFolder")

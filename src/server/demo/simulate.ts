@@ -84,7 +84,7 @@ export function steps(kind: Kind, p: Project, number: number, demoUser: DemoUser
       { at: 0, run: () => svc.requestAnalysis(p, actor, number) },
       { at: 1200, run: () => svc.upsertWorklog(p, actor, number, {
         session: `demo-${number}-analyze`, repo: 'acme/web', files: ['src/checkout/vat.ts'], commits: [],
-        prompts: [`Analyze ${id} with tracker:analyze-tracker-ticket`],
+        prompts: [`Analyze ${id} with expo:analyze-ticket`],
       }) },
       { at: 3000, run: () => svc.upsertWorklog(p, actor, number, {
         session: `demo-${number}-analyze`, repo: 'acme/web', files: ['src/checkout/vat.test.ts', 'src/api/orders.ts'], commits: [], prompts: [],

@@ -9,7 +9,7 @@ Three optional layers. Install only what you need.
 - The OAuth token is stored by the client itself, not by Exponential.
 
 ### 2. Claude Code plugin
-- Installed into Claude's plugins directory (marketplace `tracker`, plugin `tracker@tracker`), served by your Exponential server.
+- Installed into Claude's plugins directory (marketplace `expo`, plugin `expo@expo`), served by your Exponential server.
 - Contains thin skills and the worklog hook.
 
 ### 3. exponential-agent (runs analyses on this computer)
@@ -44,7 +44,7 @@ Details: [agent/README.md](../agent/README.md).
 |---|---|
 | MCP (Claude Code) | `claude mcp remove tracker` |
 | MCP (Codex) | `codex mcp remove tracker` |
-| Plugin | `claude plugin uninstall tracker@tracker` |
+| Plugin | `claude plugin uninstall expo@expo` |
 | Agent | Windows Settings > Apps > Exponential agent > Uninstall (or `exponential-agent uninstall --yes`); also removes the Start Menu shortcut, this computer and its sign-in from the server |
 | Server-side access | Settings > My AI > AI clients: Revoke |
 

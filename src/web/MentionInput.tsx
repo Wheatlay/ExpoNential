@@ -56,6 +56,8 @@ export function useMentionAutocomplete(ref: RefObject<HTMLTextAreaElement | null
     const node = ref.current;
     if (!node) return;
     const pos = node.selectionStart;
+    // Wybrane (Enter, Tab, klik): zamykamy podpowiedź dla tego fragmentu, zanim kursor przeskoczy za wstawkę.
+    setClosedFor(fragment);
     setValue(value.slice(0, start) + o.insert + value.slice(pos));
     requestAnimationFrame(() => { node.focus(); node.selectionStart = node.selectionEnd = start + o.insert.length; });
   };

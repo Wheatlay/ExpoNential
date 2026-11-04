@@ -28,10 +28,10 @@ export const DEFAULT_PROMPTS_PL: Record<PromptKind, string> = {
       '- kroki w kolejności commitów i jak sprawdzisz każdy.',
       'Czekaj na moje OK, zanim zaczniesz kodować.',
     ].join('\n'),
-    'Commity z "{id}" w temacie. Po skończeniu: skill tracker:close-ticket.',
+    'Commity z "{id}" w temacie. Po skończeniu: skill expo:close-ticket.',
   ].join('\n\n'),
-  analyze: 'Użyj skilla tracker:analyze-tracker-ticket dla {id}.',
-  close: 'Zamknij {id} skillem tracker:close-ticket.',
+  analyze: 'Użyj skilla expo:analyze-ticket dla {id}.',
+  close: 'Zamknij {id} skillem expo:close-ticket.',
 };
 
 // Nazwy sekcji jak w analysis.ts (render): Related, Decided.
@@ -50,10 +50,10 @@ export const DEFAULT_PROMPTS_EN: Record<PromptKind, string> = {
       '- steps in commit order and how you will check each one.',
       'Wait for my OK before you start coding.',
     ].join('\n'),
-    'Commits with "{id}" in the subject. When done: skill tracker:close-ticket.',
+    'Commits with "{id}" in the subject. When done: skill expo:close-ticket.',
   ].join('\n\n'),
-  analyze: 'Use the skill tracker:analyze-tracker-ticket for {id}.',
-  close: 'Close {id} with the skill tracker:close-ticket.',
+  analyze: 'Use the skill expo:analyze-ticket for {id}.',
+  close: 'Close {id} with the skill expo:close-ticket.',
 };
 
 export const DEFAULT_PROMPTS: Record<PromptKind, string> = LOCALE === 'pl' ? DEFAULT_PROMPTS_PL : DEFAULT_PROMPTS_EN;
@@ -62,7 +62,7 @@ export const DEFAULT_PROMPTS: Record<PromptKind, string> = LOCALE === 'pl' ? DEF
 // przy Deep, mówi skill (tryb deep); rozpoznaje go po słowie "deep", tym samym w obu językach.
 export const CODEX_ANALYZE_PROMPT = LOCALE === 'pl' ? 'Wywołaj narzędzie MCP get_procedure z name analyze i postępuj zgodnie z nim dla {id}.' : 'Call the MCP tool get_procedure with name analyze and follow it for {id}.';
 export const CODEX_DEEP_PROMPT = LOCALE === 'pl' ? 'Wywołaj narzędzie MCP get_procedure z name analyze i postępuj zgodnie z nim dla {id}, tryb deep.' : 'Call the MCP tool get_procedure with name analyze and follow it for {id}, deep mode.';
-export const DEEP_PROMPT = LOCALE === 'pl' ? 'Użyj skilla tracker:analyze-tracker-ticket dla {id}, tryb deep.' : 'Use the skill tracker:analyze-tracker-ticket for {id}, deep mode.';
+export const DEEP_PROMPT = LOCALE === 'pl' ? 'Użyj skilla expo:analyze-ticket dla {id}, tryb deep.' : 'Use the skill expo:analyze-ticket for {id}, deep mode.';
 
 // Modele lokalnej analizy (aliasy claude --model, zawsze najnowsza wersja). Pusty wybór projektu = domyślny.
 export const MODELS = ['haiku', 'sonnet', 'opus', 'fable'] as const;

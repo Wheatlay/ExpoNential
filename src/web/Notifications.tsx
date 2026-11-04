@@ -6,7 +6,7 @@ import { Tooltip } from './menu.tsx';
 import { toast } from './toast.ts';
 import { useNow } from './time.ts';
 import { fmtTime, meetingColor, openMeeting } from './Meetings.tsx';
-import { disablePush, enablePush, pushPermission, pushSupported, refreshPush } from './push.ts';
+import { disablePush, enablePush, pushPermission, pushSubscriptionOnServer, pushSupported, refreshPush, sendPushTest } from './push.ts';
 import { isHttpUrl } from './links.ts';
 import { t } from './i18n.ts';
 
@@ -128,6 +128,12 @@ export function NotificationSettings() {
   const qc = useQueryClient();
   const s = useNotifySettings().data;
   const [perm, setPerm] = useState(pushPermission);
+  // Przełącznik push świeci tylko, gdy ta przeglądarka ma subskrypcję znaną serwerowi.
+  const [subscribed, setSubscribed] = useState(false);
+  const [testError, setTestError] = useState('');
+  const [testing, setTesting] = useState(false);
+  const recheck = () => { if (pushPermission() === 'granted') void pushSubscriptionOnServer().then(setSubscribed); else setSubscribed(false); };
+  useEffect(recheck, []);
   if (!s) return null;
   const save = async (patch: Partial<NotifySettings>) => {
     const next = await api<NotifySettings>('/api/notify-settings', { method: 'PUT', body: patch });
@@ -145,10 +151,24 @@ export function NotificationSettings() {
       await disablePush().catch(() => {});
     }
     await save({ push: on, notifyPromptShown: true });
+    setTestError('');
+    recheck();
   };
-  const row = (id: string, label: string, hint: string, checked: boolean, onChange: (v: boolean) => void, disabled?: string | null) => (
+  const pushOn = s.push && perm === 'granted' && subscribed;
+  const runTest = async () => {
+    setTesting(true);
+    setTestError('');
+    try {
+      const r = await sendPushTest();
+      if (r.ok) toast(t('Test notification sent')); else setTestError(r.error ? t(r.error) : t('Could not send the test notification'));
+    } catch (e) { setTestError((e as Error).message); }
+    setTesting(false);
+  };
+  const discordNames = s.discordProjects?.map((p) => p.name) ?? [];
+  const row = (id: string, label: string, hint: string, checked: boolean, onChange: (v: boolean) => void, disabled?: string | null, extra?: React.ReactNode, below?: string) => (
     <div className="s-row" id={id}>
-      <span className="grow">{label}<div className="hint">{hint}</div></span>
+      <span className="grow">{label}<div className="hint">{hint}</div>{below && <div className="hint notify-error">{below}</div>}</span>
+      {extra}
       <Tooltip text={disabled}>
         <button className={`switch ${checked && !disabled ? 'on' : ''}`} role="switch" aria-checked={checked && !disabled} aria-label={label}
           disabled={!!disabled} style={disabled ? { opacity: 0.45, cursor: 'not-allowed' } : undefined} onClick={() => void onChange(!checked)} />
@@ -159,8 +179,10 @@ export function NotificationSettings() {
     <>
       <div className="s-card">
         {row('notif-app', t('In Exponential'), t('Bell and banners: mentions, questions, polls, meetings.'), s.inApp, (v) => save({ inApp: v }))}
-        {row('notif-push', t('Browser notifications'), t('Also when the tab is closed. Per browser.'), s.push && perm === 'granted', togglePush, pushBlocked)}
-        {row('notif-discord', 'Discord', t('Your polls and meetings in the project channel. Issues are not posted.'), s.discord, (v) => save({ discord: v }))}
+        {row('notif-push', t('Browser notifications'), t('Also when the tab is closed. Per browser.'), pushOn, togglePush, pushBlocked,
+          pushOn && <button className="btn sm" disabled={testing} onClick={() => void runTest()}>{t('Send test')}</button>, testError)}
+        {row('notif-discord', 'Discord', discordNames.length ? t('Polls and meetings in {names}', { names: discordNames.join(', ') }) : '', s.discord && discordNames.length > 0, (v) => save({ discord: v }), discordNames.length ? null : t('No project has a Discord channel set'))}
+        {row('notif-analysis', t('Keep the analysis toast until it is done'), '', s.analysisToastSticky !== false, (v) => save({ analysisToastSticky: v }))}
         {row('notif-important', t('Only mentions and questions to me'), t('Polls and meeting reminders stay in the bell only.'), s.onlyImportant, (v) => save({ onlyImportant: v }))}
       </div>
     </>

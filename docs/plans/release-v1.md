@@ -117,7 +117,7 @@ Check Codex and Cursor docs for MCP OAuth and MCP prompts support. Where missing
 ## Verification
 - `docker compose -p tracker up -d`, `npm test` from `C:\` (uppercase drive letter).
 - `git archive HEAD | docker build -` + healthcheck.
-- `claude mcp add --transport http tracker <url>/mcp` without a header → browser sign-in → `list_projects`; same in
+- `claude mcp add --transport http expo <url>/mcp` without a header → browser sign-in → `list_projects`; same in
   Codex and Cursor; `analyze_issue` prompt visible in Claude Code.
 - Agent: `login` → `start` → Analyze from the phone → analysis saved; worklog hook on a machine without Node.
 - Team queue: two projects, PC A has only project 1's repo, PC B both → project 2's issue goes only to B; with B off it

@@ -126,7 +126,7 @@ export const SCOPED_TOOLS = ['get_issue', 'list_comments', 'get_procedure', 'set
 
 export function buildServer(user: SessionUser, scope: McpScope | null = null) {
   const me = { ...user, ai: true };   // zmiany przez MCP robi agent: historia pokazuje je jako AI
-  const server = new McpServer({ name: 'tracker', version: '1.0.0' }, {
+  const server = new McpServer({ name: 'expo', version: '1.0.0' }, {
     instructions:
       'Team issue tracker (Linear-like) with projects. Issues are identified as <PROJECT KEY>-<number>, e.g. ACME-12 or WEB-3; always use the full identifier. ' +
       'Tools that create or list project settings take a project key (required when you belong to more than one project); list_projects shows your projects. ' +

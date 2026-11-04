@@ -6,7 +6,7 @@ import { db } from '../db/index.ts';
 import { users } from '../db/schema.ts';
 import { requireUser } from './auth.ts';
 import { ctx } from './api.ts';
-import { canManage } from './projects.ts';
+import { canManage, projectsOf } from './projects.ts';
 import { RuleError } from './rules.ts';
 import * as mt from './meetings.ts';
 import * as nt from './notify.ts';
@@ -81,10 +81,28 @@ export async function registerMeetings(app: FastifyInstance) {
     });
 
     // powiadomienia: ustawienia osoby, Web Push
-    r.get('/api/notify-settings', async (req) => ({ ...(await nt.getNotifySettings(req.user!.id)), pushKey: nt.pushPublicKey() }));
+    const notifyShape = async (userId: number, user: NonNullable<FastifyRequest['user']>) => {
+      const [u] = await db.select({ sticky: users.analysisToastSticky }).from(users).where(eq(users.id, userId));
+      // Projekty, w których działa kanał Discord (webhook ustawiony): tylko one mają sens przy przełączniku Discord.
+      const discordProjects = (await projectsOf(user)).filter((x) => !!x.project.discordWebhookUrl).map((x) => ({ key: x.project.key, name: x.project.name }));
+      return { ...(await nt.getNotifySettings(userId)), analysisToastSticky: u?.sticky ?? true, discordProjects };
+    };
+    r.get('/api/notify-settings', async (req) => ({ ...(await notifyShape(req.user!.id, req.user!)), pushKey: nt.pushPublicKey() }));
     r.put('/api/notify-settings', async (req) => {
-      const b = z.object({ inApp: z.boolean(), push: z.boolean(), discord: z.boolean(), notifyPromptShown: z.boolean(), onlyImportant: z.boolean() }).partial().parse(req.body);
-      return nt.saveNotifySettings(req.user!.id, b);
+      const b = z.object({ inApp: z.boolean(), push: z.boolean(), discord: z.boolean(), notifyPromptShown: z.boolean(), onlyImportant: z.boolean(), analysisToastSticky: z.boolean() }).partial().parse(req.body);
+      const { analysisToastSticky, ...channels } = b;
+      if (analysisToastSticky !== undefined) await db.update(users).set({ analysisToastSticky }).where(eq(users.id, req.user!.id));
+      await nt.saveNotifySettings(req.user!.id, channels);
+      return notifyShape(req.user!.id, req.user!);
+    });
+    // Czy ta przeglądarka ma jeszcze moją subskrypcję w bazie (serwer usuwa wygasłe) i push próbny na nią.
+    r.get('/api/push/subscription', async (req) => {
+      const { endpoint } = z.object({ endpoint: z.string().max(1000) }).parse(req.query);
+      return { exists: await nt.hasPushSubscription(req.user!.id, endpoint) };
+    });
+    r.post('/api/push/test', async (req) => {
+      const { endpoint } = z.object({ endpoint: z.string().max(1000) }).parse(req.body);
+      return nt.sendTestPush(req.user!.id, endpoint);
     });
     r.post('/api/push/subscription', async (req) => {
       const b = z.object({ endpoint: z.string().url().max(1000), keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }) }).parse(req.body);

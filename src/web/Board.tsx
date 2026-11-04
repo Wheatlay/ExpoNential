@@ -6,13 +6,15 @@ import { useQuery } from '@tanstack/react-query';
 import { openAsk } from './AskModal.tsx';
 import { isNeedInfo } from '../server/rules.ts';
 import { startWork } from './startWork.ts';
+import { waitReasonText } from './analysisWait.ts';
+import { analysisToast } from './analysisToast.ts';
 import { guardDone } from './DoneGuard.tsx';
 import { sendPresence, usePresence, type Presence } from './presence.ts';
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useDndContext, useDraggable, useDroppable, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent, type Modifier,
 } from '@dnd-kit/core';
-import { api, isAskedTo, queryClient, useIssues, useMe, useMeta, useSprints, useUpdateIssue, type IssueRow, type Meta, type Status } from './api.ts';
+import { api, ApiError, isAskedTo, queryClient, useIssues, useMe, useMeta, useSprints, useUpdateIssue, type IssueRow, type Meta, type Status } from './api.ts';
 import { Avatar, avatarColor, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { profileContextMenu } from './PersonCard.tsx';
 import { openMenu, isMenuOpen, Tooltip, type MenuSpec } from './menu.tsx';
@@ -54,7 +56,7 @@ export function requestAssigneeFilter(userId: number) { assigneeRequested = user
 function consumeAssigneeRequest() { const r = assigneeRequested; assigneeRequested = null; return r; }
 type Filters = { scope: 'all' | 'sprint' | 'questions' | 'unread'; labelIds: number[]; assigneeIds: (number | null)[]; priorities: number[] };
 
-const DEFAULT_DISPLAY: Display = { rows: 'assignee', ordering: 'priority', completed: 'week', showSubIssues: false, showEmptyRows: false, showHidden: false, props: ALL_PROPS, livePresence: true };
+const DEFAULT_DISPLAY: Display = { rows: 'assignee', ordering: 'priority', completed: 'week', showSubIssues: false, showEmptyRows: true, showHidden: false, props: ALL_PROPS, livePresence: true };
 
 /** Szerokość .display-panel (styles.css), do ustawienia panelu przy przycisku. */
 const DISPLAY_PANEL_W = 320;
@@ -609,7 +611,7 @@ export function Board() {
                             onDelete: () => {
                               void askConfirm({ title: t('Delete {id}?', { id: ident(i.number) }), body: i.title }).then((ok) => { if (ok) void api(`/api/issues/${ident(i.number)}`, { method: 'DELETE' }).then(() => toast(t('Deleted {id}', { id: ident(i.number) }))); });
                             },
-                            onAnalyze: () => void api(`/api/issues/${ident(i.number)}/analyze`, { method: 'POST' }).then(() => toast(t('AI analysis requested'))),
+                            onAnalyze: () => void api(`/api/issues/${ident(i.number)}/analyze`, { method: 'POST' }).then(() => analysisToast(i.number, t('AI analysis requested')), (e: Error) => { if (e instanceof ApiError && e.message === 'no_repo') toast(t('Set the repo in project settings'), 'warn'); else throw e; }),
                             onSubIssue: () => openNewIssue({ parentNumber: i.number, assigneeId: i.assigneeId }),
                             onStart: () => void startWork(i.number),
                             onMarkRead: i.unreadComments > 0 ? () => void api('/api/issues/mark-read', { method: 'POST', body: { numbers: [i.number] } }).then(() => void queryClient.invalidateQueries({ queryKey: ['issues'] })) : undefined,
@@ -730,7 +732,7 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
         {show.id && <span className="card-id">{ident(issue.number)}</span>}
         {show.assignee && <span className="avatar-slot" {...pillProps('assignee')} onContextMenu={profileContextMenu(assignee)}><Avatar user={assignee} size={18} /></span>}
       </div>
-      <div className="card-title"><InlineCode text={issue.title} /></div>
+      <div className="card-title" title={issue.title}><InlineCode text={issue.title} /></div>
       <div className="card-meta">
         {show.blocked && issue.waitingOn.length > 0 && (
           <span className="pill blocked" title={t('Waiting on {ids}', { ids: issue.waitingOn.map((n) => ident(n)).join(', ') })}>
@@ -761,8 +763,10 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
         {show.ai && issue.analysisRequestedAt && (issue.analysisClaimedAt
           ? (Date.now() - new Date(issue.analysisClaimedAt).getTime() > CLAIM_TTL_MIN * 60_000
             ? <span className="pill stalled" title={t('Analysis stalled: open the issue to analyze again or cancel')}><Icon.sparkle size={12} /> {t('Stalled')}</span>
-            : <span className="pill ai" title={t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') })}><Icon.sparkle size={12} /> {issue.analysisClaimedDeviceName ? t('Running on {name}', { name: issue.analysisClaimedDeviceName }) : t('Running')}</span>)
-          : <span className="pill ai" title={t('Waiting for AI analysis')}><Icon.sparkle size={12} /> {t('Waiting')}</span>)}
+            : <span className="pill ai" title={t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') })}><Icon.sparkle size={12} /> <span className="pill-text">{issue.analysisClaimedDeviceName ? t('Running on {name}', { name: issue.analysisClaimedDeviceName }) : t('Running')}</span></span>)
+          : issue.analysisWaitReason
+            ? <span className="pill stalled" title={waitReasonText(issue.analysisWaitReason)}><Icon.sparkle size={12} /> <span className="pill-text">{t('Waiting for a PC with team queue on')}</span></span>
+            : <span className="pill ai" title={t('Waiting for AI analysis')}><Icon.sparkle size={12} /> {t('Waiting')}</span>)}
         {show.ai && !issue.analysisRequestedAt && issue.hasAnalysis && <span className="pill ai done" title={t('AI analysis available')}><Icon.sparkle size={12} /></span>}
         {notesMissing && <span className="pill notes-missing" title={t('Done without HUMAN / AI change notes')}>{t('Notes missing')}</span>}
       </div>

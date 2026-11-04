@@ -6,10 +6,13 @@ import { NOT_AGENT_CLIENT } from './oauth.ts';
 import { RuleError, identifier, parseIdentifier } from './rules.ts';
 import { sql } from '../db/index.ts';
 import { analysisModel } from './prompts.ts';
-import { log, publish, requireIssue, updateIssue, type Actor, type Project } from './service.ts';
+import { log, markAnalysisFailed, publish, requireIssue, updateIssue, type Actor, type Project } from './service.ts';
 
 // Agent na PC (Go) trzyma długie odpytanie; claim analizy wygasa po 30 min.
 export const CLAIM_TTL_MIN = 30;
+/** Zlecenie analizy, którego żaden komputer nie wziął w tym czasie, kończy się błędem. */
+export const UNCLAIMED_TTL_H = 24;
+export const UNCLAIMED_ERROR = 'No PC took the analysis within 24h';
 export const ONLINE_MS = 90_000;
 export const START_JOB_TTL_MIN = 60;
 export const LOCAL_RESERVE_S = 60;
@@ -66,6 +69,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
   if (await recentlyRemoved(deviceId)) throw new RuleError('This PC was removed', 'conflict');
   await db.insert(agents).values({ id: deviceId, userId: user.id }).onConflictDoNothing();
   const agent = await requireOwnAgent(user, deviceId);
+  await expireUnclaimedAnalyses();
   // Agent podaje swoją wersję: świeżo zaktualizowany PC nie czeka na pierwszy sygnał.
   if (version !== undefined && version !== agent.version) {
     await db.update(agents).set({ version: version.slice(0, 40) }).where(eq(agents.id, deviceId));
@@ -83,7 +87,7 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
   const already = cur.analysisClaimedDevice === deviceId && cur.analysisClaimedAt != null;
   // Limit dla innych: zlecenie cudzej osoby nie przejdzie, gdy komputer wyczerpał dobowy limit. Własne zlecenia nigdy.
   if (!already && cur.analysisRequestedBy != null && cur.analysisRequestedBy !== user.id && await limitReached(deviceId, user.id, agent.maxOthersTokensPerDay)) throw new RuleError(LIMIT_MSG, 'conflict');
-  const rows = await db.update(issues).set({ analysisClaimedAt: new Date(), analysisClaimedBy: user.id, analysisClaimedDevice: deviceId })
+  const rows = await db.update(issues).set({ analysisClaimedAt: new Date(), analysisClaimedBy: user.id, analysisClaimedDevice: deviceId, analysisConsentPendingAt: null })
     .where(and(
       eq(issues.id, cur.id),
       dsql`${issues.analysisRequestedAt} is not null`,
@@ -112,11 +116,77 @@ export async function claimAnalysis(p: Project, user: User & { name: string }, n
 export async function releaseClaim(p: Project, user: User, number: number, deviceId: string, error?: string, requeue = false) {
   // requeue: agent oddaje zlecenie bez winy zlecenia (np. brak repo, limit): wraca do kolejki bez flagi błędu.
   const failed = error !== undefined && !requeue ? { analysisFailedAt: new Date(), analysisError: error.slice(0, 300) } : {};
-  const rows = await db.update(issues).set({ analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, ...failed })
+  const rows = await db.update(issues).set({ analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, analysisConsentPendingAt: null, ...failed })
     .where(and(eq(issues.projectId, p.id), eq(issues.number, number), eq(issues.analysisClaimedDevice, deviceId), eq(issues.analysisClaimedBy, user.id)))
     .returning({ id: issues.id });
+  if (rows.length && 'analysisError' in failed) await db.transaction((tx) => log(tx, rows[0].id, { ...user, ai: true } as Actor, { kind: 'analysis_failed', error: (error ?? '').slice(0, 300) }));
   if (rows.length) await publish({ type: 'issue', projectKey: p.key, number });
   return { ok: true };
+}
+
+/**
+ * Zlecenia, których żaden komputer nie wziął od 24 h: kończą się błędem (flaga + wpis w aktywności), bo inaczej wiszą w nieskończoność.
+ * Wołane leniwie z odpytania agenta i przy claimie oraz co 10 min z timera serwera. Zlecenie zostaje zaznaczone jako zlecone (UI pokazuje błąd i Analyze again).
+ */
+export async function expireUnclaimedAnalyses() {
+  const rows = await db.select({ id: issues.id, number: issues.number, key: projects.key }).from(issues).innerJoin(projects, eq(projects.id, issues.projectId))
+    .where(and(dsql`${issues.analysisRequestedAt} < now() - make_interval(hours => ${UNCLAIMED_TTL_H})`, isNull(issues.analysisClaimedAt), isNull(issues.analysisFailedAt)));
+  for (const r of rows) {
+    await markAnalysisFailed(r.id, UNCLAIMED_ERROR);
+    await publish({ type: 'issue', projectKey: r.key, number: r.number });
+  }
+  return rows.length;
+}
+
+/** Agent czeka na zgodę właściciela PC na cudze zlecenie (pending=true) albo już nie czeka. Tylko dla członka projektu zgłoszenia. */
+export async function setConsentPending(user: User, issueId: number, pending: boolean) {
+  const [row] = await db.select({ number: issues.number, key: projects.key }).from(issues).innerJoin(projects, eq(projects.id, issues.projectId))
+    .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
+    .where(eq(issues.id, issueId));
+  if (!row) throw new RuleError('Issue not found', 'not_found');
+  await db.update(issues).set({ analysisConsentPendingAt: pending ? new Date() : null })
+    .where(and(eq(issues.id, issueId), pending ? dsql`${issues.analysisRequestedAt} is not null` : undefined));
+  await publish({ type: 'issue', projectKey: row.key, number: row.number });
+  return { ok: true };
+}
+
+/** Prośby "Start work" dla agenta: w pamięci, per osoba (restart serwera je gubi, to w porządku: prośba żyje kilka sekund). */
+export type OpenRequest = { editor: string; repo: string; prompt: string };
+const OPEN_REQUEST_TTL_MS = 5 * 60_000;
+const openRequests = new Map<number, (OpenRequest & { at: number })[]>();
+export function queueOpenRequest(userId: number, req: OpenRequest) {
+  openRequests.set(userId, [...(openRequests.get(userId) ?? []), { ...req, at: Date.now() }].slice(-10));
+}
+/** Zwraca i czyści kolejkę osoby (starsze niż 5 minut przepadają). */
+export function takeOpenRequests(userId: number): OpenRequest[] {
+  const list = openRequests.get(userId) ?? [];
+  openRequests.delete(userId);
+  return list.filter((q) => Date.now() - q.at < OPEN_REQUEST_TTL_MS).map(({ editor, repo, prompt }) => ({ editor, repo, prompt }));
+}
+
+export type WaitReason = 'queue_off' | 'no_pc_online' | 'no_repo_pc' | 'awaiting_consent';
+type WaitRow = { analysisRequestedAt: Date | string | null; analysisClaimedAt: Date | string | null; analysisFailedAt: Date | string | null; analysisRequestedBy: number | null; analysisConsentPendingAt: Date | string | null };
+
+/** Dlaczego zlecona analiza jeszcze nie ruszyła (tylko zlecona, nieprzejęta i niepadnięta; inaczej null). Jedno zapytanie o komputery na całą listę. */
+export async function waitReasons(p: Project, rows: WaitRow[]): Promise<(WaitReason | null)[]> {
+  const waiting = (r: WaitRow) => !!r.analysisRequestedAt && !r.analysisClaimedAt && !r.analysisFailedAt;
+  if (!rows.some(waiting)) return rows.map(() => null);
+  const online = await db.execute<{ user_id: number; version: string; team_mode: string; member: boolean; has_repo: boolean }>(dsql`
+    select a.user_id, a.version, a.team_mode,
+      exists (select 1 from project_members m where m.project_id = ${p.id} and m.user_id = a.user_id) as member,
+      exists (select 1 from agent_repos r where r.agent_id = a.id and r.project_id = ${p.id} and r.status = 'ok') as has_repo
+    from agents a where a.last_seen_at > now() - make_interval(secs => ${ONLINE_MS / 1000})`);
+  return rows.map((r) => {
+    if (!waiting(r)) return null;
+    if (r.analysisConsentPendingAt) return 'awaiting_consent';
+    const own = online.filter((a) => a.user_id === r.analysisRequestedBy);
+    if (!p.agentTeamQueue && !own.length) return 'queue_off';
+    const team = p.agentTeamQueue ? online.filter((a) => a.member && a.team_mode !== 'off') : [];
+    const cands = [...own, ...team];
+    if (!cands.length) return 'no_pc_online';
+    if (!cands.some((a) => (p.agentsMayClone || a.has_repo) && agentUpToDate(a.version))) return 'no_repo_pc';
+    return null;
+  });
 }
 
 /** Dla szczegółu zgłoszenia: czy jakiś komputer online może to zlecenie wziąć i na którym ono biegnie. */
@@ -321,6 +391,7 @@ const waitSignal = (ms: number, signal: AbortSignal) => new Promise<void>((resol
 /** Long poll agenta: jeden heartbeat na żądanie, potem do 25 s czekamy na zdarzenie (awaryjnie co 10 s sprawdzamy bazę). */
 export async function waitForWork(user: User, deviceId: string, info: HeartbeatInfo, signal: AbortSignal) {
   const agent = await heartbeat(user, deviceId, info);
+  await expireUnclaimedAnalyses().catch(() => undefined);
   const until = Date.now() + 25_000;
   ensureListener();
   // Limit dla innych liczymy raz na odpytanie.
@@ -399,6 +470,7 @@ export async function recordRun(user: User, r: RunReport) {
     inputTokens: u.inputTokens ?? null, outputTokens: u.outputTokens ?? null, cacheReadTokens: u.cacheReadTokens ?? null, cacheWriteTokens: u.cacheWriteTokens ?? null,
     costUsd: u.costUsd !== undefined ? u.costUsd.toFixed(4) : null,
   }).returning({ id: agentRuns.id });
+  if (r.exitCode === 0) await db.update(agents).set({ lastOkAt: new Date() }).where(eq(agents.id, agent.id));
   return { ok: true, id: row.id };
 }
 
@@ -408,12 +480,19 @@ const CLAUDE_LIMIT = /^(Limit Claude do|Claude limit until) \d{1,2}:\d{2}/;
 const TRANSIENT_ERROR = /HTTP 5\d\d|did not answer|cannot reach|ECONNREFUSED|ECONNRESET|ETIMEDOUT|timeout/i;
 
 type AgentRow = typeof agents.$inferSelect;
+/** Błąd agenta wart pokazania: świeży (24 h), nie limit Claude, nie chwilowy błąd połączenia online'owego PC i nie błąd, po którym PC skończył zlecenie poprawnie. */
+function shownError(a: AgentRow) {
+  if (!a.lastErrorAt || a.lastErrorAt.getTime() <= Date.now() - 24 * 3600_000) return '';
+  if (CLAUDE_LIMIT.test(a.lastError ?? '')) return '';
+  if (isOnline(a.lastSeenAt) && (TRANSIENT_ERROR.test(a.lastError ?? '') || (a.lastOkAt && a.lastOkAt > a.lastErrorAt))) return '';
+  return a.lastError;
+}
 /** Pola komputera wspólne dla listy w Ustawieniach i lekkiego odczytu (bez zużycia z 30 dni, repo i zleceń). */
 const agentCore = (a: AgentRow, others24: number, othersTokens24: number) => ({ id: a.id, maxOthersTokensPerDay: a.maxOthersTokensPerDay,
   forOthers24h: others24, forOthersTokens24h: othersTokens24, limitReached24h: a.maxOthersTokensPerDay != null && othersTokens24 >= a.maxOthersTokensPerDay,
   lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5,
   outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version), setup: a.setup ?? null,
-  lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 && !CLAUDE_LIMIT.test(a.lastError ?? '') && !(isOnline(a.lastSeenAt) && TRANSIENT_ERROR.test(a.lastError ?? '')) ? a.lastError : '' });
+  lastError: shownError(a) });
 export type AgentLite = ReturnType<typeof agentCore>;
 
 /** Lekki odczyt komputerów do /api/me i createStartJob: online, wersja, konfiguracja i (opcjonalnie) tokeny z doby, bez zużycia z 30 dni. */
@@ -447,7 +526,7 @@ export async function myAgents(user: User) {
     // Błąd starszy niż 24 h już nie jest istotny.
     // Błąd starszy niż 24 h już nie jest istotny, a chwilowy błąd połączenia (np. restart serwera przy wdrożeniu) znika, gdy komputer znów jest online.
     // Limit Claude użytkownika to stan, nie błąd: pokazujemy go osobno, tylko przez 6 godzin.
-    lastError: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 24 * 3600_000 && !CLAUDE_LIMIT.test(a.lastError ?? '') && !(isOnline(a.lastSeenAt) && TRANSIENT_ERROR.test(a.lastError ?? '')) ? a.lastError : '', lastErrorAt: a.lastErrorAt,
+    lastError: shownError(a), lastErrorAt: a.lastErrorAt,
     claudeLimit: a.lastErrorAt && a.lastErrorAt.getTime() > Date.now() - 6 * 3600_000 && CLAUDE_LIMIT.test(a.lastError ?? '') ? a.lastError : '' }));
 }
 

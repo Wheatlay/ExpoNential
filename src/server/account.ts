@@ -15,7 +15,7 @@ export function uploadPath(url: string) {
 }
 
 /** Zmiana własnego profilu: nazwa i zdjęcie. avatar: null wraca do zdjęcia od dostawcy (albo inicjałów). */
-export async function updateProfile(userId: number, input: { name?: string; avatar?: string | null; lang?: 'en' | 'pl' | null }) {
+export async function updateProfile(userId: number, input: { name?: string; avatar?: string | null; lang?: 'en' | 'pl' | null; editor?: string }) {
   const set: Partial<typeof users.$inferInsert> = {};
   if (input.name !== undefined) {
     const name = input.name.trim();
@@ -31,6 +31,7 @@ export async function updateProfile(userId: number, input: { name?: string; avat
     set.avatarCustom = false;
   }
   if (input.lang !== undefined) set.lang = input.lang;
+  if (input.editor !== undefined) set.editor = input.editor;
   if (Object.keys(set).length) await db.update(users).set(set).where(eq(users.id, userId));
 }
 

@@ -8,11 +8,11 @@ import (
 
 func TestClaudeMcpArgs(t *testing.T) {
 	got := claudeMcpAddArgs("https://x.example", "trk_abc")
-	want := []string{"mcp", "add", "--transport", "http", "--scope", "user", "tracker", "https://x.example/mcp", "--header", "Authorization: Bearer trk_abc"}
+	want := []string{"mcp", "add", "--transport", "http", "--scope", "user", "expo", "https://x.example/mcp", "--header", "Authorization: Bearer trk_abc"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("%q", got)
 	}
-	if strings.Join(claudeMcpRemoveArgs(), " ") != "mcp remove tracker --scope user" {
+	if strings.Join(claudeMcpRemoveArgs(), " ") != "mcp remove expo --scope user" {
 		t.Fatal("remove")
 	}
 	if len(claudePluginSteps("https://x.example")) != 5 {
@@ -21,7 +21,7 @@ func TestClaudeMcpArgs(t *testing.T) {
 }
 
 func TestMcpConfigHas(t *testing.T) {
-	if !mcpConfigHas([]byte(`{"mcpServers":{"tracker":{"type":"http","url":"https://x.example/mcp"}}}`), "https://x.example") {
+	if !mcpConfigHas([]byte(`{"mcpServers":{"expo":{"type":"http","url":"https://x.example/mcp"}}}`), "https://x.example") {
 		t.Fatal("present")
 	}
 	if mcpConfigHas([]byte(`{"mcpServers":{"other":{}}}`), "https://x.example") || mcpConfigHas([]byte(`bad`), "https://x.example") {
@@ -37,7 +37,7 @@ func TestStripEnvAndScrub(t *testing.T) {
 	if scrub("Bearer trk_secret", "trk_secret") != "Bearer ***" {
 		t.Fatal("scrub")
 	}
-	if !pluginListHas("tracker@tracker  enabled") || pluginListHas("nothing") {
+	if !pluginListHas("expo@expo  enabled") || pluginListHas("nothing") {
 		t.Fatal("list")
 	}
 }

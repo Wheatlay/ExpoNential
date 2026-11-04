@@ -109,3 +109,11 @@ installed agent, then run `<dir>/exponential-agent-dev.exe open` with `EXPONENTI
 `node agent/tools/devwin.mjs` drives the windows through the debug port: `health` (Not Responding check),
 `eval <js>`, `click <text>`, `key Escape`, `shot <file.png>`. `exponential-agent dump` makes a running agent write the
 stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window without a debugger).
+
+## 0.4.16
+
+- **Consent card.** A pending consent logs `waiting for consent from <name> for <KEY>` and tells the server (`POST /api/agent/consent-pending {issueId, pending}`, `false` on allow, decline, timeout, mute or when the job disappears). The card window is now recreated after a failure or close (it used to stay dead until the agent restarted, so no card and the job silently skipped); a skipped job with unknown identity and a failed window are logged.
+- **Settings window:** list of active 24 h consents (`allowUntil`, names in `allowNames`) with "Revoke"; "Pair again" (pairing code from Settings > My AI, runs the pairing in-process and restarts the work loop); "Rescan" on the Repos tab (repeats the first-setup discovery).
+- **Installer** always stops a running agent before replacing or starting, and comes to the foreground.
+- **Open requests:** every poll asks `GET /api/agent/open-requests`; the repo's folder is opened with the editor CLI (`code`, `cursor`, `windsurf`; PATH, else `%LOCALAPPDATA%\Programs\...`), then `<scheme>://anthropic.claude-code/open?prompt=...`; `terminal` opens Windows Terminal (or a console) in the folder with `claude`.
+- **Rename tracker -> expo:** the Claude Code MCP server and plugin are `expo` / `expo@expo`; at start the agent removes a leftover `tracker` MCP server and `tracker@tracker` plugin and installs the new ones.

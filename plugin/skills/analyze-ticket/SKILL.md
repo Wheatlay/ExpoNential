@@ -1,5 +1,5 @@
 ---
-name: analyze-tracker-ticket
+name: analyze-ticket
 description: >
   Robi analizę AI problemu dla zgłoszeń w Trackerze, które ktoś oznaczył przyciskiem "Analyze"
   (flaga analysisRequested). Czyta zgłoszenie i kod repo, zapisuje analizę w sekcjach z decyzjami

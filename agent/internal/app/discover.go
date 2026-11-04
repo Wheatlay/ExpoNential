@@ -385,3 +385,12 @@ func discoverLoop() {
 		time.Sleep(discoverEvery)
 	}
 }
+
+// forceDiscoverRepos is the "Rescan" button: the same discovery as at first setup, but without the shortcut that
+// skips the folder walk when nothing changed since the last pass.
+func forceDiscoverRepos(a *Auth) int {
+	discoverMu.Lock()
+	lastDiscoverSig = ""
+	discoverMu.Unlock()
+	return discoverRepos(a)
+}

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useProjects, type ProjectSummary } from './api.ts';
 import { openMenu } from './menu.tsx';
 import { navigate } from './router.ts';
@@ -34,11 +35,45 @@ export function switchProject(key: string) {
   setProjectKey(key);
 }
 
-const WHEEL_DELAY = 1000;
+const WHEEL_DELAY = 600;
+
+/**
+ * Bęben jak w zegarze: poprzedni i kolejne projekty wokół wybranego. Pojawia się pod nazwą, ale nigdy poza ekranem
+ * (pasek boczny leży przy krawędzi, więc przesuwamy go do środka i dociskamy do okna).
+ */
+function Drum({ anchor, projects, index }: { anchor: HTMLElement; projects: ProjectSummary[]; index: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: 0, top: 0 });
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const a = anchor.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    setPos({
+      left: Math.max(8, Math.min(a.left, window.innerWidth - r.width - 8)),
+      top: Math.max(8, Math.min(a.bottom + 4, window.innerHeight - r.height - 8)),
+    });
+  }, [anchor, index, projects.length]);
+  const n = projects.length;
+  const half = Math.min(2, Math.floor(n / 2));
+  const offsets = [-2, -1, 0, 1, 2].filter((o) => Math.abs(o) <= half);
+  const rows: { i: number; d: number }[] = [];
+  for (const o of offsets) { const i = (index + o + n * 2) % n; if (!rows.some((r) => r.i === i)) rows.push({ i, d: Math.abs(o) }); }
+  return createPortal(
+    <div ref={box} className="popover project-drum" style={pos} aria-hidden="true">
+      {rows.map(({ i, d }) => (
+        <div key={projects[i].key} className={`drum-row d${d}`}>
+          <ProjectBadge project={projects[i]} /><span className="ws-name">{projects[i].name}</span>
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+}
 
 /**
  * Nazwa projektu w górze sidebara. Klik: lista projektów. Kółko nad nazwą: podgląd kolejnego
- * projektu z paskiem odliczania; po 1 s bez ruchu przełącza. Esc albo zjechanie kursorem anuluje.
+ * projektu z paskiem odliczania i bębnem sąsiednich projektów; po chwili bez ruchu przełącza (zjechanie kursorem nie anuluje). Esc anuluje.
  */
 export function ProjectSwitcher() {
   const projects = useProjects().data ?? [];
@@ -120,7 +155,6 @@ export function ProjectSwitcher() {
       ref={ref}
       className={`project-switch ${preview ? 'previewing' : ''}`}
       onClick={open}
-      onMouseLeave={() => preview && cancel()}
       title={projects.length > 1 ? t('Switch project (click, or scroll over the name)') : t('Project')}
       aria-haspopup="menu"
     >
@@ -130,6 +164,7 @@ export function ProjectSwitcher() {
         ? <span className="hint">{preview.index + 1}/{projects.length}</span>
         : <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true"><path d="M2 3.5h6L5 7z" /></svg>}
       {preview && <span key={preview.started} className="project-switch-bar" style={{ animationDuration: `${WHEEL_DELAY}ms` }} />}
+      {preview && ref.current && <Drum anchor={ref.current} projects={projects} index={preview.index} />}
     </button>
   );
 }

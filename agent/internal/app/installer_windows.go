@@ -82,6 +82,8 @@ func runInstallerWindow(mode string) (shown bool) {
 	w.SetSize(int(float64(installerWidth)*sc), int(float64(installerHeight)*sc), webview2.HintFixed)
 	darkTitleBar(uintptr(w.Window()))
 	centerWindow(uintptr(w.Window()))
+	bringToFront(uintptr(w.Window()))
+	w.Dispatch(func() { bringToFront(uintptr(w.Window())) }) // again once the window loop runs
 
 	push := func(js string) { w.Dispatch(func() { w.Eval(js) }) }
 	var mu sync.Mutex
@@ -187,4 +189,12 @@ func darkTitleBar(hwnd uintptr) {
 	set(20, 1)                          // DWMWA_USE_IMMERSIVE_DARK_MODE
 	set(35, colorRef(15, 16, 18))       // DWMWA_CAPTION_COLOR = #0f1012
 	set(36, colorRef(0xc9, 0xcc, 0xd3)) // DWMWA_TEXT_COLOR
+}
+
+// bringToFront shows the window and takes the foreground (the installer is started from the browser's download bar
+// or Explorer, so without this it can open behind them).
+func bringToFront(hwnd uintptr) {
+	allowForeground()
+	procShowWindow.Call(hwnd, 5) // SW_SHOW
+	procSetForeground.Call(hwnd)
 }

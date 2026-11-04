@@ -34,14 +34,14 @@ export function openSetupWizard(goal?: Goal, step?: Goal) {
 export function closeSetupWizard() { set({ open: false, goal: null, step: null }); }
 
 /* ---------- podpowiedź przy funkcji AI bez podłączenia ---------- */
-export type Hint = { rect: DOMRect; kind: 'analyze' | 'start'; goal: Goal; anyway?: () => void } | null;
+export type Hint = { rect: DOMRect; kind: 'analyze' | 'start'; goal: Goal; anyway?: () => void; reason?: string } | null;
 let hint: Hint = null;
 let hintSubs: (() => void)[] = [];
 const setHint = (h: Hint) => { hint = h; hintSubs.forEach((f) => f()); };
 export function closeAiHint() { if (hint) setHint(null); }
 /** Popover pod przyciskiem Analyze / Deep / Start work, gdy AI nie jest podłączone. */
-export function openAiHint(anchor: HTMLElement, kind: 'analyze' | 'start', goal: Goal = 3, anyway?: () => void) {
-  setHint({ rect: anchor.getBoundingClientRect(), kind, goal, anyway });
+export function openAiHint(anchor: HTMLElement, kind: 'analyze' | 'start', goal: Goal = 3, anyway?: () => void, reason?: string) {
+  setHint({ rect: anchor.getBoundingClientRect(), kind, goal, anyway, reason });
 }
 export const useHint = () => useSyncExternalStore((fn) => { hintSubs.push(fn); return () => { hintSubs = hintSubs.filter((s) => s !== fn); }; }, () => hint);
 

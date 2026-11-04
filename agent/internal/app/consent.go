@@ -25,7 +25,8 @@ const (
 	dPending
 )
 
-var codexRefused sync.Map // issue keys already logged as refused for Codex
+var codexRefused sync.Map   // issue keys already logged as refused for Codex
+var identityLogged sync.Map // issue keys already logged as skipped for an unknown identity
 
 var (
 	declinedMem  = map[string]time.Time{}
@@ -157,6 +158,12 @@ func consentDecision(a *Auth, key string, rq requesterInfo) decision {
 		return dNo
 	}
 	d := decideOther(cfg, own, rq, time.Now(), hasOnce(key, rq.RequestedAt), declined)
+	if d == dNo && (own == 0 || rq.ID == 0) {
+		// Used to be silent: with an unknown identity no card is ever shown and the job is just skipped.
+		if _, seen := identityLogged.LoadOrStore(key, true); !seen {
+			logf("%s: skipped, requester or own account unknown (requester id %d, own id %d), no consent card", key, rq.ID, own)
+		}
+	}
 	if d == dPending && !promptSupported() {
 		return dYes // no prompt on this OS
 	}
@@ -183,19 +190,49 @@ func requesterName(rq requesterInfo) string {
 	return "Someone from the team"
 }
 
-// ensurePrompt shows the card for a pending job (once). false = no window could be shown, the job is skipped.
-func ensurePrompt(key string, rq requesterInfo) bool {
+var promptLogged sync.Map // issue keys whose "card could not be shown" reason was already logged
+
+// reportConsentPending tells the server whether this computer is waiting for its owner's consent for an issue
+// (POST /api/agent/consent-pending). Best effort, off the caller's goroutine.
+func reportConsentPending(issueID int, pending bool) {
+	if issueID <= 0 {
+		return
+	}
+	go func() {
+		defer func() { _ = recover() }()
+		a, err := getAuth()
+		if err != nil || a == nil {
+			return
+		}
+		if err := request(a, "POST", "/api/agent/consent-pending", map[string]any{"issueId": issueID, "pending": pending}, 15*time.Second, nil); err != nil {
+			logf("consent-pending: %s", shortErr(err))
+		}
+	}()
+}
+
+// ensurePrompt shows the card for a pending job (once per issue key). false = no window could be shown, the job
+// is skipped this round.
+func ensurePrompt(key string, rq requesterInfo, issueID int) bool {
 	if !promptSupported() {
 		return false
 	}
-	p := promptCard{Key: key, Name: requesterName(rq), RequesterID: rq.ID, RequestedAt: rq.RequestedAt}
-	if _, ok := cards.Prompt(key); ok {
-		return true
-	}
+	// The window is checked every round, also when the card is already queued: if the window died, it is made
+	// again (toastEnsure) instead of leaving a card that nobody can see.
 	if !showPromptWindow() {
+		if _, ok := promptLogged.LoadOrStore(key, true); !ok {
+			logf("%s: consent card window could not be created, retrying next round", key)
+		}
+		cards.RemovePrompt(key)
 		return false
 	}
+	promptLogged.Delete(key)
+	p := promptCard{Key: key, Name: requesterName(rq), RequesterID: rq.ID, RequestedAt: rq.RequestedAt, IssueID: issueID}
+	if _, ok := cards.Prompt(key); ok {
+		return true // same issue already has a card open: never a second one
+	}
 	if cards.AddPrompt(p) {
+		logf("waiting for consent from %s for %s", p.Name, key)
+		reportConsentPending(issueID, true)
 		cardsChanged()
 	}
 	return true
@@ -211,6 +248,7 @@ func resolvePrompt(key, action string, now time.Time) {
 	if !ok {
 		return
 	}
+	reportConsentPending(p.IssueID, false)
 	switch action {
 	case "allow":
 		id := strconv.Itoa(p.RequesterID)
@@ -220,12 +258,18 @@ func resolvePrompt(key, action string, now time.Time) {
 				c.AllowUntil = map[string]float64{}
 			}
 			c.AllowUntil[id] = until
+			if p.Name != "" {
+				if c.AllowNames == nil {
+					c.AllowNames = map[string]string{}
+				}
+				c.AllowNames[id] = p.Name
+			}
 		})
 		grantOnce(p.Key, p.RequestedAt)
 	case "once":
 		grantOnce(p.Key, p.RequestedAt)
 	default:
-		logf("%s: declined for %s", p.Key, p.Name)
+		logf("%s: %s for %s", p.Key, map[bool]string{true: "consent timed out", false: "declined"}[action == "timeout"], p.Name)
 		markDeclined(p.Key, p.RequestedAt)
 		appendRun(runRecord{Key: p.Key, For: p.Name, Result: runDeclined})
 	}

@@ -27,3 +27,17 @@ export async function pasteImage(e: React.ClipboardEvent<HTMLTextAreaElement>): 
   const { url } = (await res.json()) as { url: string };
   return url;
 }
+
+const IMG_MD = /!\[image\]\((\/uploads\/[^)\s]+)\)/g;
+
+/** Opis w polu edycji: długie `![image](/uploads/…)` skrócone do `![image 1]`; mapa pozwala je odtworzyć przy zapisie. */
+export function collapseImages(md: string): { text: string; map: Record<string, string> } {
+  const map: Record<string, string> = {};
+  let n = 0;
+  const text = md.replace(IMG_MD, (_m, url: string) => { const key = `![image ${++n}]`; map[key] = url; return key; });
+  return { text, map };
+}
+
+export function expandImages(text: string, map: Record<string, string>): string {
+  return text.replace(/!\[image \d+\]/g, (m) => (map[m] ? `![image](${map[m]})` : m));
+}

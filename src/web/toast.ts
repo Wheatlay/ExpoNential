@@ -1,13 +1,24 @@
 import { t } from './i18n.ts';
 
-type Toast = { id: number; text: string; kind: 'ok' | 'err' | 'warn' };
+export type Toast = { id: number; text: string; kind: 'ok' | 'err' | 'warn'; sticky?: boolean };
 let listeners: ((t: Toast | null) => void)[] = [];
 let seq = 0;
+let shown = 0;
 
-export function toast(text: string, kind: 'ok' | 'err' | 'warn' = 'ok') {
-  const t = { id: ++seq, text, kind };
+/** Zwraca id; toast z `sticky` zostaje, aż zawoła się dismissToast(id) (albo pokaże się inny toast). */
+export function toast(text: string, kind: 'ok' | 'err' | 'warn' = 'ok', opts: { sticky?: boolean } = {}): number {
+  const t: Toast = { id: ++seq, text, kind, sticky: opts.sticky };
+  shown = t.id;
   listeners.forEach((l) => l(t));
-  setTimeout(() => listeners.forEach((l) => l(null)), kind === 'ok' ? 2500 : 5000);
+  if (!opts.sticky) setTimeout(() => dismissToast(t.id), kind === 'ok' ? 2500 : 5000);
+  return t.id;
+}
+
+/** Zamyka toast o tym id, o ile jest jeszcze na ekranie (nie zasłania nowszego). */
+export function dismissToast(id: number) {
+  if (shown !== id) return;
+  shown = 0;
+  listeners.forEach((l) => l(null));
 }
 
 export function onToast(fn: (t: Toast | null) => void) {

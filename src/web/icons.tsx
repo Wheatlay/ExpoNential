@@ -158,6 +158,7 @@ export const Icon = {
   moon: (p: P = {}) => path('M13 9.5A5.5 5.5 0 0 1 6.5 3 5.5 5.5 0 1 0 13 9.5z', p),
   logout: (p: P = {}) => path('M6 13.5H3.5v-11H6M10.5 11l3-3-3-3M13.5 8H6', p),
   arrowUp: (p: P = {}) => path('M8 13V3M4 7l4-4 4 4', p),
+  arrowDown: (p: P = {}) => path('M8 3v10M4 9l4 4 4-4', p),
   sub: (p: P = {}) => path('M3 3v4.5a2 2 0 0 0 2 2h8M10 7l3 2.5L10 12', p),
   blocked: (p: P = {}) => path('M8 14A6 6 0 1 0 8 2a6 6 0 0 0 0 12zM3.8 3.8l8.4 8.4', p),
   comment: (p: P = {}) => path('M2.5 3.5h11v7.5H7l-3 2.5V11H2.5z', p),

@@ -22,7 +22,11 @@ export type MenuItem =
     }
   | { key: string; separator: true };
 
-export type MenuSpec = { items: MenuItem[]; searchable?: boolean; placeholder?: string };
+export type MenuSpec = {
+  items: MenuItem[]; searchable?: boolean; placeholder?: string;
+  /** Pozycje doklejane na końcu zależnie od wpisanego w wyszukiwarkę tekstu (np. "Create label …"). */
+  dynamic?: (query: string) => MenuItem[];
+};
 
 /** flipX: lewa krawędź pozycji nadrzędnej; podmenu bez miejsca po prawej otwiera się przy niej. */
 /** sheet: arkusz przy dolnej krawędzi (telefon, przytrzymanie wiersza) zamiast menu przy kursorze. */
@@ -81,8 +85,8 @@ function Menu({ anchor, spec: initialSpec, onCloseAll, onCloseSelf, root }: {
   const items = useMemo(() => {
     if (!q) return spec.items;
     const lq = q.toLowerCase();
-    return spec.items.filter((i) => !('separator' in i) && i.label.toLowerCase().includes(lq));
-  }, [q, spec.items]);
+    return [...spec.items.filter((i) => !('separator' in i) && i.label.toLowerCase().includes(lq)), ...(spec.dynamic?.(q.trim()) ?? [])];
+  }, [q, spec]);
   const selectable = items.filter((i): i is Selectable => !('separator' in i));
 
   // Menu nie może wyjść poza ekran; podmenu bez miejsca po prawej otwiera się po lewej.

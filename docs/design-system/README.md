@@ -59,6 +59,8 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
 - Potwierdzenia przez `askConfirm` (okno aplikacji), nigdy systemowe `confirm()`/`alert()`.
 - Filtry w kolumnach: lejek w nagłówku kolumny i popover.
 - Animacje krótkie (80–200 ms), wyłączone przy `prefers-reduced-motion`.
+- Strona zgłoszenia (zatwierdzone 04.11.2026): aktywność domyślnie od najnowszej, przełącznik kolejności (`.icon-btn` przy nagłówku, pamiętany w `localStorage`); w polu opisu obrazki jako krótkie `![image N]`, pełny adres wraca przy zapisie; zmiana tytułu lub opisu przez kogoś innego miga tłem (`.remote-flash`).
+- „Settings” w pasku bocznym jest na dole, obok profilu (zatwierdzone 04.11.2026).
 
 ## Wyjątki (dozwolone literały)
 
@@ -71,4 +73,4 @@ Exponential (repo i adres: `tracker`) to narzędzie zespołu do zgłoszeń, spri
 
 ## Ikony
 
-Własny zestaw w `src/web/icons.tsx` (`Icon.*`): obrysowe, 16×16, kreska 1.4, kolor z `currentColor`. Nowej ikony nie rysuj z pamięci innego zestawu; dodaj ją do `icons.tsx` w tym samym stylu. Znak marki (H1): sama sylwetka pola pod krzywą wykładniczą, bez kafla: płaski ogon z lewej, stromy klif z prawej; wypełnienie `accent`, krawędź krzywej `accent-hover` (`assets/Logos/exponential-mark.svg`, w kodzie `BrandMark` z `icons.tsx`, favicon w `index.html`). Nazwa pisana zawsze „Exponential”. W tytule karty przeglądarki: „<Projekt> · Exponential”, na stronie zgłoszenia „<ID> <tytuł> · <Projekt> · Exponential”. Nazwy techniczne (repo `tracker`, adres, serwer MCP `tracker`, protokół `tracker://`) zostają bez zmian.
+Własny zestaw w `src/web/icons.tsx` (`Icon.*`): obrysowe, 16×16, kreska 1.4, kolor z `currentColor`. Nowej ikony nie rysuj z pamięci innego zestawu; dodaj ją do `icons.tsx` w tym samym stylu. Znak marki (H1): sama sylwetka pola pod krzywą wykładniczą, bez kafla: płaski ogon z lewej, stromy klif z prawej; wypełnienie `accent`, krawędź krzywej `accent-hover` (`assets/Logos/exponential-mark.svg`, w kodzie `BrandMark` z `icons.tsx`, favicon w `index.html`). Nazwa pisana zawsze „Exponential”. W tytule karty przeglądarki: „<Projekt> · Exponential”, na stronie zgłoszenia „<ID> <tytuł> · <Projekt> · Exponential”. Nazwy techniczne (repo `tracker`, adres, protokół `tracker://`) zostają bez zmian. Plugin i serwer MCP nazywają się `expo` (od Server 1.3.23).

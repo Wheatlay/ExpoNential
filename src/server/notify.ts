@@ -4,6 +4,7 @@ import { db } from '../db/index.ts';
 import { projects, pushSubscriptions, userNotificationSettings } from '../db/schema.ts';
 import type { Project } from './projects.ts';
 import { RuleError } from './rules.ts';
+import { st } from './i18n.ts';
 
 /**
  * Kanały powiadomień: in-app (SSE + baner, robi to klient), Web Push (przeglądarka, także przy
@@ -48,6 +49,27 @@ export async function savePushSubscription(userId: number, sub: { endpoint: stri
     .onConflictDoUpdate({ target: pushSubscriptions.endpoint, set: { p256dh: sub.keys.p256dh, auth: sub.keys.auth },
       // Endpoint innego konta zostaje przy właścicielu (bez przejmowania cudzej subskrypcji).
       setWhere: eq(pushSubscriptions.userId, userId) });
+}
+
+export async function hasPushSubscription(userId: number, endpoint: string) {
+  const [s] = await db.select({ userId: pushSubscriptions.userId }).from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  return s?.userId === userId;
+}
+
+/** Testowy push na jedną subskrypcję tej osoby (ignoruje kanały i "tylko ważne"). Błąd zwracamy zamiast rzucać. */
+export async function sendTestPush(userId: number, endpoint: string): Promise<{ ok: boolean; error?: string }> {
+  if (!pushEnabled) return { ok: false, error: 'Push is not configured on the server' };
+  const [s] = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  if (!s || s.userId !== userId) return { ok: false, error: 'No such subscription' };
+  try {
+    await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+      JSON.stringify({ title: 'Exponential', body: st('Test notification'), url: '/', tag: 'test' } satisfies PushPayload), { TTL: 60 });
+    return { ok: true };
+  } catch (e) {
+    const code = (e as { statusCode?: number }).statusCode;
+    if (code === 404 || code === 410) await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, s.id));
+    return { ok: false, error: code ? `Push service answered ${code}` : 'Push failed' };
+  }
 }
 
 export async function deletePushSubscription(userId: number, endpoint: string) {

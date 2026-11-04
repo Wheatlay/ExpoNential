@@ -24,6 +24,7 @@ import { ensureSprintReviews, runReminders } from './meetings.ts';
 import { onSprintsEnsured } from './sprints.ts';
 import { maskUrl } from './rules.ts';
 import { marketplace, pluginArchive } from './plugin.ts';
+import { expireUnclaimedAnalyses } from './agents.ts';
 
 /**
  * Ile przeskoków proxy ufamy w X-Forwarded-For (req.ip). Domyślnie 1: jeden Traefik przed aplikacją. TRUST_PROXY: liczba
@@ -66,6 +67,9 @@ await registerMeetings(app);
 // Przypomnienia o spotkaniach: co 30 s wysyłamy te, których czas minął (bez dubli, patrz reminder_sends).
 const reminders = setInterval(() => void runReminders(new Date(), app.log).catch((e) => app.log.error(e)), 30_000);
 app.addHook('onClose', async () => clearInterval(reminders));
+// Zlecenia analizy, których nikt nie wziął od 24 h, kończą się błędem (też leniwie przy odpytaniu agenta).
+const expiry = setInterval(() => void expireUnclaimedAnalyses().catch((e) => app.log.error(e)), 10 * 60_000);
+app.addHook('onClose', async () => clearInterval(expiry));
 const stopCleanup = startCleanup();
 app.addHook('onClose', async () => stopCleanup());
 

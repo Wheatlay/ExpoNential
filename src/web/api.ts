@@ -10,8 +10,9 @@ export type Status = { id: number; name: string; type: StatusType; color: string
 export type Label = { id: number; name: string; color: string };
 export type User = { id: number; login: string; name: string; avatarUrl: string | null; isAdmin: boolean; active: boolean; role?: 'admin' | 'member'; tagIds?: number[] };
 export type ProjectSummary = { id: number; key: string; name: string; color: string; logoUrl: string; role: 'admin' | 'member'; memberCount: number; githubRepo: string };
-export type Me = { id: number; name: string; login: string; avatarUrl: string | null; avatarCustom: boolean; provider: 'github' | 'google' | null; isAdmin: boolean; hasPassword: boolean; hasAgent: boolean; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean;
+export type Me = { id: number; name: string; login: string; avatarUrl: string | null; avatarCustom: boolean; provider: 'github' | 'google' | null; isAdmin: boolean; hasPassword: boolean; hasAgent: boolean; agentOnline: boolean; agentLastSeen: string | null; agentOutdated: boolean; demo?: boolean; editor: Editor;
   setupDoneAt: string | null; lang: 'en' | 'pl' | null; aiStatus: { attention: string[]; client: boolean; clientName: string | null; clientAt: string | null; workTrace: boolean; agent: boolean; clients?: Record<'Claude Code' | 'Codex' | 'Cursor', { connected: boolean; at: string | null }> } };
+export type Editor = 'vscode' | 'cursor' | 'windsurf' | 'terminal';
 export type AppConfig = { demo: boolean; repoUrl: string | null; providers: { github: boolean; google: boolean }; devLogin?: boolean };
 export type TagColor = 'green' | 'teal' | 'sky' | 'violet' | 'pink' | 'amber' | 'blue' | 'slate';
 export const TAG_COLORS: TagColor[] = ['green', 'teal', 'sky', 'violet', 'pink', 'amber', 'blue', 'slate'];
@@ -33,7 +34,7 @@ export type Meeting = {
   attendeeIds: number[] | null;
   reminders: number[]; slots: MeetingSlot[];
 };
-export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; onlyImportant: boolean; notifyPromptShown: boolean; pushKey: string | null };
+export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; onlyImportant: boolean; notifyPromptShown: boolean; pushKey: string | null; analysisToastSticky: boolean; discordProjects: { key: string; name: string }[] };
 
 export type IssueRow = {
   id: number; number: number; title: string; statusId: number; assigneeId: number | null; creatorId: number | null; priority: number;
@@ -42,6 +43,7 @@ export type IssueRow = {
   labelIds: number[]; subTotal: number; subDone: number; waitingOn: number[];
   infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null;
   unreadComments: number; wasTested: boolean;
+  analysisWaitReason?: AnalysisWaitReason | null;
 };
 
 export type ActivityPayload =
@@ -53,6 +55,7 @@ export type ActivityPayload =
   | { kind: 'field'; field: string }
   | { kind: 'analysis_requested'; deep?: boolean }
   | { kind: 'analysis_claimed'; device: string }
+  | { kind: 'analysis_failed'; error: string }
   | { kind: 'decision'; question: string; answer: string | null }
   | { kind: 'sprint'; to: string | null }
   | { kind: 'parent'; to: number | null }
@@ -77,10 +80,12 @@ export type AnalysisData = {
   }[];
 };
 
+export type AnalysisWaitReason = 'queue_off' | 'no_pc_online' | 'no_repo_pc' | 'awaiting_consent';
+
 export type IssueDetail = {
   id: number; number: number; identifier: string; title: string; description: string; statusId: number;
   assigneeId: number | null; creatorId: number | null; priority: number; parentId: number | null; sprintId: number | null;
-  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; analysisResultDeep: boolean; analysisClaimedAt: string | null; analysisClaimedDeviceName: string | null; analysisCanRun: boolean; analysisNoCapablePc: boolean; analysisFailedAt: string | null; analysisError: string; teamQueue: boolean; changeHuman: string; changeAi: string;
+  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; analysisResultDeep: boolean; analysisClaimedAt: string | null; analysisClaimedDeviceName: string | null; analysisCanRun: boolean; analysisNoCapablePc: boolean; analysisFailedAt: string | null; analysisError: string; teamQueue: boolean; projectHasRepo: boolean; analysisWaitReason: AnalysisWaitReason | null; changeHuman: string; changeAi: string;
   infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null;
   createdAt: string; updatedAt: string; completedAt: string | null; labelIds: number[];
   parent: { number: number; title: string } | null;

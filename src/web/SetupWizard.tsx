@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react
 import { useModal } from './modal.ts';
 import { closeAiHint, closeSetupWizard, defaultGoal, openSetupWizard, set, snap, useHint, useSnap, type Goal } from './setupWizardState.ts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, useMe, useProjects } from './api.ts';
+import { api, useMe, useProjects, type Editor } from './api.ts';
 import { Icon } from './icons.tsx';
 import { copyText, toast } from './toast.ts';
 import { Tooltip } from './menu.tsx';
@@ -29,6 +29,7 @@ function AiHint() {
         : t('Connect AI once so your client can read this issue and report back.')}>
         <div className="ai-hint-title">{h.kind === 'analyze' ? t('Analysis is done by AI on your PC') : t('Work starts in your AI client')}</div>
       </Tooltip>
+      {h.reason && <div className="hint ai-hint-reason">{h.reason}</div>}
       <div className="ai-hint-actions">
         <button className="btn primary sm" autoFocus onClick={() => openSetupWizard(h.goal)}>{t('Connect AI')}</button>
         {h.anyway && <button className="btn sm" onClick={() => { const f = h.anyway; closeAiHint(); f?.(); }}>{t('Request anyway')}</button>}
@@ -40,15 +41,17 @@ function AiHint() {
 
 /* ---------- polecenia ---------- */
 type ClientName = 'Claude Code' | 'Codex' | 'Cursor';
-type Where = 'VS Code' | 'Cursor' | 'Terminal';
+type Where = 'VS Code' | 'Cursor' | 'Windsurf' | 'Terminal';
+const EXT_CLI: Partial<Record<Where, string>> = { 'VS Code': 'code', Cursor: 'cursor', Windsurf: 'windsurf' };
+const WHERE_OF: Record<Editor, Where> = { vscode: 'VS Code', cursor: 'Cursor', windsurf: 'Windsurf', terminal: 'Terminal' };
 type AgentRepo = { project: string; path: string; source?: string; status?: string; error?: string | null };
 type AgentRow = { id: string; name: string; computerName: string; label: string; online: boolean; outdated?: boolean; lastSeenAt: string | null; repos?: AgentRepo[] };
 
 const BASE = () => location.origin;
-const claudeCmd = () => `claude mcp add --transport http --scope user tracker ${BASE()}/mcp`;
-const codexCmds = () => [`codex mcp add tracker --url ${BASE()}/mcp`, 'codex mcp login tracker'];
-const cursorLink = () => `cursor://anysphere.cursor-deeplink/mcp/install?name=tracker&config=${btoa(JSON.stringify({ url: `${BASE()}/mcp` }))}`;
-const pluginCmds = () => [`claude plugin marketplace add ${BASE()}/agent/marketplace.json`, 'claude plugin install tracker@tracker'];
+const claudeCmd = () => `claude mcp add --transport http --scope user expo ${BASE()}/mcp`;
+const codexCmds = () => [`codex mcp add expo --url ${BASE()}/mcp`, 'codex mcp login expo'];
+const cursorLink = () => `cursor://anysphere.cursor-deeplink/mcp/install?name=expo&config=${btoa(JSON.stringify({ url: `${BASE()}/mcp` }))}`;
+const pluginCmds = () => [`claude plugin marketplace add ${BASE()}/agent/marketplace.json`, 'claude plugin install expo@expo'];
 
 function Cmd({ lines }: { lines: string[] }) {
   return (
@@ -98,7 +101,7 @@ export function SetupWizardHost() {
   const projects = useProjects(live);
 
   const [client, setClient] = useState<ClientName>(() => (meNow?.aiStatus?.clientName === 'Codex' || meNow?.aiStatus?.clientName === 'Cursor' ? meNow.aiStatus.clientName : 'Claude Code') as ClientName);
-  const [where, setWhere] = useState<Where>('VS Code');
+  const [where, setWhere] = useState<Where>(() => WHERE_OF[meNow?.editor ?? 'vscode']);
   const [slow, setSlow] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [path, setPath] = useState('');
@@ -153,8 +156,8 @@ export function SetupWizardHost() {
       .catch((e: Error) => toast(e.message, 'err'));
   };
 
-  const clientHint = where === 'Cursor' ? t('Restart Cursor and check that tracker is enabled in its MCP settings.')
-    : claude ? t('In Claude Code run /mcp and choose Authenticate for tracker.') : t('Run codex mcp login tracker and finish the sign-in in the browser.');
+  const clientHint = where === 'Cursor' ? t('Restart Cursor and check that expo is enabled in its MCP settings.')
+    : claude ? t('In Claude Code run /mcp and choose Authenticate for expo.') : t('Run codex mcp login expo and finish the sign-in in the browser.');
 
   const stepTitle: Record<Goal, string> = { 1: t('Connect a client'), 2: t('Turn on work trace'), 3: t('Agent on this PC') };
   const doneText: Record<Goal, string> = {
@@ -167,10 +170,11 @@ export function SetupWizardHost() {
     <>
       <div className="wiz-tabs">
         {claude && <div className="seg" role="group" aria-label={t('Where')}>
-          {(['VS Code', 'Cursor', 'Terminal'] as Where[]).map((w) => <button key={w} className={where === w ? 'on' : ''} onClick={() => setWhere(w)}>{w}</button>)}
+          {(['VS Code', 'Cursor', 'Windsurf', 'Terminal'] as Where[]).map((w) => <button key={w} className={where === w ? 'on' : ''} onClick={() => setWhere(w)}>{w}</button>)}
         </div>}
       </div>
       {(where === 'Cursor' || cursor) && <div className="wiz-line"><a className="btn primary" href={cursorLink()}>{t('Open in Cursor')}</a>{!cursor && <span className="hint">{t('Use a command instead')}</span>}</div>}
+      {claude && EXT_CLI[where] && <div className="wiz-ext"><span className="hint">{t('Claude Code extension in {editor}', { editor: where })}</span><Cmd lines={[`${EXT_CLI[where]} --install-extension anthropic.claude-code`]} /></div>}
       {!cursor && <Cmd lines={claude ? [claudeCmd()] : codexCmds()} />}
       {done[1] ? <p className="wiz-ok">{doneText[1]}</p> : <Wait text={t('Waiting for the first call…')} hintText={clientHint} slow={slow} />}
     </>
@@ -267,8 +271,8 @@ export function SetupWizardHost() {
                     {cursor ? (
                       <div className="wiz-line">
                         <a className="btn primary" href={cursorLink()}>{t('Open in Cursor')}</a>
-                        <Tooltip text={t('Cursor adds tracker and asks you to sign in. Work trace and the agent need Claude Code or Codex.')}>
-                          <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Cursor adds tracker and asks you to sign in. Work trace and the agent need Claude Code or Codex.')}><Icon.question size={14} /></span>
+                        <Tooltip text={t('Cursor adds expo and asks you to sign in. Work trace and the agent need Claude Code or Codex.')}>
+                          <span className="wiz-info" tabIndex={0} role="img" aria-label={t('Cursor adds expo and asks you to sign in. Work trace and the agent need Claude Code or Codex.')}><Icon.question size={14} /></span>
                         </Tooltip>
                       </div>
                     ) : (

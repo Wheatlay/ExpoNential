@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { TAG_COLORS, api, useMe, useMeta, type Tag, type TagColor } from './api.ts';
 import { askConfirm } from './Confirm.tsx';
 import { Avatar, Icon } from './icons.tsx';
-import { Tooltip } from './menu.tsx';
+import { Tooltip, openMenu, type MenuSpec } from './menu.tsx';
 import { Swatches } from './Swatches.tsx';
 import { t, tn } from './i18n.ts';
 
@@ -40,6 +40,21 @@ export function ProjectTags() {
   const remove = async (x: Tag) => {
     const ok = await askConfirm({ title: t('Delete #{name}?', { name: x.name }), body: t('Nobody will be notified by #{name} anymore.', { name: x.name }), action: t('Delete') });
     if (ok) await run(() => api(`/api/tags/${x.id}`, { method: 'DELETE' }));
+  };
+  // Admin projektu dodaje i usuwa członków dowolnego taga; ptaszki odświeżają się od razu, zapis idzie w tle.
+  const membersMenu = (x: Tag): MenuSpec => {
+    const build = (ids: number[]): MenuSpec => ({
+      searchable: true, placeholder: t('Add or remove people…'),
+      items: meta.users.filter((u) => u.active).map((u) => ({
+        key: `u${u.id}`, label: u.name, icon: <Avatar user={u} size={16} />, checked: ids.includes(u.id), keepOpen: true,
+        onSelect: () => {
+          const has = ids.includes(u.id);
+          void run(() => has ? api(`/api/tags/${x.id}/members/${u.id}`, { method: 'DELETE' }) : api(`/api/tags/${x.id}/members`, { method: 'POST', body: { userId: u.id } }));
+          return build(has ? ids.filter((i) => i !== u.id) : [...ids, u.id]);
+        },
+      })),
+    });
+    return build(x.memberIds);
   };
   const commitName = async (x: Tag) => {
     if (cancelled.current || !editing) return;
@@ -90,6 +105,7 @@ export function ProjectTags() {
                 {members.slice(0, MAX_AVATARS).map((u) => <span key={u.id} title={u.name}><Avatar user={u} size={20} /></span>)}
                 {members.length > MAX_AVATARS && <span className="hint">+{members.length - MAX_AVATARS}</span>}
               </span>
+              {isProjectAdmin && <button className="icon-btn" aria-label={t('Edit members')} title={t('Edit members')} onClick={(e) => openMenu(e.currentTarget, membersMenu(x))}><Icon.user size={14} /></button>}
               <button className="btn sm" onClick={() => void toggle(x)}>{joined ? t('Leave') : t('Join')}</button>
               <Tooltip text={canDelete ? null : t('Only the tag creator or a project admin can delete a tag')}>
                 <button className="icon-btn" disabled={!canDelete} aria-label={t('Delete tag')} title={canDelete ? t('Delete tag') : undefined} onClick={() => void remove(x)}>

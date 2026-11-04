@@ -225,6 +225,13 @@
       "when": 1794000000000,
       "tag": "0031_user_lang",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794100000000,
+      "tag": "0032_analysis_batch",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { api, queryClient, type IssueDetail, type Me, type Meta } from './api.ts';
+import { api, queryClient, useMe, type Editor, type IssueDetail, type Me, type Meta } from './api.ts';
 import { toast } from './toast.ts';
 import { ident } from './project.ts';
 import { t } from './i18n.ts';
@@ -12,20 +12,44 @@ export async function issuePrompt(number: number, kind: PromptKind, compact = fa
 
 // Windows obcina dłuższe linki do aplikacji; powyżej tego progu bierzemy wersję ze skróconymi polami.
 const MAX_LINK = 1900;
-const claudeLink = (prompt: string) => `vscode://anthropic.claude-code/open?prompt=${encodeURIComponent(prompt)}`;
+
+export const EDITOR_NAMES: Record<Editor, string> = { vscode: 'VS Code', cursor: 'Cursor', windsurf: 'Windsurf', terminal: 'Terminal' };
+const EDITOR_SCHEMES: Record<Exclude<Editor, 'terminal'>, string> = { vscode: 'vscode', cursor: 'cursor', windsurf: 'windsurf' };
+
+/** Link otwierający Claude Code w wybranym edytorze z wpisanym poleceniem; terminal nie ma linku (tylko przez agenta). */
+export function editorLink(editor: Editor, prompt: string): string | null {
+  if (editor === 'terminal') return null;
+  return `${EDITOR_SCHEMES[editor]}://anthropic.claude-code/open?prompt=${encodeURIComponent(prompt)}`;
+}
+
+/** Nazwa edytora wybranego w Settings › My AI (do podpowiedzi). */
+export function useEditorName() {
+  return EDITOR_NAMES[useMe().data?.editor ?? 'vscode'];
+}
+
+const currentEditor = async (): Promise<Editor> =>
+  (await queryClient.fetchQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') })).editor ?? 'vscode';
+
+/** Otwiera link edytora z poleceniem (skróconym, gdy za długie) i zwraca, czy link poszedł; bez linku zostaje schowek. */
+async function openPrompt(number: number, kind: PromptKind, editor: Editor, full: string) {
+  let link = editorLink(editor, full);
+  if (link && link.length > MAX_LINK) link = editorLink(editor, await issuePrompt(number, kind, true));
+  if (!link || link.length > MAX_LINK) return false;
+  location.href = link;
+  return true;
+}
 
 /**
- * Otwiera nową kartę Claude Code w VS Code z wpisanym (niewysłanym) poleceniem i kopiuje
- * pełną treść do schowka, gdyby VS Code się nie otworzył albo link musiał być skrócony.
+ * Otwiera nową kartę Claude Code w wybranym edytorze z wpisanym (niewysłanym) poleceniem i kopiuje
+ * pełną treść do schowka, gdyby edytor się nie otworzył albo link musiał być pominięty.
  */
 export async function openInClaude(number: number, kind: PromptKind) {
   const pending = issuePrompt(number, kind);
   const copied = copyLater(pending);
   const full = await pending;
-  let link = claudeLink(full);
-  if (link.length > MAX_LINK) link = claudeLink(await issuePrompt(number, kind, true));
-  if (link.length > MAX_LINK) link = claudeLink(`Pracujemy nad ${ident(number)}. Pełne dane: get_issue ${ident(number)}.`);
-  location.href = link;
+  const editor = await currentEditor();
+  const opened = await openPrompt(number, kind, editor, full);
+  if (!opened) toast(t('Prompt copied. Paste it into {editor}.', { editor: EDITOR_NAMES[editor] }));
   return copied;
 }
 
@@ -45,18 +69,29 @@ function copyLater(text: Promise<string>): Promise<boolean> {
   return text.then((s) => navigator.clipboard.writeText(s)).then(() => true, () => false);
 }
 
-/** Telefon i tablet (ekran dotykowy): tam "Start work" nie otworzy VS Code, więc polecenie leci do agenta na moim komputerze. */
+/** Telefon i tablet (ekran dotykowy): tam "Start work" nie otworzy edytora, więc polecenie leci do agenta na moim komputerze. */
 export const isTouchDevice = () => matchMedia('(pointer: coarse)').matches;
 
-/** "Start work": otwiera Claude z poleceniem, przypisuje do mnie i przesuwa do In Progress (gdy jeszcze nie zaczęte). */
+/** "Start work": agent na moim komputerze otwiera edytor z poleceniem (albo przeglądarka otwiera link), przypisuje do mnie i przesuwa do In Progress (gdy jeszcze nie zaczęte). */
 export async function startWork(number: number) {
-  const opened = openInClaude(number, 'start'); // pierwsze: schowek jeszcze w geście kliknięcia
-  const [d, meta, me] = await Promise.all([
+  const res = api<{ viaAgent: true } | { viaAgent: false; prompt: string }>('/api/start-work', { method: 'POST', body: { issueId: ident(number) } });
+  // Schowek musi dostać zapis jeszcze w geście kliknięcia; gdy poleceniem zajmuje się agent, obietnica odrzuca i schowek zostaje nietknięty.
+  const copied = copyLater(res.then((r) => { if (r.viaAgent) throw new Error('agent'); return r.prompt; }));
+  const [r, d, meta, me] = await Promise.all([
+    res,
     api<IssueDetail>(`/api/issues/${ident(number)}`),
     queryClient.fetchQuery({ queryKey: ['meta'], queryFn: () => api<Meta>('/api/meta') }),
     queryClient.fetchQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') }),
   ]);
-  const copied = await opened;
+  const editor = me.editor ?? 'vscode';
+  let clip = false;
+  if (r.viaAgent) toast(t('Opening in {editor}', { editor: EDITOR_NAMES[editor] }));
+  else {
+    const opened = await openPrompt(number, 'start', editor, r.prompt);
+    clip = await copied;
+    if (!opened) toast(t(clip ? 'Prompt copied. Paste it into {editor}.' : 'Could not copy the prompt. Open it from the issue in {editor}.', { editor: EDITOR_NAMES[editor] }));
+    else toast(t(clip ? 'Opening in {editor}. The prompt is also in your clipboard.' : 'Opening in {editor}', { editor: EDITOR_NAMES[editor] }));
+  }
   const cur = meta.statuses.find((s) => s.id === d.statusId);
   const inProgress = meta.statuses.find((s) => s.type === 'started' && /progress/i.test(s.name)) ?? meta.statuses.find((s) => s.type === 'started');
   const patch: Record<string, unknown> = {};
@@ -67,7 +102,6 @@ export async function startWork(number: number) {
     void queryClient.invalidateQueries({ queryKey: ['issues'] });
     void queryClient.invalidateQueries({ queryKey: ['issue', number] });
   }
-  toast(t((await copied) ? 'Opening Claude Code with {id}. The prompt is also in your clipboard.' : 'Opening Claude Code with {id}.', { id: ident(number) }));
 }
 
 /** Telefon: zleca agentowi na moim komputerze otwarcie Claude Code z zadaniem (serwer też przypisuje i przesuwa do In Progress). */

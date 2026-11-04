@@ -72,7 +72,7 @@ func findEngine(engine string) string {
 // allowed explicitly and --permission-mode default is forced (a user defaultMode/allow must not widen it), so in -p mode
 // reads outside the repo are not approved. Secrets (repo-relative and absolute, see secrets.go) are denied on top.
 // Deny rules win over allow rules in Claude Code, so a blanket Read(//**) deny would also block the repo: not used.
-const allowedTools = "Skill,mcp__tracker__get_procedure,mcp__tracker__get_issue,mcp__tracker__list_comments,mcp__tracker__list_issues,mcp__tracker__set_analysis"
+const allowedTools = "Skill,mcp__expo__get_procedure,mcp__expo__get_issue,mcp__expo__list_comments,mcp__expo__list_issues,mcp__expo__set_analysis"
 
 // othersRun: the analysis was requested by someone other than this account (or the identity is unknown), so the
 // repo's own .claude settings must not load.
@@ -101,7 +101,7 @@ func runEngine(o runOpts) (int, *runUsage, engineFailure) {
 		if o.others && o.issueKey != "" {
 			hdr["X-Exponential-Issue"] = o.issueKey // the server limits the tools to this one issue
 		}
-		mcp, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"tracker": map[string]any{"type": "http", "url": o.base + "/mcp", "headers": hdr}}})
+		mcp, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"expo": map[string]any{"type": "http", "url": o.base + "/mcp", "headers": hdr}}})
 		_ = os.WriteFile(mcpFile, mcp, 0o600)
 		defer os.Remove(mcpFile) // the bearer token must not stay on disk
 		pdir, err := ensurePlugin()
@@ -127,8 +127,8 @@ func runEngine(o runOpts) (int, *runUsage, engineFailure) {
 		env = append(env, "EXPONENTIAL_AGENT_TOKEN="+regexp.MustCompile(`(?i)^Bearer `).ReplaceAllString(o.auth, ""))
 		urlJSON, _ := json.Marshal(o.base + "/mcp")
 		args = []string{"exec", "--sandbox", "read-only",
-			"-c", "mcp_servers.tracker.url=" + string(urlJSON),
-			"-c", `mcp_servers.tracker.bearer_token_env_var="EXPONENTIAL_AGENT_TOKEN"`, "-"}
+			"-c", "mcp_servers.expo.url=" + string(urlJSON),
+			"-c", `mcp_servers.expo.bearer_token_env_var="EXPONENTIAL_AGENT_TOKEN"`, "-"}
 	}
 	_ = path.Base // keep import set stable
 	_ = os.MkdirAll(dataDir(), 0o755)

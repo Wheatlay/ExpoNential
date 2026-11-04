@@ -21,7 +21,7 @@ import { useWizardActive } from './setupWizardState.ts';
 import { DeployStatus, RecentIssues } from './SidebarExtras.tsx';
 import { Avatar, Icon } from './icons.tsx';
 import { linkProps, usePath } from './router.ts';
-import { onToast, toast } from './toast.ts';
+import { dismissToast, onToast, toast, type Toast } from './toast.ts';
 import { InlineCode } from './InlineCode.tsx';
 import { ident, setProjectKey, useProjectKey } from './project.ts';
 import { ProjectBadge, ProjectSwitcher, useCurrentProject } from './ProjectSwitcher.tsx';
@@ -162,8 +162,6 @@ function Sidebar({ page }: { page: string }) {
         {item('/review', 'review', <Icon.sprint size={15} />, t('Sprint review'), toReview ? <span className="count" style={{ color: 'var(--warning-text)' }}>●</span> : null)}
         {/* Pytania do mnie: dzwonek (wszystkie projekty) i filtr "Asked to me" na tablicy, bez trzeciej pozycji tutaj. */}
         <RecentIssues onNavigate={() => setOpen(false)} />
-        <div className="nav-section">{t('Project & account')}</div>
-        {item('/settings', 'settings', <Icon.settings size={15} />, t('Settings'), !me.demo && me.aiStatus?.attention?.length ? <span className="nav-dot" role="img" aria-label={t('Needs attention')} title={t('Needs attention')} /> : undefined)}
         <div style={{ marginTop: 'auto' }}><DeployStatus /></div>
         <div className="sidebar-bottom" style={{ marginTop: 0 }}>
           {/* Ja jak każda osoba w aplikacji: klik otwiera moją kartę (tagi, nad czym pracuję, moje issues). */}
@@ -171,6 +169,10 @@ function Sidebar({ page }: { page: string }) {
             <Avatar user={useMeta().data?.users.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={22} />
             <span className="me-name">{me.name}</span>
           </PersonLink>
+          <a className={`icon-btn settings-link ${page === 'settings' ? 'active' : ''}`} {...linkProps('/settings')} onClickCapture={() => setOpen(false)} title={t('Settings')} aria-label={t('Settings')}>
+            <Icon.settings size={15} />
+            {!me.demo && !!me.aiStatus?.attention?.length && <span className="nav-dot" role="img" aria-label={t('Needs attention')} title={t('Needs attention')} />}
+          </a>
           <button className="icon-btn" title={t('Log out')} aria-label={t('Log out')} onClick={() => void api('/auth/logout', { method: 'POST' }).then(() => location.assign('/login'))}><Icon.logout size={15} /></button>
         </div>
       </nav>
@@ -225,10 +227,10 @@ function NoProjects() {
 }
 
 function Toasts() {
-  const [t, setT] = useState<{ id: number; text: string; kind: 'ok' | 'err' | 'warn' } | null>(null);
+  const [cur, setT] = useState<Toast | null>(null);
   useEffect(() => onToast(setT), []);
   // Kontener live istnieje zawsze, bo czytnik ekranu ogłasza tylko zmiany w już obecnym regionie.
-  return <div aria-live={t?.kind === 'err' ? 'assertive' : 'polite'} role={t?.kind === 'err' ? 'alert' : 'status'}>{t && <div className={`toast ${t.kind === 'ok' ? '' : t.kind}`}>{t.kind === 'ok' ? <Icon.check size={14} /> : null}{t.text}</div>}</div>;
+  return <div aria-live={cur?.kind === 'err' ? 'assertive' : 'polite'} role={cur?.kind === 'err' ? 'alert' : 'status'}>{cur && <div className={`toast ${cur.kind === 'ok' ? '' : cur.kind}`}>{cur.kind === 'ok' ? <Icon.check size={14} /> : null}<span className="toast-text" title={cur.text}>{cur.text}</span>{cur.sticky && <button className="icon-btn" aria-label={t('Dismiss')} title={t('Dismiss')} onClick={() => dismissToast(cur.id)}><Icon.close size={12} /></button>}</div>}</div>;
 }
 
 // Wiele miejsc woła `void api(...)` bez .catch (zapis widoku tablicy, usuwanie, etykiety/statusy, głosy, Analyze z menu);

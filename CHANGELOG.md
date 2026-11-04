@@ -2,6 +2,21 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.23], Agent [0.4.16] - 05.11.2026
+
+- Analyze needs a project repo: without one the button explains it instead of starting an analysis that no PC can run.
+- An analysis that no PC takes within 24 hours now fails with a message instead of waiting forever; the failure is also written to the issue activity (as is any failure reported by a PC). Clicking Analyze twice no longer adds a second "requested" entry.
+- The analysis bar says why it is waiting: team queue off, no PC online, no PC with the repo, or waiting for the owner's consent.
+- Project admins can add people to and remove them from any tag; other members can only change their own membership.
+- Any project member can create a label right from the issue page.
+- Unread comments: if you only appear in an issue through a mention, only comments from that mention on count as new.
+- Settings › Notifications: shows whether this browser's push subscription is still registered, can send a test push, lists the projects with a Discord channel, and lets you choose whether the analysis notification stays until closed.
+- A failed deploy is posted to the project's Discord channel (environment and commit).
+- An agent error that was followed by a successful run on an online PC is no longer shown as a problem.
+- Choose your editor (VS Code, Cursor, Windsurf or terminal) in Settings; Start work opens the repo window in it through the agent on your PC, or copies the prompt when no PC is online.
+- Plugin and MCP server renamed from tracker to expo: skills are now expo:analyze-ticket and expo:close-ticket, tools mcp__expo__*. Reinstall the plugin (`claude plugin install expo@expo`) and re-add the MCP server under the name expo.
+- Agent window: Pair again, Rescan and a list of consents.
+
 ## Server [1.3.22] - 04.11.2026
 
 - An account added by e-mail in Settings › Accounts sets its password on the first login: enter the e-mail and a new password on the login page.

@@ -77,7 +77,7 @@ export function InboxBell() {
   return (
     <>
       <button ref={btn} className="icon-btn inbox-bell" title={t('For you')} aria-label={t('For you')} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <Icon.bell size={16} />
+        <Icon.bell size={20} />
         {count > 0 && settings?.inApp !== false && <span className="inbox-badge">{count > 99 ? '99+' : count}</span>}
       </button>
       {open && createPortal(
@@ -91,7 +91,7 @@ export function InboxBell() {
               <div key={`p${m.id}`} className="inbox-item unread">
                 <button className="inbox-main" onClick={() => { setOpen(false); openMeeting(m.id); }}>
                   <span className="inbox-icon warn"><Icon.calendar size={14} /></span>
-                  <span className="inbox-text"><span className="inbox-title">{t('Poll waits for your vote')}</span><span className="hint">{m.title}</span></span>
+                  <span className="inbox-text"><span className="inbox-title">{t('Poll waits for your vote')}</span><span className="hint inbox-sub" title={m.title}>{m.title}</span></span>
                 </button>
                 <button className="icon-btn inbox-x" aria-label={t('Dismiss')} title={t('Dismiss')} onClick={() => addDismissed(pollAlertKey(m))}><Icon.close size={12} /></button>
               </div>
@@ -100,7 +100,7 @@ export function InboxBell() {
               <div key={`m${m.id}`} className="inbox-item unread">
                 <button className="inbox-main" onClick={() => { setOpen(false); openMeeting(m.id); }}>
                   <span className="inbox-icon"><Icon.calendar size={14} /></span>
-                  <span className="inbox-text"><span className="inbox-title">
+                  <span className="inbox-text"><span className="inbox-title" title={m.title}>
                     {new Date(m.startsAt!) <= now ? t('{title} is on now', { title: m.title }) : t('{title} starts at {time}', { title: m.title, time: fmtTime(m.startsAt!) })}
                   </span></span>
                 </button>

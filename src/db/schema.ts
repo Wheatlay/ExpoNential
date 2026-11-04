@@ -32,6 +32,10 @@ export const users = pgTable('users', {
   setupDoneAt: timestamp('setup_done_at', { withTimezone: true }),
   // Preferowany język interfejsu ('en' | 'pl'); null = jeszcze nie wybrany. Web i agent podążają za tą wartością.
   lang: text('lang'),
+  // Edytor, w którym otwiera się "Start": vscode | cursor | windsurf | terminal.
+  editor: text('editor').notNull().default('vscode'),
+  // Powiadomienie o analizie zostaje na ekranie, dopóki go nie zamknę.
+  analysisToastSticky: boolean('analysis_toast_sticky').notNull().default(true),
 }, (t) => [
   uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`),
   uniqueIndex('users_login_lower_idx').on(sql`lower(${t.login})`),
@@ -150,6 +154,8 @@ export const issues = pgTable('issues', {
   // Przebieg na PC padł: zlecenie nie wraca samo do kolejki (każdy trwały błąd, np. brak repo, kręciłby się w kółko).
   // Czyści je nowe zlecenie albo anulowanie.
   analysisFailedAt: timestamp('analysis_failed_at', { withTimezone: true }),
+  // Agent czeka na zgodę właściciela PC na cudze zlecenie.
+  analysisConsentPendingAt: timestamp('analysis_consent_pending_at', { withTimezone: true }),
   analysisError: text('analysis_error').notNull().default(''),
   changeHuman: text('change_human').notNull().default(''),
   changeAi: text('change_ai').notNull().default(''),
@@ -232,6 +238,7 @@ export type ActivityPayload =
   | { kind: 'field'; field: 'title' | 'description' | 'analysis' | 'change_human' | 'change_ai' }
   | { kind: 'analysis_requested'; deep?: boolean }
   | { kind: 'analysis_claimed'; device: string }
+  | { kind: 'analysis_failed'; error: string }
   | { kind: 'decision'; question: string; answer: string | null }
   | { kind: 'sprint'; to: string | null }
   | { kind: 'parent'; to: number | null }
@@ -497,6 +504,8 @@ export const agents = pgTable('agents', {
   // Ostatni błąd zgłoszony przez agenta (widoczny w Ustawieniach, bo skrypt działa w tle bez okna).
   lastError: text('last_error').notNull().default(''),
   lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
+  // Ostatnie udane zakończenie zlecenia: nowsze niż lastErrorAt znaczy, że błąd już minął.
+  lastOkAt: timestamp('last_ok_at', { withTimezone: true }),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   // Limit zleceń dla innych osób na dobę (null = bez limitu). Własne zlecenia właściciela nigdy nie są limitowane.
   maxForOthersPerDay: integer('max_for_others_per_day'), // przestarzałe (limit liczby zleceń), nieużywane od limitu w tokenach

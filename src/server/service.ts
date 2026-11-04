@@ -68,6 +68,7 @@ export async function listIssues(p: Project, filter: {
     assigneeId: issues.assigneeId, creatorId: issues.creatorId, priority: issues.priority, parentId: issues.parentId,
     sprintId: issues.sprintId, sortOrder: issues.sortOrder,
     analysisRequestedAt: issues.analysisRequestedAt, analysisClaimedAt: issues.analysisClaimedAt,
+    analysisFailedAt: issues.analysisFailedAt, analysisRequestedBy: issues.analysisRequestedBy, analysisConsentPendingAt: issues.analysisConsentPendingAt,
     analysisClaimedDeviceName: dsql<string | null>`(select coalesce(nullif(a.label, ''), nullif(a.name, '')) from agents a where a.id = "issues"."analysis_claimed_device")`,
     hasAnalysis: dsql<boolean>`${issues.analysis} <> ''`,
     hasChangeNotes: dsql<boolean>`${issues.changeHuman} <> '' and ${issues.changeAi} <> ''`,
@@ -85,6 +86,10 @@ export async function listIssues(p: Project, filter: {
       or exists (select 1 from inbox_items ii where ii.issue_id = "issues"."id" and ii.user_id = ${filter.viewerId}))
       then (select count(*)::int from comments c where c.issue_id = "issues"."id"
       and c.author_id is distinct from ${filter.viewerId}
+      and ("issues"."assignee_id" = ${filter.viewerId} or "issues"."creator_id" = ${filter.viewerId}
+        or exists (select 1 from comments mc where mc.issue_id = "issues"."id" and mc.author_id = ${filter.viewerId})
+        or c.created_at >= (select min(coalesce(ic.created_at, ii.created_at)) from inbox_items ii left join comments ic on ic.id = ii.comment_id
+          where ii.issue_id = "issues"."id" and ii.user_id = ${filter.viewerId}))
       and c.created_at > coalesce((select v.seen_at from issue_views v where v.user_id = ${filter.viewerId} and v.issue_id = "issues"."id"),
         (select u.created_at from users u where u.id = ${filter.viewerId}))) else 0 end)` : dsql<number>`0`,
     waitingOn: dsql<number[]>`coalesce((select array_agg(b.number order by b.number) from issue_relations r join issues b on b.id = r.from_issue_id join statuses bs on bs.id = b.status_id where r.kind = 'blocks' and r.to_issue_id = "issues"."id" and bs.type in ('backlog','unstarted','started')), '{}')`,
@@ -399,10 +404,16 @@ export async function deleteIssue(p: Project, number: number) {
 }
 
 // Zlecenie znika (analiza zapisana, Cancel) albo wraca na początek (nowe): claim agenta przepada razem z nim.
-const NO_CLAIM = { analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, analysisLocalUntil: null, analysisFailedAt: null, analysisError: '' };
+const NO_CLAIM = { analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, analysisLocalUntil: null, analysisFailedAt: null, analysisError: '', analysisConsentPendingAt: null };
 
 export async function requestAnalysis(p: Project, actor: Actor, number: number, deep = false, local = false) {
   const cur = await requireIssue(p, number);
+  // Zlecenie już czeka na komputer (nikt go nie wziął, nie padło): drugie kliknięcie nie dubluje wpisu w aktywności ani nie zeruje czasu oczekiwania.
+  if (cur.analysisRequestedAt && !cur.analysisClaimedAt && !cur.analysisFailedAt) {
+    await db.update(issues).set({ analysisDeep: deep || cur.analysisDeep, analysisLocalUntil: local ? new Date(Date.now() + 60_000) : cur.analysisLocalUntil }).where(eq(issues.id, cur.id));
+    await publish({ type: 'issue', projectKey: p.key, number });
+    return;
+  }
   await db.transaction(async (tx) => {
     await tx.update(issues).set({
       analysisRequestedAt: new Date(), analysisDeep: deep, updatedAt: new Date(), analysisRequestedBy: actor?.id ?? null,
@@ -411,6 +422,15 @@ export async function requestAnalysis(p: Project, actor: Actor, number: number, 
     await log(tx, cur.id, actor, deep ? { kind: 'analysis_requested', deep } : { kind: 'analysis_requested' });
   });
   await publish({ type: 'issue', projectKey: p.key, number });
+}
+
+/** Analiza nie powiodła się (agent zgłosił błąd albo nikt nie wziął zlecenia w 24 h): znacznik na zgłoszeniu i wpis w aktywności. */
+export async function markAnalysisFailed(issueId: number, error: string, actor: Actor = null) {
+  const text = error.slice(0, 300);
+  await db.transaction(async (tx) => {
+    await tx.update(issues).set({ analysisFailedAt: new Date(), analysisError: text, analysisClaimedAt: null, analysisClaimedBy: null, analysisClaimedDevice: null, analysisConsentPendingAt: null }).where(eq(issues.id, issueId));
+    await log(tx, issueId, actor, { kind: 'analysis_failed', error: text });
+  });
 }
 
 /** Anulowanie zlecenia, które utknęło (agent nie ruszył albo padł): pasek wraca do przycisku Analyze. */

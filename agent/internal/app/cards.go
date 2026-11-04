@@ -12,6 +12,7 @@ type promptCard struct {
 	Key         string
 	Name        string
 	RequesterID int
+	IssueID     int
 	RequestedAt string
 	Added       time.Time
 }

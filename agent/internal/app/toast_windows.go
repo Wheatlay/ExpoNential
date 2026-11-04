@@ -32,6 +32,7 @@ var toastW struct {
 	failed bool
 	start  bool
 	ch     chan struct{}
+	retry  time.Time // after a failure the window may be created again from this moment
 }
 
 func init() { cardsChanged = toastPush }
@@ -43,6 +44,15 @@ func showPromptWindow() bool { return toastEnsure() }
 
 func toastEnsure() bool {
 	toastW.mu.Lock()
+	if toastW.failed {
+		// The window failed or was closed earlier. Used to be permanent (no card until the agent restarted);
+		// now it is created again after a short pause.
+		if time.Now().Before(toastW.retry) {
+			toastW.mu.Unlock()
+			return false
+		}
+		toastW.failed, toastW.start, toastW.ready = false, false, false
+	}
 	if !toastW.start {
 		toastW.start = true
 		toastW.ch = make(chan struct{})
@@ -67,6 +77,7 @@ func toastThread() {
 	fail := func() {
 		toastW.mu.Lock()
 		toastW.failed = true
+		toastW.retry = time.Now().Add(20 * time.Second)
 		toastW.mu.Unlock()
 		done()
 	}
@@ -117,7 +128,9 @@ func toastThread() {
 	w.Run()
 	toastW.mu.Lock()
 	toastW.failed, toastW.ready, toastW.w = true, false, nil
+	toastW.retry = time.Now().Add(5 * time.Second)
 	toastW.mu.Unlock()
+	logf("consent card window closed, it will be created again when needed")
 	done()
 }
 

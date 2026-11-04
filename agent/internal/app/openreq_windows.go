@@ -1,0 +1,62 @@
+//go:build windows
+
+package app
+
+import (
+	"encoding/base64"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
+	"unicode/utf16"
+
+	"golang.org/x/sys/windows"
+)
+
+// openTerminalWithClaude opens a new Windows Terminal (else a plain console) window in dir running `claude "<prompt>"`.
+// The prompt goes through a temporary file read by PowerShell, so no character of it is ever parsed as a command.
+func openTerminalWithClaude(dir, prompt string) error {
+	claude := findEngine("claude")
+	if claude == "" {
+		return errors.New("Claude Code not found")
+	}
+	pdir := filepath.Join(dataDir(), "open-prompts")
+	if err := os.MkdirAll(pdir, 0o700); err != nil {
+		return err
+	}
+	f := filepath.Join(pdir, "prompt-"+time.Now().Format("150405.000")+".txt")
+	if err := os.WriteFile(f, []byte(prompt), 0o600); err != nil {
+		return err
+	}
+	go func() { time.Sleep(2 * time.Minute); _ = os.Remove(f) }() // read at the start; this is only the safety net
+	q := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
+	script := "$p = Get-Content -Raw -Encoding UTF8 -LiteralPath " + q(f) + "; Remove-Item -LiteralPath " + q(f) + " -ErrorAction SilentlyContinue; & " + q(claude) + " $p"
+	u16 := utf16.Encode([]rune(script))
+	b := make([]byte, 0, len(u16)*2)
+	for _, c := range u16 {
+		b = append(b, byte(c), byte(c>>8))
+	}
+	enc := base64.StdEncoding.EncodeToString(b)
+	psArgs := []string{"-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-EncodedCommand", enc}
+	dir = filepath.Clean(dir)
+
+	if wt, err := exec.LookPath("wt.exe"); err == nil {
+		c := exec.Command(wt, append([]string{"-d", dir, "powershell.exe"}, psArgs...)...)
+		c.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
+		if c.Start() == nil {
+			_ = c.Process.Release()
+			return nil
+		}
+	}
+	c := exec.Command("powershell.exe", psArgs...)
+	c.Dir = dir
+	c.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_CONSOLE}
+	if err := c.Start(); err != nil {
+		return err
+	}
+	_ = c.Process.Release()
+	return nil
+}

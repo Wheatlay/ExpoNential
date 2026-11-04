@@ -40,6 +40,9 @@ func setMuted(on bool) {
 		for _, pc := range pending {
 			appendRun(runRecord{Key: pc.Key, For: pc.Name, Result: runMuted})
 		}
+		for _, pc := range pending {
+			reportConsentPending(pc.IssueID, false)
+		}
 		cards.ClearPrompts()
 		cardsChanged()
 	}

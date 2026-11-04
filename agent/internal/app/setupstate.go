@@ -34,7 +34,7 @@ func pluginDir(dir string) string {
 	return dir
 }
 
-// pluginInstalled: tracker@tracker is in installed_plugins.json and not switched off in settings.json.
+// pluginInstalled: expo@expo is in installed_plugins.json and not switched off in settings.json.
 func pluginInstalled(installed, settings []byte) bool {
 	var inst struct {
 		Plugins map[string]json.RawMessage `json:"plugins"`
@@ -42,32 +42,33 @@ func pluginInstalled(installed, settings []byte) bool {
 	if json.Unmarshal(installed, &inst) != nil {
 		return false
 	}
-	if _, ok := inst.Plugins["tracker@tracker"]; !ok {
+	if _, ok := inst.Plugins[pluginRef]; !ok {
 		return false
 	}
 	var s struct {
 		Enabled map[string]bool `json:"enabledPlugins"`
 	}
 	if json.Unmarshal(settings, &s) == nil {
-		if on, ok := s.Enabled["tracker@tracker"]; ok && !on {
+		if on, ok := s.Enabled[pluginRef]; ok && !on {
 			return false
 		}
 	}
 	return true
 }
 
-// codexHasTracker: config.toml has an [mcp_servers.tracker] table.
+// codexHasTracker: config.toml has an [mcp_servers.expo] table (or the old [mcp_servers.tracker]).
+// The name "Tracker" in these helpers is the product feature, not the server name.
 func codexHasTracker(toml []byte) bool {
 	for _, l := range strings.Split(string(toml), "\n") {
 		l = strings.TrimSpace(l)
-		if l == "[mcp_servers.tracker]" || l == `[mcp_servers."tracker"]` {
+		if l == "[mcp_servers.expo]" || l == `[mcp_servers."expo"]` || l == "[mcp_servers.tracker]" || l == `[mcp_servers."tracker"]` {
 			return true
 		}
 	}
 	return false
 }
 
-// cursorHasTracker: ~/.cursor/mcp.json has mcpServers.tracker.
+// cursorHasTracker: ~/.cursor/mcp.json has mcpServers.expo (or the old tracker).
 func cursorHasTracker(data []byte) bool {
 	var c struct {
 		MCP map[string]json.RawMessage `json:"mcpServers"`
@@ -75,7 +76,10 @@ func cursorHasTracker(data []byte) bool {
 	if json.Unmarshal(data, &c) != nil {
 		return false
 	}
-	_, ok := c.MCP["tracker"]
+	_, ok := c.MCP[mcpName]
+	if !ok {
+		_, ok = c.MCP[legacyName]
+	}
 	return ok
 }
 
@@ -116,4 +120,21 @@ func setupJSON(base string) string {
 	b, _ := json.Marshal(readSetup(base))
 	setupCache.at, setupCache.base, setupCache.json = time.Now(), base, string(b)
 	return setupCache.json
+}
+
+// legacyClaudeSetup: a "tracker" MCP server in .claude.json and/or the tracker@tracker plugin is still registered.
+func legacyClaudeSetup(claudeJSON, installed []byte) (mcp, plugin bool) {
+	var c struct {
+		MCP map[string]json.RawMessage `json:"mcpServers"`
+	}
+	if json.Unmarshal(claudeJSON, &c) == nil {
+		_, mcp = c.MCP[legacyName]
+	}
+	var inst struct {
+		Plugins map[string]json.RawMessage `json:"plugins"`
+	}
+	if json.Unmarshal(installed, &inst) == nil {
+		_, plugin = inst.Plugins[legacyPlugin]
+	}
+	return
 }

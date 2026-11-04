@@ -6,8 +6,12 @@ import { openAiHint } from './setupWizardState.ts';
 import { Markdown, MentionHint } from './Markdown.tsx';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  api, useIssue, useMe, useMeta, useSprints, useUpdateIssue, type IssueDetail, type IssuePatch, type Meta,
+  api, useIssue, useMe, useMeta, useProjects, useSprints, useUpdateIssue, type IssueDetail, type IssuePatch, type Meta,
 } from './api.ts';
+import { waitReasonText } from './analysisWait.ts';
+import { analysisToast } from './analysisToast.ts';
+import { collapseImages, expandImages } from './paste.ts';
+import { useProjectKey } from './project.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu, isMenuOpen, Tooltip, type MenuSpec } from './menu.tsx';
 import { assigneeMenu, issueStatusIcon, labelMenu, priorityMenu, relationMenu, sprintLabel, sprintMenu, statusMenu, type PickTarget } from './pickers.tsx';
@@ -17,7 +21,7 @@ import { openNewIssue } from './NewIssue.tsx';
 import { copyText, toast } from './toast.ts';
 import { CLAIM_TTL_MIN, timeAgo, fullDate } from './time.ts';
 import { InlineCode } from './InlineCode.tsx';
-import { isTouchDevice, issuePrompt, simulateAgent, startOnPc, startWork } from './startWork.ts';
+import { isTouchDevice, issuePrompt, simulateAgent, startOnPc, startWork, useEditorName } from './startWork.ts';
 import { AnalysisView } from './AnalysisView.tsx';
 import { Attachments, useAttachments } from './ImagePreviews.tsx';
 import { ImageBlock } from './ImageBlock.tsx';
@@ -28,30 +32,50 @@ import { rememberIssue } from './SidebarExtras.tsx';
 import { ident } from './project.ts';
 import { t, tn } from './i18n.ts';
 
-export function MarkdownField({ value, onSave, placeholder, size }: {
-  value: string; onSave: (v: string) => void; placeholder: string; size?: 'sm' | 'md';
+/** Zmiana wartości, której nie wywołała ta karta (np. cudza edycja przez SSE): krótka poświata, żeby było widać, że coś się zmieniło. */
+function useRemoteFlash(value: string, own: React.MutableRefObject<string | null>, skip = false) {
+  const [on, setOn] = useState(false);
+  const prev = useRef(value);
+  useEffect(() => {
+    if (prev.current === value) return;
+    prev.current = value;
+    if (skip || own.current === value) return;
+    setOn(true);
+    const id = setTimeout(() => setOn(false), 1300);
+    return () => clearTimeout(id);
+  }, [value, own, skip]);
+  return on;
+}
+
+export function MarkdownField({ value, onSave, placeholder, size, flash }: {
+  value: string; onSave: (v: string) => void; placeholder: string; size?: 'sm' | 'md'; flash?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+  const [draft, setDraft] = useState(() => collapseImages(value).text);
+  // Obrazki w polu edycji to krótkie ![image 1]; pełny adres wraca przy zapisie.
+  const images = useRef<Record<string, string>>(collapseImages(value).map);
+  const own = useRef<string | null>(null);
+  const flashing = useRemoteFlash(value, own, editing || !flash);
   const ref = useRef<HTMLTextAreaElement>(null);
   // Hooki przed warunkowym return (inaczej klik w pole zmienia liczbę hooków i React się wywraca).
   const att = useAttachments();
   const mention = useMentionAutocomplete(ref, draft, setDraft);
-  useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
+  useEffect(() => { if (!editing) { const c = collapseImages(value); images.current = c.map; setDraft(c.text); } }, [value, editing]);
   useEffect(() => { if (editing) { const el = ref.current; el?.focus(); el?.setSelectionRange(el.value.length, el.value.length); } }, [editing]);
 
   if (!editing) {
     return (
-      <div className="editable" onClick={(e) => { if (!(e.target as HTMLElement).closest?.('a, .user-mention, .tag-mention')) setEditing(true); }}>
+      <div className={`editable ${flashing ? 'remote-flash' : ''}`} onClick={(e) => { if (!(e.target as HTMLElement).closest?.('a, .user-mention, .tag-mention')) setEditing(true); }}>
         <Markdown text={value} empty={placeholder} />
       </div>
     );
   }
   const save = () => {
     setEditing(false);
-    const next = att.urls.length ? att.withImages(draft) : draft;
+    const expanded = expandImages(draft, images.current);
+    const next = att.urls.length ? att.withImages(expanded) : expanded;
     att.clear();
-    if (next !== value) onSave(next);
+    if (next !== value) { own.current = next; onSave(next); }
   };
   const insert = (s: string) => {
     const el = ref.current!;
@@ -89,6 +113,8 @@ export function MarkdownField({ value, onSave, placeholder, size }: {
 
 function TitleField({ value, onSave }: { value: string; onSave: (v: string) => void }) {
   const [draft, setDraft] = useState(value);
+  const own = useRef<string | null>(null);
+  const flashing = useRemoteFlash(value, own);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => setDraft(value), [value]);
   useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } }, [draft]);
@@ -96,10 +122,10 @@ function TitleField({ value, onSave }: { value: string; onSave: (v: string) => v
     <textarea
       ref={ref}
       rows={1}
-      className="issue-title"
+      className={`issue-title ${flashing ? 'remote-flash' : ''}`}
       value={draft}
       onChange={(e) => setDraft(e.target.value.replace(/\n/g, ''))}
-      onBlur={() => { if (draft.trim() && draft !== value) onSave(draft); else setDraft(value); }}
+      onBlur={() => { if (draft.trim() && draft !== value) { own.current = draft; onSave(draft); } else setDraft(value); }}
       onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' || e.key === 'Escape') (e.target as HTMLTextAreaElement).blur(); }}
     />
   );
@@ -114,6 +140,10 @@ export function IssuePage({ number }: { number: number }) {
   const qc = useQueryClient();
   const propsRef = useRef<HTMLDivElement>(null);
   const [startOpen, setStartOpen] = useState(false);
+  const projects = useProjects().data;
+  const pkey = useProjectKey();
+  const editorName = useEditorName();
+  const canEditProject = !!me?.isAdmin || projects?.find((p) => p.key === pkey)?.role === 'admin';
   const issue = q.data;
   useEffect(() => { if (issue?.id) { void qc.invalidateQueries({ queryKey: ['issues'] }); rememberIssue(number); } }, [issue?.id, qc, number]);
 
@@ -162,20 +192,31 @@ export function IssuePage({ number }: { number: number }) {
   // Stare skrypty na PC: serwer i tak nie wyda im zlecenia, więc nie dajemy go złożyć (powód + skrót do aktualizacji obok).
   const outdated = !!me?.agentOutdated && local && !me?.demo;
   const outdatedReason = t('This PC has an old agent. Update it first (Settings › My AI).');
-  // Bez podłączonego AI link vscode:// albo nic nie otworzy, albo otworzy klienta bez dostępu do zgłoszenia: zamiast błędu
+  // Bez podłączonego AI link edytora albo nic nie otworzy, albo otworzy klienta bez dostępu do zgłoszenia: zamiast błędu
   // popover pod przyciskiem prowadzi do kreatora z celem tej funkcji.
   const ai = me?.aiStatus;
   const aiMissing = !!ai && !local && (!ai.client || !ai.agent);
   const demo = !!me?.demo;
-  const analyze = async (deep = false, anchor?: HTMLElement, anyway = false): Promise<void> => {
+  // Projekt bez repo: analiza nie ma czego czytać. Wyszarzone z powodem; admin projektu klika podpowiedź i trafia do ustawień.
+  const noRepo = !demo && !issue.projectHasRepo;
+  const noRepoTip = t('Set the repo in project settings');
+  const goRepoSettings = () => { if (canEditProject) navigate('/settings#project'); };
+  const analyze = async (deep = false, anchor?: HTMLElement): Promise<void> => {
     if (demo) { await simulateAgent(number, 'analyze'); return; }
-    // Kolejka zespołu: zlecenie weźmie komputer kogoś z zespołu, więc bez podpowiedzi. Inaczej podpowiedź z możliwością zlecenia mimo to.
-    if (aiMissing && anchor && !anyway && !issue.teamQueue) { openAiHint(anchor, 'analyze', 3, () => void analyze(deep, undefined, true)); return; }
+    if (noRepo) { toast(noRepoTip, 'warn'); return; }
+    // Kolejka zespołu: zlecenie weźmie komputer kogoś z zespołu, więc bez podpowiedzi. Inaczej (kolejka wyłączona, brak własnego agenta)
+    // nic nie podejmie zlecenia, więc zamiast zlecenia mimo to podpowiedź pokazuje powód.
+    if (aiMissing && anchor && !issue.teamQueue) { openAiHint(anchor, 'analyze', 3, undefined, waitReasonText('queue_off')); return; }
     // Zlecenie czeka w kolejce, agent bierze je sam.
-    await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep } });
+    try {
+      await api(`/api/issues/${ident(number)}/analyze`, { method: 'POST', body: { deep } });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 400 && e.message === 'no_repo') { toast(noRepoTip, 'warn'); void qc.invalidateQueries({ queryKey: ['issue', number] }); return; }
+      throw e;
+    }
     void qc.invalidateQueries({ queryKey: ['issue', number] });
-    if (local) toast(me?.agentOnline ? t('Queued. It runs on your PC in a moment.') : t('Queued. Your PC is offline, it runs when it is on.'));
-    else toast(t('AI analysis requested. A PC with the agent runs it.'));
+    if (local) analysisToast(number, me?.agentOnline ? t('Queued. It runs on your PC in a moment.') : t('Queued. Your PC is offline, it runs when it is on.'));
+    else analysisToast(number, t('AI analysis requested. A PC with the agent runs it.'));
   };
   // Stan zlecenia: czeka (jest online PC, który je weźmie) / czeka na PC (nikt nie słucha) / biegnie na PC (claim).
   // Utknięte liczymy od ostatniego sygnału zajętego agenta (claim jest odświeżany), nie od zlecenia: kolejka przy wyłączonym PC to nie awaria.
@@ -199,7 +240,7 @@ export function IssuePage({ number }: { number: number }) {
               <Icon.parent size={13} /> {ident(issue.parent.number)} {issue.parent.title}
             </a>
           )}
-          <TitleField value={issue.title} onSave={(title) => save({ title })} />
+          <TitleField key={issue.id} value={issue.title} onSave={(title) => save({ title })} />
           <div className="issue-actions">
             {!demo && local && isTouchDevice() ? (
               // Telefon (albo przeglądarka bez agenta): polecenie leci do agenta na moim komputerze. Wyłączone z powodem, nie ukryte.
@@ -210,7 +251,7 @@ export function IssuePage({ number }: { number: number }) {
                 </button>
               </Tooltip>
             ) : (
-              <button className="btn sm start-btn" data-tour="start-work" onClick={(e) => (demo ? setStartOpen(true) : local || ai?.client ? void startWork(number) : openAiHint(e.currentTarget, 'start', 3))} title={t('Opens Claude Code in VS Code with this issue, assigns you and moves it to In Progress')}>
+              <button className="btn sm start-btn" data-tour="start-work" onClick={(e) => (demo ? setStartOpen(true) : local || ai?.client ? void startWork(number) : openAiHint(e.currentTarget, 'start', 3))} title={t('Opens Claude Code in {editor} with this issue, assigns you and moves it to In Progress', { editor: editorName })}>
                 <Icon.play size={12} /> {t('Start work')}
               </button>
             )}
@@ -237,7 +278,7 @@ export function IssuePage({ number }: { number: number }) {
             {/* Opis z etykietą i ramką, żeby było widać, że to pole (i że to nie odpowiedź na pytanie). */}
             <div className="desc-field">
               <div className="desc-label">{t('Description')}</div>
-              <MarkdownField value={issue.description} onSave={(description) => save({ description })} placeholder={t('Add description… (click to edit, paste screenshots)')} />
+              <MarkdownField key={issue.id} flash value={issue.description} onSave={(description) => save({ description })} placeholder={t('Add description… (click to edit, paste screenshots)')} />
             </div>
           </div>
 
@@ -263,19 +304,19 @@ export function IssuePage({ number }: { number: number }) {
                   <span className={`pill ${failed || stalled || waitingForPc || noRepoPc ? 'stalled' : 'ai'}`}
                     title={failed ? t('The analysis failed on the PC: {error}. Analyze again or cancel.', { error: issue.analysisError || '?' })
                       : stalled ? t('No analysis after {min} minutes: the agent did not start or stopped. Analyze again or cancel.', { min: CLAIM_TTL_MIN })
-                      : waitingForPc ? t('No PC with the agent is online for this request. It runs when one is on.') : noRepoPc ? t('Waiting for a PC with this project\'s repo') : undefined}>
-                    <Icon.sparkle size={12} /> <span className="pill-text">{failed ? t('Failed') : stalled ? t('Stalled') : waitingForPc || noRepoPc ? t('Waiting for a PC')
+                      : waitingForPc || noRepoPc ? waitReasonText(issue.analysisWaitReason) ?? (waitingForPc ? t('No PC with the agent is online for this request. It runs when one is on.') : t('No PC has this project\'s repo')) : undefined}>
+                    <Icon.sparkle size={12} /> <span className="pill-text">{failed ? t('Failed') : stalled ? t('Stalled') : waitingForPc || noRepoPc ? t('Waiting for a PC with team queue on')
                       : claimedAt ? t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') }) : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(failed ? issue.analysisFailedAt! : claimedAt ?? issue.analysisRequestedAt)}</span></span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
                 </>}
                 {(!issue.analysisRequestedAt || stalled || failed) && <>
-                    <Tooltip text={outdated ? outdatedReason : local ? t('Runs on your PC, read-only') : t('Marks the issue for AI analysis')}>
-                      <button className="btn sm ai-btn" data-tour="analyze" disabled={outdated}
-                        onClick={(e) => { e.stopPropagation(); void analyze(false, e.currentTarget); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
+                    <Tooltip text={noRepo ? noRepoTip : outdated ? outdatedReason : local ? t('Runs on your PC, read-only') : t('Marks the issue for AI analysis')}>
+                      <button className="btn sm ai-btn" data-tour="analyze" disabled={outdated && !noRepo} aria-disabled={noRepo || undefined}
+                        onClick={(e) => { e.stopPropagation(); if (noRepo) { goRepoSettings(); return; } void analyze(false, e.currentTarget); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
                     </Tooltip>
                     {/* Deep jest zawsze widoczny; bez agenta (albo w demo) wyszarzony z powodem. */}
-                    <Tooltip text={demo ? t('Disabled in the demo') : outdated ? outdatedReason : !local ? t('Deep needs the agent on your PC') : t('Deeper analysis with a stronger model: slower and more expensive')}>
-                      <button className="btn sm ai-btn" disabled={demo || outdated || !local} onClick={(e) => { e.stopPropagation(); void analyze(true, e.currentTarget); }}>{t('Deep')}</button>
+                    <Tooltip text={demo ? t('Disabled in the demo') : noRepo ? noRepoTip : outdated ? outdatedReason : !local ? t('Deep needs the agent on your PC') : t('Deeper analysis with a stronger model: slower and more expensive')}>
+                      <button className="btn sm ai-btn" disabled={demo || (!noRepo && (outdated || !local))} aria-disabled={noRepo || undefined} onClick={(e) => { e.stopPropagation(); if (noRepo) { goRepoSettings(); return; } void analyze(true, e.currentTarget); }}>{t('Deep')}</button>
                     </Tooltip>
                 </>}
                   </span>}>
@@ -467,6 +508,7 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
     case 'field': return <>{t('edited')} {{ title: t('the title'), description: t('the description'), analysis: t('the AI analysis'), change_human: t('the HUMAN change notes'), change_ai: t('the AI change log') }[p.field] ?? p.field}</>;
     case 'analysis_requested': return <>{t('requested')} <b>{p.deep ? t('a deep AI analysis') : t('an AI analysis')}</b></>;
     case 'analysis_claimed': return <>{t('started the analysis on')} <b>{p.device}</b></>;
+    case 'analysis_failed': return <>{t('analysis failed')}{p.error ? <>: <span className="ev-error">{p.error}</span></> : ''}</>;
     case 'decision': return p.answer
       ? <>{t('decided')} „{p.question}”: <b>{p.answer}</b></>
       : <>{t('cleared the decision')} „{p.question}”</>;
@@ -494,6 +536,7 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
 function eventIcon(p: IssueDetail['activity'][number]['payload']) {
   if (p.kind === 'commit') return <Icon.commit size={14} />;
   if (p.kind === 'deploy') return <span style={{ color: p.env && !p.prod ? 'var(--progress-text)' : 'var(--success-text)' }}><Icon.rocket size={14} /></span>;
+  if (p.kind === 'analysis_failed') return <span style={{ color: 'var(--danger-text)' }}><Icon.sparkle size={14} /></span>;
   if (p.kind === 'analysis_requested' || p.kind === 'analysis_claimed') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
   if (p.kind === 'worklog') return <span style={{ color: 'var(--ai-text)' }}><Icon.cursor size={14} /></span>;
   return null;
@@ -504,6 +547,9 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
   const grow = useAutoGrow(body);
   const mention = useMentionAutocomplete(grow, body, setBody);
   const [showAll, setShowAll] = useState(false);
+  // Kolejność wpisów: domyślnie najnowsze na górze; wybór zapamiętany w przeglądarce.
+  const [newestFirst, setNewestFirst] = useState(() => { try { return localStorage.getItem('activityOrder') !== 'oldest'; } catch { return true; } });
+  const toggleOrder = () => setNewestFirst((n) => { try { localStorage.setItem('activityOrder', n ? 'oldest' : 'newest'); } catch { /* prywatne okno */ } return !n; });
   const [editing, setEditing] = useState<number | null>(null);
   const qc = useQueryClient();
   const refresh = () => void qc.invalidateQueries({ queryKey: ['issue', issue.number] });
@@ -513,7 +559,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
     // Pytanie widać w komentarzu, więc wpis "asked X: …" w historii tylko by je dublował.
     ...issue.activity.filter((e) => (e.payload.kind !== 'field' || showAll) && e.payload.kind !== 'question').map((e) => ({ at: e.createdAt, kind: 'event' as const, e })),
     ...issue.comments.filter((c) => !c.replyToId).map((c) => ({ at: c.createdAt, kind: 'comment' as const, c })),
-  ].sort((a, b) => a.at.localeCompare(b.at));
+  ].sort((a, b) => (newestFirst ? b.at.localeCompare(a.at) : a.at.localeCompare(b.at)));
   const hiddenEdits = issue.activity.filter((e) => e.payload.kind === 'field').length;
 
   const att = useAttachments();
@@ -525,12 +571,37 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
     refresh();
   };
 
+  const composer = (
+    <div className="composer">
+      <textarea
+        ref={grow}
+        placeholder={t('Leave a comment… (Enter to send, Alt+Enter new line)')}
+        value={body}
+        onChange={(e) => setBody(e.target.value)}
+        onPaste={att.onPaste}
+        onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; enterToSubmit(e, () => void send(), setBody); }}
+      />
+      <MentionHint text={body} />
+      {mention.popup}
+      <Attachments urls={att.urls} onRemove={att.remove} />
+      <div className="row">
+        <button className="btn sm primary" disabled={!body.trim() && !att.urls.length} onClick={() => void send()}><Icon.arrowUp size={13} /> {t('Comment')}</button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="activity" data-tour="activity">
       <h3 style={{ display: 'flex', alignItems: 'center' }}>
         {t('Activity')}
-        {hiddenEdits > 0 && <button className="hint" style={{ marginLeft: 'auto', fontWeight: 400 }} onClick={() => setShowAll((s) => !s)}>{showAll ? tn(hiddenEdits, 'Hide {n} edit', 'Hide {n} edits') : tn(hiddenEdits, 'Show {n} edit', 'Show {n} edits')}</button>}
+        <span className="activity-tools">
+          {hiddenEdits > 0 && <button className="hint" style={{ fontWeight: 400 }} onClick={() => setShowAll((s) => !s)}>{showAll ? tn(hiddenEdits, 'Hide {n} edit', 'Hide {n} edits') : tn(hiddenEdits, 'Show {n} edit', 'Show {n} edits')}</button>}
+          <Tooltip text={newestFirst ? t('Newest first') : t('Oldest first')}>
+            <button className="icon-btn" aria-label={newestFirst ? t('Newest first') : t('Oldest first')} onClick={toggleOrder}>{newestFirst ? <Icon.arrowUp size={14} /> : <Icon.arrowDown size={14} />}</button>
+          </Tooltip>
+        </span>
       </h3>
+      {newestFirst && composer}
       {entries.map((en) => {
         if (en.kind === 'event') {
           const actor = meta.users.find((u) => u.id === en.e.actorId);
@@ -578,22 +649,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
           </div>
         );
       })}
-      <div className="composer">
-        <textarea
-          ref={grow}
-          placeholder={t('Leave a comment… (Enter to send, Alt+Enter new line)')}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onPaste={att.onPaste}
-          onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; enterToSubmit(e, () => void send(), setBody); }}
-        />
-        <MentionHint text={body} />
-        {mention.popup}
-        <Attachments urls={att.urls} onRemove={att.remove} />
-        <div className="row">
-          <button className="btn sm primary" disabled={!body.trim() && !att.urls.length} onClick={() => void send()}><Icon.arrowUp size={13} /> {t('Comment')}</button>
-        </div>
-      </div>
+      {!newestFirst && composer}
     </div>
   );
 }
@@ -776,7 +832,7 @@ function DemoStartModal({ number, onClose }: { number: number; onClose: () => vo
           <button className="btn" disabled={!prompt.data} onClick={() => copyText(prompt.data ?? '', t('Copied'))}><Icon.copy size={13} /> {t('Copy')}</button>
           <span className="spacer" />
           <button className="btn" onClick={onClose}>{t('Cancel')}</button>
-          <Tooltip text={t('In production this opens Claude Code in VS Code with the prompt above.')}>
+          <Tooltip text={t('In production this opens Claude Code in {editor} with the prompt above.', { editor: useEditorName() })}>
             <button className="btn primary" disabled={busy} onClick={() => void run()}><Icon.play size={12} /> {t('Run the agent (replay)')}</button>
           </Tooltip>
         </div>

@@ -4,7 +4,7 @@ import { useMeta, useUpdateIssue, type IssuePatch, type Meta, type Status } from
 import { Icon } from './icons.tsx';
 import { enterToSubmit } from './keys.ts';
 import { ident } from './project.ts';
-import { openInClaude } from './startWork.ts';
+import { openInClaude, useEditorName } from './startWork.ts';
 import { t } from './i18n.ts';
 
 /**
@@ -39,6 +39,7 @@ export function DoneGuardHost() {
 function DoneGuardModal({ g }: { g: Guard }) {
   const meta = useMeta().data;
   const update = useUpdateIssue();
+  const editorName = useEditorName();
   const [human, setHuman] = useState('');
   const [ai, setAi] = useState('');
   const modalRef = useModal();
@@ -75,7 +76,7 @@ function DoneGuardModal({ g }: { g: Guard }) {
             <b>{t('No change notes.')}</b>
             <span className="hint">{t('HUMAN says what changed for people, AI describes the changes for the next agent. Usually written by Claude with close-ticket.')}</span>
             <button className="btn sm ai-btn" style={{ alignSelf: 'flex-start' }} onClick={() => { void openInClaude(g.number, 'close'); close(); }}
-              title={t('Opens Claude Code in VS Code with the close prompt; move it to Done once the notes are in')}>
+              title={t('Opens Claude Code in {editor} with the close prompt; move it to Done once the notes are in', { editor: editorName })}>
               <Icon.sparkle size={13} /> {t('Close in Claude')}
             </button>
             <label className="guard-field"><span className="badge human">HUMAN</span>

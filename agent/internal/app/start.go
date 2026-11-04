@@ -270,7 +270,7 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 				takeOnce(key, rq2.RequestedAt)
 			case dPending:
 				logf("%s: the claim names another requester, asking again", key)
-				ensurePrompt(key, rq2)
+				ensurePrompt(key, rq2, issueID)
 				requeue = true
 				return
 			default:
@@ -540,6 +540,7 @@ func cmdStart() {
 		}
 		listenForDump()
 		go ensureStartMenuLink(installedPath())
+		go func() { time.Sleep(20 * time.Second); migrateTrackerToExpo() }()
 		go updateLoop()
 		go cleanupOldExe()
 		go showUpdatedCard()
@@ -553,11 +554,16 @@ func pollLoop() {
 	delay := 2
 	errLogged := false
 	for {
+		select {
+		case <-pollWake: // "Pair again" or similar: start over with the fresh sign-in
+			delay, errLogged = 2, false
+		default:
+		}
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
 					setLastErr(hhmm() + " " + fmt.Sprint(r))
-					time.Sleep(time.Duration(delay) * time.Second)
+					sleepPoll(time.Duration(delay) * time.Second)
 				}
 			}()
 			err := pollOnce(&delay, &errLogged)
@@ -568,7 +574,7 @@ func pollLoop() {
 					logf("error: %s", err)
 					errLogged = true
 				}
-				time.Sleep(time.Duration(delay) * time.Second)
+				sleepPoll(time.Duration(delay) * time.Second)
 				if delay < 30 {
 					delay *= 2
 				} else {
@@ -649,6 +655,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 	syncTeamMode(a, cfg, res.TeamMode)
 	setOthersLimit(res.Limit)
 	go syncLang(a)
+	go pollOpenRequests(a) // "open in editor / terminal" requests from the web app
 	*delay, *errLogged = 2, false
 	var job *pollJob
 	pending := 0
@@ -659,7 +666,14 @@ func pollOnce(delay *int, errLogged *bool) error {
 				live[res.Jobs[i].Key] = true
 			}
 		}
-		if !busy && len(cards.SyncPrompts(live)) > 0 {
+		var gone []promptCard
+		if !busy {
+			gone = cards.SyncPrompts(live)
+		}
+		if len(gone) > 0 {
+			for _, g := range gone {
+				reportConsentPending(g.IssueID, false)
+			}
 			cardsChanged() // the job was taken by another computer or cancelled: its card closes
 		}
 		for i := range res.Jobs {
@@ -675,7 +689,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 				rq := newRequester(j.RequestedBy, j.RequestedAt)
 				d := consentDecision(a, j.Key, rq)
 				if d == dPending {
-					if ensurePrompt(j.Key, rq) {
+					if ensurePrompt(j.Key, rq, jobIssueID(j)) {
 						pending++
 					}
 					continue
@@ -684,7 +698,8 @@ func pollOnce(delay *int, errLogged *bool) error {
 					skipJob(j)
 					continue
 				}
-				if _, ok := cards.RemovePrompt(j.Key); ok {
+				if p, ok := cards.RemovePrompt(j.Key); ok {
+					reportConsentPending(p.IssueID, false)
 					cardsChanged()
 				}
 			}

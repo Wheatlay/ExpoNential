@@ -12,7 +12,7 @@ import (
 )
 
 // The installer does every level up to the chosen goal:
-//   1 issue access (MCP server "tracker" in Claude Code / Codex), 2 work trace (Claude Code plugin), 3 background agent.
+//   1 issue access (MCP server "expo" in Claude Code / Codex), 2 work trace (Claude Code plugin), 3 background agent.
 
 func ltx(p, e string) string {
 	if agentLang() == "pl" {
@@ -33,28 +33,50 @@ type setupOutcome struct {
 
 // ---- pure helpers (unit tested) ----
 
+// The MCP server and the plugin (and its marketplace) used to be called "tracker"; they are "expo" now.
+const (
+	mcpName      = "expo"
+	legacyName   = "tracker"
+	pluginRef    = "expo@expo"
+	legacyPlugin = "tracker@tracker"
+)
+
 func claudeMcpRemoveArgs() []string {
-	return []string{"mcp", "remove", "tracker", "--scope", "user"}
+	return []string{"mcp", "remove", mcpName, "--scope", "user"}
+}
+
+func claudeLegacyMcpRemoveArgs() []string {
+	return []string{"mcp", "remove", legacyName, "--scope", "user"}
+}
+
+// claudeLegacyPluginSteps remove the old "tracker" plugin and marketplace.
+func claudeLegacyPluginSteps() [][]string {
+	return [][]string{
+		{"plugin", "uninstall", legacyPlugin},
+		{"plugin", "marketplace", "remove", legacyName},
+	}
 }
 
 func claudeMcpAddArgs(base, token string) []string {
-	return []string{"mcp", "add", "--transport", "http", "--scope", "user", "tracker", base + "/mcp", "--header", "Authorization: Bearer " + token}
+	return []string{"mcp", "add", "--transport", "http", "--scope", "user", mcpName, base + "/mcp", "--header", "Authorization: Bearer " + token}
 }
 
 // claudePluginSteps are run in order for every config dir. The first (marketplace remove) and the update steps may
 // fail harmlessly; an error of marketplace add / install is reported (an "already ..." answer is normal).
 func claudePluginSteps(base string) [][]string {
 	return [][]string{
-		{"plugin", "marketplace", "remove", "tracker"},
+		{"plugin", "marketplace", "remove", mcpName},
 		{"plugin", "marketplace", "add", base + "/agent/marketplace.json"},
-		{"plugin", "marketplace", "update", "tracker"},
-		{"plugin", "install", "tracker@tracker"},
-		{"plugin", "update", "tracker@tracker"},
+		{"plugin", "marketplace", "update", mcpName},
+		{"plugin", "install", pluginRef},
+		{"plugin", "update", pluginRef},
 	}
 }
 
-// mcpConfigHas: .claude.json has mcpServers.tracker pointing at base/mcp.
-func mcpConfigHas(data []byte, base string) bool {
+// mcpConfigHas: .claude.json has mcpServers.expo pointing at base/mcp.
+func mcpConfigHas(data []byte, base string) bool { return mcpConfigHasName(data, base, mcpName) }
+
+func mcpConfigHasName(data []byte, base, name string) bool {
 	var c struct {
 		MCP map[string]struct {
 			URL string `json:"url"`
@@ -63,11 +85,11 @@ func mcpConfigHas(data []byte, base string) bool {
 	if json.Unmarshal(data, &c) != nil {
 		return false
 	}
-	s, ok := c.MCP["tracker"]
+	s, ok := c.MCP[name]
 	return ok && strings.TrimRight(s.URL, "/") == base+"/mcp"
 }
 
-func pluginListHas(out string) bool { return strings.Contains(out, "tracker@tracker") }
+func pluginListHas(out string) bool { return strings.Contains(out, pluginRef) }
 
 func stripEnv(env []string, name string) []string {
 	var out []string
@@ -186,11 +208,12 @@ func setupAccess(engine, base string) error {
 		return errors.New(ltx("nie znaleziono ", "not found: ") + map[bool]string{true: "Codex", false: "Claude Code"}[engine == "codex"])
 	}
 	if engine == "codex" {
-		out, err := runCmd(bin, []string{"mcp", "add", "tracker", "--url", base + "/mcp"}, "-", 60*time.Second, "")
+		_, _ = runCmd(bin, []string{"mcp", "remove", legacyName}, "-", 60*time.Second, "") // the old name, best effort
+		out, err := runCmd(bin, []string{"mcp", "add", mcpName, "--url", base + "/mcp"}, "-", 60*time.Second, "")
 		if err != nil && !strings.Contains(strings.ToLower(out), "already") {
 			return errors.New(shortOut(out, err))
 		}
-		out, err = runCmd(bin, []string{"mcp", "login", "tracker"}, "-", 3*time.Minute, "")
+		out, err = runCmd(bin, []string{"mcp", "login", mcpName}, "-", 3*time.Minute, "")
 		if err != nil {
 			return errors.New(shortOut(out, err))
 		}
@@ -206,6 +229,7 @@ func setupAccess(engine, base string) error {
 	}
 	var bad []string
 	for _, d := range claudeConfigDirs() {
+		_, _ = runCmd(bin, claudeLegacyMcpRemoveArgs(), d, 60*time.Second, tok)
 		_, _ = runCmd(bin, claudeMcpRemoveArgs(), d, 60*time.Second, tok)
 		out, err := runCmd(bin, claudeMcpAddArgs(base, tok), d, 60*time.Second, tok)
 		if mcpConfigHas(readFile(configFile(d)), base) {
@@ -227,6 +251,9 @@ func setupTrace(base string) error {
 	var bad []string
 	for _, d := range claudeConfigDirs() {
 		last := ""
+		for _, args := range claudeLegacyPluginSteps() { // best effort: the old "tracker" plugin goes away first
+			_, _ = runCmd(bin, args, d, 90*time.Second, "")
+		}
 		for _, args := range claudePluginSteps(base) {
 			out, err := runCmd(bin, args, d, 90*time.Second, "")
 			if err != nil && !strings.Contains(strings.ToLower(out), "already") {
@@ -371,4 +398,43 @@ func runSetup(ctx *installCtx, autostart bool, ev setupEvent) (out setupOutcome)
 		})
 	}
 	return out
+}
+
+// migrateTrackerToExpo runs at agent start (and so after every self-update): when the old "tracker" MCP server or
+// "tracker@tracker" plugin is registered in a Claude Code account, it is removed and "expo" is installed in its place.
+// Codex is left alone (its login is interactive); reinstall from Settings > My AI there.
+func migrateTrackerToExpo() {
+	defer func() {
+		if r := recover(); r != nil {
+			logf("expo migration: %v", r)
+		}
+	}()
+	cfg := loadConfig()
+	base := strings.TrimRight(cfg.URL, "/")
+	if base == "" || cfg.Engine == "codex" {
+		return
+	}
+	var needMCP, needPlugin bool
+	for _, d := range claudeConfigDirs() {
+		pd := pluginDir(d)
+		m, p := legacyClaudeSetup(readFile(configFile(d)), readFile(filepath.Join(pd, "plugins", "installed_plugins.json")))
+		needMCP, needPlugin = needMCP || m, needPlugin || p
+	}
+	if !needMCP && !needPlugin {
+		return
+	}
+	logf("migrating the Claude Code registration from \"tracker\" to \"expo\" (mcp %v, plugin %v)", needMCP, needPlugin)
+	if needMCP {
+		if err := setupAccess("claude", base); err != nil { // removes "tracker", adds "expo"
+			logf("expo migration (mcp): %s", err)
+		}
+	}
+	if needPlugin {
+		if err := setupTrace(base); err != nil { // removes tracker@tracker, installs expo@expo
+			logf("expo migration (plugin): %s", err)
+		}
+	}
+	setupCache.Lock()
+	setupCache.json = ""
+	setupCache.Unlock()
 }

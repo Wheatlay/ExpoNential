@@ -1,11 +1,11 @@
-import { api, type IssuePatch, type IssueRow, type Meta, type RelationKind, type Sprint, type Status } from './api.ts';
+import { api, queryClient, type IssuePatch, type Label, type IssueRow, type Meta, type RelationKind, type Sprint, type Status } from './api.ts';
 import { copyText, toast } from './toast.ts';
 import { openAsk } from './AskModal.tsx';
 import { guardDone } from './DoneGuard.tsx';
 import { isNeedInfo } from '../server/rules.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { type MenuItem, type MenuSpec } from './menu.tsx';
-import { ident } from './project.ts';
+import { getProjectKey, ident } from './project.ts';
 import { locale, t } from './i18n.ts';
 
 /** Minimum, które pickery muszą wiedzieć o zadaniu. */
@@ -84,6 +84,16 @@ export function labelMenu(meta: Meta, tg: PickTarget, update: Update): MenuSpec 
   const build = (current: number[]): MenuSpec => ({
     searchable: true,
     placeholder: t('Change or add labels…'),
+    // Wpisana nazwa bez dokładnego trafienia: można utworzyć etykietę i od razu dodać ją do zgłoszenia.
+    dynamic: (query) => !query || meta.labels.some((l) => l.name.toLowerCase() === query.toLowerCase()) ? [] : [{
+      key: 'create-label',
+      label: t('Create label "{name}"', { name: query }),
+      icon: <Icon.plus size={14} />,
+      onSelect: () => {
+        void api<Label>('/api/labels', { method: 'POST', body: { projectKey: getProjectKey(), name: query } })
+          .then(async (label) => { await queryClient.invalidateQueries({ queryKey: ['meta'] }); update({ labelIds: [...current, label.id] }); });
+      },
+    }],
     items: meta.labels.map((l) => ({
       key: `l${l.id}`,
       label: l.name,

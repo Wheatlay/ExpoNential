@@ -317,9 +317,13 @@ describe('e-mail and password', () => {
   });
   it('pre-added e-mail account sets its password on the first login, then needs it', async () => {
     await app.inject({ method: 'POST', url: '/api/admin/users', headers: await bearer(owner.id), payload: { login: 'first.login@example.com' } });
+    const check = async (email: string) => (await app.inject({ method: 'POST', url: '/auth/password/check', payload: { email } })).json().setPassword;
+    expect(await check('First.Login@example.com')).toBe(true);
+    expect(await check('missing@example.com')).toBe(false);
     const login = (password: string) => app.inject({ method: 'POST', url: '/auth/password', payload: { email: 'First.Login@example.com', password } });
     expect((await login('short')).statusCode).toBe(422);
     expect((await login('first-password-123')).statusCode).toBe(200);
+    expect(await check('first.login@example.com')).toBe(false);
     expect((await login('other-password-456')).statusCode).toBe(401);
     expect((await login('first-password-123')).statusCode).toBe(200);
   });

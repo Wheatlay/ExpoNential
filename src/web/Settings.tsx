@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { TimeInput } from './DateTime.tsx';
 import { askConfirm } from './Confirm.tsx';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, useMe, useMeta, useProjects, useSprints, type User } from './api.ts';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, useMe, useMeta, useProjects, useSprints, type Editor, type User } from './api.ts';
+import { EDITOR_NAMES } from './startWork.ts';
 import { useProjectKey } from './project.ts';
 import { ProjectBadge } from './ProjectSwitcher.tsx';
 import { NotificationSettings } from './Notifications.tsx';
@@ -25,7 +26,7 @@ import { uploadImageFile } from './paste.ts';
  * Ty (wygląd, powiadomienia, Claude Code na tym komputerze), bieżący projekt, workspace (admin).
  * Widać jedną sekcję naraz; wybór w adresie (#sekcja), więc link "#project" dalej działa.
  */
-type Section = { id: string; name: string; render: () => ReactNode; dot?: boolean };
+type Section = { id: string; name: string; render: () => ReactNode; dot?: boolean; /** Powód, dla którego wpis w menu jest wyszarzony (nie ma tam nic do zmiany). */ locked?: string };
 
 const PATH_ALIAS: Record<string, string> = { ai: 'claude' };
 
@@ -44,6 +45,8 @@ function useHash() {
 export function Settings() {
   const me = useMe().data;
   const p = useProjectDetail().data;
+  // Nie-admin projektu nic nie zmieni w ustawieniach projektu poza tagami (dołączanie, tworzenie): reszta wpisów wyszarzona z powodem.
+  const lockedReason = p && !p.canEdit ? t('Only project admins can change this') : undefined;
   const groups: { name: ReactNode; items: Section[] }[] = [
     { name: t('You'), items: [
       { id: 'profile', name: t('Profile'), render: () => <ProfileSettings /> },
@@ -53,12 +56,12 @@ export function Settings() {
       { id: 'password', name: t('Password'), render: () => <PasswordSettings /> },
     ] },
     { name: p ? <span className="settings-nav-project"><ProjectBadge project={p} size={14} /> {p.name}</span> : t('Project'), items: [
-      { id: 'project', name: t('General'), render: () => <ProjectGeneral /> },
-      { id: 'people', name: t('People'), render: () => <ProjectPeople /> },
+      { id: 'project', name: t('General'), render: () => <ProjectGeneral />, locked: lockedReason },
+      { id: 'people', name: t('People'), render: () => <ProjectPeople />, locked: lockedReason },
       { id: 'tags', name: t('Tags'), render: () => <ProjectTags /> },
-      { id: 'labels', name: t('Labels and statuses'), render: () => <ProjectLabelsStatuses /> },
-      { id: 'integrations', name: t('Integrations'), render: () => <ProjectIntegrations /> },
-      { id: 'prompts', name: t('AI agent'), render: () => <ProjectPrompts /> },
+      { id: 'labels', name: t('Labels and statuses'), render: () => <ProjectLabelsStatuses />, locked: lockedReason },
+      { id: 'integrations', name: t('Integrations'), render: () => <ProjectIntegrations />, locked: lockedReason },
+      { id: 'prompts', name: t('AI agent'), render: () => <ProjectPrompts />, locked: lockedReason },
     ] },
     ...(me?.isAdmin ? [{ name: t('Workspace'), items: [{ id: 'accounts', name: t('Accounts'), render: () => <Accounts /> }] }] : []),
   ];
@@ -75,13 +78,16 @@ export function Settings() {
           {!query.trim() && groups.map((g, i) => (
             <div key={i}>
               <div className="nav-section">{g.name}</div>
-              {g.items.map((s) => (
-                <a key={s.id} href={`#${s.id}`} className={`nav-item${s === current ? ' active' : ''}`}
-                  onClick={(e) => { e.preventDefault(); history.replaceState(null, '', `#${s.id}`); dispatchEvent(new HashChangeEvent('hashchange')); }}>
-                  {s.name}
-                  {s.dot && <span className="nav-dot" role="img" aria-label={t('Needs attention')} />}
-                </a>
-              ))}
+              {g.items.map((s) => {
+                const link = (
+                  <a key={s.id} href={`#${s.id}`} className={`nav-item${s === current ? ' active' : ''}${s.locked ? ' locked' : ''}`} aria-disabled={s.locked ? 'true' : undefined}
+                    onClick={(e) => { e.preventDefault(); if (s.locked) return; history.replaceState(null, '', `#${s.id}`); dispatchEvent(new HashChangeEvent('hashchange')); }}>
+                    {s.name}
+                    {s.dot && <span className="nav-dot" role="img" aria-label={t('Needs attention')} />}
+                  </a>
+                );
+                return s.locked ? <div key={s.id}><Tooltip text={s.locked}>{link}</Tooltip></div> : link;
+              })}
             </div>
           ))}
         </nav>
@@ -190,7 +196,9 @@ const SEARCH: SearchEntry[] = [
   { label: t('Browser notifications'), to: 'notifications', target: 'notif-push', keywords: ['push', 'powiadomienia', 'notifications', 'przegladarka'] },
   { label: 'Discord', to: 'notifications', target: 'notif-discord', keywords: ['channel', 'kanal', 'powiadomienia', 'notifications'] },
   { label: t('Only mentions and questions to me'), to: 'notifications', target: 'notif-important', keywords: ['mute', 'quiet', 'wycisz', 'wzmianki', 'mentions', 'pytania', 'questions', 'powiadomienia'] },
+  { label: t('Keep the analysis toast until it is done'), to: 'notifications', target: 'notif-analysis', keywords: ['toast', 'analiza', 'analysis', 'sticky', 'powiadomienia'] },
   // Ty › AI
+  { label: t('Editor'), to: 'claude', target: 'editor', keywords: ['vscode', 'vs code', 'cursor', 'windsurf', 'terminal', 'edytor', 'start work'] },
   { label: t('Connect AI'), to: 'claude', target: 'claude-connect', keywords: ['claude code', 'claude', 'codex', 'mcp', 'wizard', 'ai', 'polacz'] },
   { label: t('Your PCs'), to: 'claude', target: 'your-computers', keywords: ['agent', 'pc', 'komputer', 'computer', 'runner'] },
   { label: t('API keys'), to: 'claude', target: 'tokens', keywords: ['api', 'key', 'klucz', 'token', 'tokens'] },
@@ -413,6 +421,15 @@ function ClaudeConnect() {
   const anyClient = (grants.data?.length ?? 0) + (tokens.data?.length ?? 0) > 0;
   return (
     <>
+      <div className="s-card" id="editor">
+        <div className="s-row">
+          <span className="grow">{t('Editor')}</span>
+          <select className="input" value={me?.editor ?? 'vscode'} aria-label={t('Editor')}
+            onChange={(e) => void api('/api/me', { method: 'PUT', body: { editor: e.target.value as Editor } }).then(() => { toast(t('Saved')); void qc.invalidateQueries({ queryKey: ['me'] }); })}>
+            {(Object.keys(EDITOR_NAMES) as Editor[]).map((k) => <option key={k} value={k}>{EDITOR_NAMES[k]}</option>)}
+          </select>
+        </div>
+      </div>
       <div className="s-card" id="claude-connect">
         <div className="s-row s-row-head">
           <b className="grow">{t('AI clients')}</b>
@@ -463,7 +480,7 @@ function ClaudeConnect() {
                   {a.legacy && <button className="btn sm" onClick={() => openSetupWizard(3)}>{t('Switch to the new agent')}</button>}
                   {a.limitReached24h && <span className="pill stalled">{t('Limit reached')}</span>}
                   {a.setup && a.setup.claude.some((c) => !c.mcp || !c.plugin) && (
-                    <Tooltip text={[t('Run the agent installer again to fix it.'), ...a.setup.claude.filter((c) => !c.mcp || !c.plugin).map((c) => `${c.name}: ${[!c.mcp && t('no tracker'), !c.plugin && t('no work trace')].filter(Boolean).join(', ')}`)].join(' · ')}>
+                    <Tooltip text={[t('Run the agent installer again to fix it.'), ...a.setup.claude.filter((c) => !c.mcp || !c.plugin).map((c) => `${c.name}: ${[!c.mcp && t('no expo'), !c.plugin && t('no work trace')].filter(Boolean).join(', ')}`)].join(' · ')}>
                       <span className="pill stalled" tabIndex={0}>{t('Claude Code: incomplete setup')}</span>
                     </Tooltip>
                   )}
@@ -992,17 +1009,18 @@ function Accounts() {
   const me = useMe().data;
   const demo = !!me?.demo;
   const qc = useQueryClient();
+  // Projekty i role osób: z członków każdego projektu (konto samo nie niesie ról projektowych).
+  const projectList = useProjects().data ?? [];
+  const details = useQueries({ queries: projectList.map((pr) => ({ queryKey: ['project', pr.key], queryFn: () => api<ProjectDetail>(`/api/projects/${pr.key}`) })) });
+  const memberships = new Map<number, { key: string; name: string; role: 'admin' | 'member' }[]>();
+  for (const d of details) for (const m of d.data?.members ?? []) memberships.set(m.id, [...(memberships.get(m.id) ?? []), { key: d.data!.key, name: d.data!.name, role: m.role }]);
   const accounts = useQuery({ queryKey: ['admin-users'], queryFn: () => api<(User & { hasGithub: boolean; hasGoogle: boolean; hasPassword: boolean })[]>('/api/admin/users') });
-  const [login, setLogin] = useState('');
+  // Bez dodawania kont tutaj: nowe osoby dodaje projekt (People → Add albo link zaproszenia), żeby konto nie było bez projektu.
   const refresh = () => { void qc.invalidateQueries({ queryKey: ['admin-users'] }); void qc.invalidateQueries({ queryKey: ['meta'] }); void qc.invalidateQueries({ queryKey: ['project'] }); };
   const saveUser = (body: object) => api('/api/admin/users', { method: 'POST', body }).then(refresh);
 
   return (
     <div id="accounts-card" className="s-card">
-      <div className="s-row s-row-head">
-        <Tooltip text={demo ? t('Disabled in the demo') : null}><input className="input grow" disabled={demo} placeholder={t('GitHub login or e-mail to allow')} value={login} onChange={(e) => setLogin(e.target.value)} /></Tooltip>
-        <Tooltip text={demo ? t('Disabled in the demo') : null}><button className="btn" disabled={demo || !login.trim()} onClick={() => void saveUser({ login: login.trim() }).then(() => setLogin(''))}><Icon.plus size={13} /> {t('Allow')}</button></Tooltip>
-      </div>
       {accounts.data?.map((u) => (
         <div key={u.id} className="s-row" style={u.active ? undefined : { opacity: 0.5 }}>
           <PersonLink userId={u.id}><Avatar user={u} size={22} /></PersonLink>
@@ -1010,6 +1028,10 @@ function Accounts() {
             <div className="s-meta">
               {[u.hasGithub && 'GitHub', u.hasGoogle && 'Google', u.hasPassword && t('Password')].filter(Boolean).map((m) => <span key={m as string} className="pill ok">{m}</span>)}
               {!u.hasGithub && !u.hasGoogle && !u.hasPassword && <span className="pill waiting">{t('Not logged in yet')}</span>}
+            </div>
+            <div className="s-meta">
+              {(memberships.get(u.id) ?? []).map((m) => <span key={m.key} className={`pill${m.role === 'admin' ? ' role-admin' : ''}`} title={m.name}>{m.key} · {m.role === 'admin' ? t('Admin') : t('Member')}</span>)}
+              {details.every((d) => d.data) && !memberships.has(u.id) && <span className="hint">{t('No projects')}</span>}
             </div>
           </span>
           {/* Login GitHub jest edytowalny, żeby poprawić mapowanie z importu bez dublowania osoby. */}
