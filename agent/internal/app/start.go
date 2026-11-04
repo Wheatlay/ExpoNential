@@ -532,6 +532,8 @@ func cmdStart() {
 	updateConfig(func(c *Config) {}) // rewrites config.json so a plain-text token from an older version gets encrypted
 	go sweepWebviewTemp()
 	runWithTray(func() {
+		listenForOpen()
+		go ensureStartMenuLink(installedPath())
 		go updateLoop()
 		go cleanupOldExe()
 		go showUpdatedCard()

@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.7] - 04.11.2026
+
+- "Exponential agent" in the Start menu: starts the agent if it is not running and opens its window (also added to existing installs at start; removed on uninstall).
+
 ## Agent [0.4.6] - 04.11.2026
 
 - The agent window is the one place for settings; the right-click tray menu keeps only shortcuts (Settings, Open Exponential, Mute for 24 h, Quit).

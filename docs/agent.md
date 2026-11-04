@@ -16,6 +16,7 @@ Three optional layers. Install only what you need.
 Installed by double-clicking the file downloaded from Settings > AI (it carries the server address and a one-time pairing code).
 - Program: `%LOCALAPPDATA%\Programs\Exponential\exponential-agent.exe`
 - Data folder `%LOCALAPPDATA%\exponential-agent` (fallback `~/.local/share/exponential-agent`): `config.json` (URL, tokens, device id, engine, repo map), `log.txt`, `plugin-<version>/` (bundled Claude plugin), `toast-icon.png`, `repos/` (clones made by the agent). Codex runs use temporary worktrees there.
+- Start Menu shortcut `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Exponential agent.lnk` (runs `exponential-agent open`: starts the agent if it is not running and opens its window; created on install and at agent start if missing; uninstall removes it)
 - Registry (current user only):
   - `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\ExponentialAgent` (Apps & features entry)
   - `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ExponentialAgent` (starts with Windows; not written when unchecked in the installer)
@@ -44,7 +45,7 @@ Details: [agent/README.md](../agent/README.md).
 | MCP (Claude Code) | `claude mcp remove tracker` |
 | MCP (Codex) | `codex mcp remove tracker` |
 | Plugin | `claude plugin uninstall tracker@tracker` |
-| Agent | Windows Settings > Apps > Exponential agent > Uninstall (or `exponential-agent uninstall --yes`); also removes this computer and its sign-in from the server |
+| Agent | Windows Settings > Apps > Exponential agent > Uninstall (or `exponential-agent uninstall --yes`); also removes the Start Menu shortcut, this computer and its sign-in from the server |
 | Server-side access | Settings > My AI > AI clients: Revoke |
 
 ## Legacy PowerShell installer

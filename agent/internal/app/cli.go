@@ -120,6 +120,8 @@ func Main(args []string) {
 		} else {
 			cmdStart()
 		}
+	case "open":
+		err = cmdOpen()
 	case "status":
 		status()
 	case "engine":

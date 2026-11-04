@@ -154,6 +154,7 @@ func registerApp(target string) error {
 	_ = os.Remove(filepath.Join(dataDir(), "start-hidden.vbs"))
 	dir := filepath.Dir(target)
 	userPathEdit(func(p string) string { return pathWith(p, dir) }) // so `exponential-agent hook ...` resolves
+	ensureStartMenuLink(target)
 	return autostartOn(target)
 }
 
@@ -228,6 +229,7 @@ func uninstallAll() (bool, error) {
 	target := installedPath()
 	forgot := stopAndForget(target) // stop first: a running agent would re-create the device with its next poll
 	autostartOff()
+	removeStartMenuLink()
 	userPathEdit(func(p string) string { return pathWithout(p, filepath.Dir(target)) })
 	_ = registry.DeleteKey(registry.CURRENT_USER, uninstallKey)
 	_ = registry.DeleteKey(registry.CURRENT_USER, `Software\Classes\AppUserModelId\Exponential agent`)
