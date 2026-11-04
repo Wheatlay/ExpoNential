@@ -42,6 +42,7 @@ type settingsState struct {
 	UpdateTo     string            `json:"updateTo"`
 	TeamMode     string            `json:"teamMode"`
 	Notify       bool              `json:"notify"`
+	AutoUpdate   bool              `json:"autoUpdate"`
 	Autostart    bool              `json:"autostart"`
 	Muted        bool              `json:"muted"`
 	MuteLabel    string            `json:"muteLabel"`
@@ -52,7 +53,7 @@ func settingsLabels(lang string) map[string]string {
 	if lang == "pl" {
 		return map[string]string{"team": "Zlecenia zespołu", "ask": "Pytaj", "auto": "Bez pytania", "off": "Nie biorę",
 			"tipAsk": "Pytaj o zgodę przed analizą cudzego zlecenia", "tipAuto": "Uruchamiaj cudze zlecenia bez pytania", "tipOff": "Nie biorę cudzych zleceń",
-			"notify": "Powiadomienia o analizach dla innych", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
+			"notify": "Powiadomienia o analizach dla innych", "autoUpdate": "Aktualizuj automatycznie", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
 			"sys": "Systemowy", "dark": "Ciemny", "light": "Jasny", "open": "Otwórz Exponential", "ai": "Ustawienia AI", "uninstall": "Odinstaluj…",
 			"version": "agent %V", "update": "Zaktualizuj do %V",
 			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Analizy", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
@@ -63,7 +64,7 @@ func settingsLabels(lang string) map[string]string {
 	}
 	return map[string]string{"team": "Team jobs", "ask": "Ask", "auto": "Don't ask", "off": "Don't take",
 		"tipAsk": "Ask before running someone else's analysis", "tipAuto": "Run others' analyses without asking", "tipOff": "Never take others' analyses",
-		"notify": "Notifications for analyses for others", "autostart": "Start with Windows", "theme": "Theme",
+		"notify": "Notifications for analyses for others", "autoUpdate": "Update automatically", "autostart": "Start with Windows", "theme": "Theme",
 		"sys": "System", "dark": "Dark", "light": "Light", "open": "Open Exponential", "ai": "AI settings", "uninstall": "Uninstall…",
 		"version": "agent %V", "update": "Update to %V",
 		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Analyses", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
@@ -89,7 +90,7 @@ func buildSettingsState() settingsState {
 		Theme: currentTheme(), ThemeSetting: ts, L: settingsLabels(lang),
 		Who:   strings.TrimSpace(cfg.UserName + " · " + hostOf(cfg.URL)),
 		State: text, Kind: kind, Version: Version, UpdateTo: upd,
-		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
+		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), AutoUpdate: autoUpdateOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
 		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted), Runs: loadRuns(),
 	}
 }
@@ -184,6 +185,7 @@ func openSettings() {
 		_ = w.Bind("getState", func() settingsState { return buildSettingsState() })
 		_ = w.Bind("setTeamMode", func(m string) { setTeamMode(m) })
 		_ = w.Bind("setNotify", func(on bool) { setNotifyOthers(on) })
+		_ = w.Bind("setAutoUpdate", func(on bool) { setAutoUpdate(on) })
 		_ = w.Bind("setAutostart", func(on bool) { setAutostart(on) })
 		_ = w.Bind("toggleMute", func() { toggleMute() })
 		_ = w.Bind("setTheme", func(t string) { setTheme(t) })

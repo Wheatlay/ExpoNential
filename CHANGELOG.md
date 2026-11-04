@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.5] - 04.11.2026
+
+- Updates install by themselves by default (after a running analysis finishes); "Update automatically" in the agent window turns it off, then the update is only offered. The agent checks for new versions every 6 h.
+
 ## Server [1.3.11] - 04.11.2026
 
 - Settings › My AI: one "AI clients" list (sign-ins and API keys together), "Your PCs" always shown (with "Connect this PC" when empty); each PC row shows online state, version and update status without overlapping; team settings are grayed out with the reason while the PC is offline or outdated.

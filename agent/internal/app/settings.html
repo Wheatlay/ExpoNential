@@ -148,6 +148,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     return '<div class="sec"><span class="lbl">' + esc(L.team) + '</span>' +
       seg("team", [["ask", L.ask, "accent", L.tipAsk], ["auto", L.auto, "success", L.tipAuto], ["off", L.off, "neutral", L.tipOff]], s.teamMode) + '</div>' +
       '<div class="sec"><div class="row' + (s.notify ? " on" : "") + '" id="notify" role="switch" tabindex="0" aria-checked="' + s.notify + '"><span>' + esc(L.notify) + '</span><i class="sw"></i></div>' +
+      '<div class="row' + (s.autoUpdate ? " on" : "") + '" id="autoupdate" role="switch" tabindex="0" aria-checked="' + s.autoUpdate + '"><span>' + esc(L.autoUpdate) + '</span><i class="sw"></i></div>' +
       '<div class="row' + (s.autostart ? " on" : "") + '" id="autostart" role="switch" tabindex="0" aria-checked="' + s.autostart + '"><span>' + esc(L.autostart) + '</span><i class="sw"></i></div></div>' +
       '<button class="btn mute" id="mute">' + esc(s.muteLabel) + '</button>' +
       '<div class="sec"><span class="lbl">' + esc(L.theme) + '</span>' +
@@ -158,7 +159,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   }
   function bindGeneral() {
     function toggle(id, f) { var el = $(id); el.onclick = call(function () { f(!el.classList.contains("on")); }); el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } }; }
-    toggle("notify", window.setNotify); toggle("autostart", window.setAutostart);
+    toggle("notify", window.setNotify); toggle("autoupdate", window.setAutoUpdate); toggle("autostart", window.setAutostart);
     $("mute").onclick = call(window.toggleMute);
     $("open").onclick = call(window.openApp); $("ai").onclick = call(window.openAI); $("uninstall").onclick = call(window.uninstall);
     $("showlog").onclick = function () { view = "log"; logText = null; window.getLog().then(function (t) { logText = t; drawPanel(true); }); drawPanel(); };
@@ -254,7 +255,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     if (!S) return;
     var L = S.L, html, sig;
     if (tab === "general" && view === "log") { sig = JSON.stringify(["log", logText, copied, L.back]); html = logHtml(L); }
-    else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.teamMode, S.notify, S.autostart, S.muteLabel, S.themeSetting, copied]); html = generalHtml(S); }
+    else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.teamMode, S.notify, S.autoUpdate, S.autostart, S.muteLabel, S.themeSetting, copied]); html = generalHtml(S); }
     else if (tab === "repos") { sig = JSON.stringify(["r", repos, repoMsg, L.pick]); html = reposHtml(L); }
     else { sig = JSON.stringify(["u", S.runs, L.noRuns]); html = runsHtml(S); }
     if (sig === sigs.panel && !scrollLog) return;

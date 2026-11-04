@@ -2,8 +2,8 @@ package app
 
 import (
 	"crypto/ed25519"
-	"encoding/base64"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -160,9 +160,15 @@ func updateLoop() {
 			}
 			trayMu.Unlock()
 			notifyStatus()
+			// Domyślnie aktualizacja instaluje się sama (doUpdate czeka, aż skończy się analiza); po restarcie nowa wersja
+			// pokazuje "Zaktualizowano do X". Wyłączone w ustawieniach: tylko propozycja w karcie, jak dotąd.
+			if u != nil && autoUpdateOn() && !updating.Load() {
+				autoInstall(u)
+				return
+			}
 			offerUpdateCard(u)
 		}()
-		time.Sleep(24 * time.Hour)
+		time.Sleep(6 * time.Hour)
 	}
 }
 
@@ -356,6 +362,17 @@ func showUpdatedCard() {
 	}
 	updCard.Done(to)
 	cardsChanged()
+}
+
+// autoInstall: silent self-update in the background; on failure falls back to the update card.
+func autoInstall(u *updateInfo) {
+	logf("auto-update to %s", u.Version)
+	go func() {
+		if err := doUpdate(func(int) {}, func() {}); err != nil {
+			logf("auto-update failed: %s", err)
+			offerUpdateCard(u)
+		}
+	}()
 }
 
 // startUpdate runs the update with the card showing the progress; the failure turns the card into "try again".

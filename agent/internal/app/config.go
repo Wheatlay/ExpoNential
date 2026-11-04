@@ -1,4 +1,4 @@
-﻿package app
+package app
 
 import (
 	"crypto/rand"
@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set by main (ldflags -X main.version).
-var Version = "0.4.4"
+var Version = "0.4.5"
 
 type RepoEntry struct {
 	Path   string `json:"path"`
@@ -46,6 +46,7 @@ type Config struct {
 	MutedUntil      float64              `json:"mutedUntil,omitempty"`      // ms until which the agent is muted (no prompts, others' jobs skipped)
 	TeamMode        string               `json:"teamMode,omitempty"`        // ask | auto | off (source of truth: the server)
 	Theme           string               `json:"theme,omitempty"`           // system | dark | light
+	AutoUpdate      *bool                `json:"autoUpdate,omitempty"`      // install new versions by itself when idle (default on)
 	UpdateDismissed string               `json:"updateDismissed,omitempty"` // agent version whose update card was dismissed
 	UpdatedTo       string               `json:"updatedTo,omitempty"`       // version a self-update was started for (the new process shows "updated" once)
 
@@ -162,6 +163,12 @@ func formatUUID(b []byte) string {
 	b[6] = b[6]&0x0f | 0x40
 	b[8] = b[8]&0x3f | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+}
+
+// autoUpdateOn: new versions install by themselves (when no analysis runs) unless switched off.
+func autoUpdateOn() bool {
+	c := loadConfig()
+	return c.AutoUpdate == nil || *c.AutoUpdate
 }
 
 // notifyOthersOn: the toast for analyses requested by others is on unless switched off.

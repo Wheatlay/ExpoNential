@@ -158,6 +158,8 @@ func patchTeamMode(mode string) {
 	}
 }
 
+func setAutoUpdate(on bool) { updateConfig(func(c *Config) { c.AutoUpdate = &on }); notifyStatus() }
+
 func setNotifyOthers(on bool) { updateConfig(func(c *Config) { c.NotifyOthers = &on }); notifyStatus() }
 
 // Theme.
