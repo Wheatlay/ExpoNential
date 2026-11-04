@@ -242,8 +242,8 @@ export async function repoState(user: User, deviceId: string) {
   const clone = await db.select({ key: projects.key }).from(projects)
     .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
     .where(eq(projects.agentsMayClone, true)).orderBy(asc(projects.key));
-  const [me] = await db.select({ teamMode: agents.teamMode }).from(agents).where(eq(agents.id, deviceId));
-  return { repos, cloneAllowed: clone.map((c) => c.key), teamMode: me?.teamMode ?? 'ask' };
+  const [me] = await db.select({ teamMode: agents.teamMode, limit: agents.maxOthersTokensPerDay }).from(agents).where(eq(agents.id, deviceId));
+  return { repos, cloneAllowed: clone.map((c) => c.key), teamMode: me?.teamMode ?? 'ask', maxOthersTokensPerDay: me?.limit ?? null };
 }
 
 /** Ręczne ustawienie ścieżki repo na moim komputerze (z Ustawień). */

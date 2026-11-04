@@ -130,6 +130,9 @@ describe('team mode per computer', () => {
     expect((await patch(DEV_A, { teamMode: 'off' })).statusCode).toBe(404);
     expect((await dbmod.sql`select team_mode from agents where id = ${DEV_A}`)[0].team_mode).toBe('ask');
     expect((await patch(DEV_B, { label: 'x' })).statusCode).toBe(403);
+    // The agent's own token may set the limit for others (the agent window), and the poll returns it.
+    expect((await patch(DEV_B, { maxOthersTokensPerDay: 500_000 })).statusCode).toBe(200);
+    expect(Number((await dbmod.sql`select max_others_tokens_per_day as v from agents where id = ${DEV_B}`)[0].v)).toBe(500_000);
     expect((await patch(DEV_B, { teamMode: 'bogus' })).statusCode).toBeGreaterThanOrEqual(400);
     await setMode(DEV_B, 'ask');
   });
@@ -140,7 +143,8 @@ describe('team mode per computer', () => {
     await requested(bob);
     const res = await app.inject({ method: 'GET', url: `/api/agent/work?deviceId=${DEV_B}&version=${ag.MIN_EXE_AGENT}`, headers: { authorization: `Bearer ${tokenBob}` } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ teamMode: 'auto' });
+    expect(res.json()).toMatchObject({ teamMode: 'auto', maxOthersTokensPerDay: 500_000 });
+    await dbmod.sql`update agents set max_others_tokens_per_day = null where id = ${DEV_B}`;
   });
 
   it('old team routes are gone', async () => {

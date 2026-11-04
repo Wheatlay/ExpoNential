@@ -185,7 +185,8 @@ export async function registerApi(app: FastifyInstance) {
     r.patch<{ Params: { id: string } }>('/api/agents/:id', async (req) => {
       const b = z.object({ teamMode: z.enum(ag.TEAM_MODES).optional(), label: z.string().max(60).optional(), maxOthersTokensPerDay: z.number().int().min(0).max(10_000_000_000).nullable().optional() }).parse(req.body);
       // Token agenta może zmienić tylko teamMode (własnego komputera: setTeamMode sprawdza właściciela).
-      if (req.authVia === 'token' && (b.label !== undefined || b.maxOthersTokensPerDay !== undefined)) throw new RuleError('This token can only change teamMode', 'forbidden');
+      // The agent's own token may also set the limit (the owner's PC); other tokens only teamMode, nobody's token the label.
+      if (req.authVia === 'token' && (b.label !== undefined || (b.maxOthersTokensPerDay !== undefined && !req.tokenAgent))) throw new RuleError('This token can only change teamMode', 'forbidden');
       if (b.teamMode !== undefined) await ag.setTeamMode(req.user!, req.params.id, b.teamMode);
       if (b.label !== undefined) await ag.renameAgent(req.user!, req.params.id, b.label);
       if (b.maxOthersTokensPerDay !== undefined) await ag.setAgentLimit(req.user!, req.params.id, b.maxOthersTokensPerDay);

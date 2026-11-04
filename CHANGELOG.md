@@ -18,6 +18,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Your PCs: team requests and the limit can be changed while the PC is offline; "Without asking" is turned on only in the agent window on that PC (grayed out on the web with the reason). Claude Code setup reads "tracker and work trace in all accounts (3)".
 
+## Server [1.3.17], Agent [0.4.13] - 04.11.2026
+
+- The agent window opens instantly and without a white flash: closing only hides it, and the first open shows it once the page is drawn.
+- Limit for others per day is 10x smaller (100k, 500k, 1M, 5M) and can also be set in the agent window (Usage tab), next to today's use for others.
+
 ## Server [1.3.16], Agent [0.4.12] - 04.11.2026
 
 - Language is saved in your profile: every browser, the phone and the agent window use it (until you choose, the browser or Windows language is used; an earlier choice in this browser moves to the profile by itself).

@@ -74,6 +74,8 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
 .stat { display: flex; flex-direction: column; gap: 2px; padding: 10px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); }
 .stat b { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.limrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 4px 0 2px; }
+.sel { height: 28px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border-secondary); background: var(--bg-secondary); color: var(--text-primary); font: inherit; font-size: 12px; }
 .hintline { color: var(--text-tertiary); font-size: 12px; margin: 2px 0 10px; }
 .repos { gap: 8px; }
 .repo { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--border-secondary); border-radius: 8px; background: var(--bg-secondary); }
@@ -289,13 +291,15 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   }
   function runsHtml(s) {
     var L = s.L, runs = (s.runs || []).slice().reverse();
-    if (!runs.length) return '<div class="empty">' + esc(L.noRuns) + '</div>';
     var since = Date.now() - 30 * 864e5, day = Date.now() - 864e5, own = { n: 0, t: 0 }, oth = { n: 0, t: 0 }, othDay = 0;
     runs.forEach(function (r) { if (r.time < since) return; var b = r.for ? oth : own; b.n++; b.t += r.tokens || 0; if (r.for && r.time >= day) othDay += r.tokens || 0; });
-    var stat = function (label, b) { return '<div class="stat"><span class="lbl">' + esc(label) + '</span><b>' + b.n + '</b><span class="mut">' + esc(plural(b.n, L.analysesN)) + ' · ' + esc(fmtTok(b.t)) + '</span></div>'; };
+    var stat = function (label, b) { return '<div class="stat"><span class="lbl">' + esc(label) + '</span><b>' + b.n + '</b><span class="mut">' + esc(plural(b.n, L.analysesN)) + (b.t ? ' · ' + esc(fmtTok(b.t)) : '') + '</span></div>'; };
     return '<div class="stats">' + stat(L.usageOwn, own) + stat(L.usageOthers, oth) + '</div>' +
-      '<div class="hintline">' + esc(L.usageNote.replace("%T", fmtTok(othDay))) + '</div>' +
-      '<span class="lbl">' + esc(L.recent) + '</span><div class="list">' + runs.map(function (r) {
+      '<div class="limrow"><span class="lbl">' + esc(L.limitLbl) + '</span><select class="sel" id="limit">' +
+        [-1, 1e5, 5e5, 1e6, 5e6].concat(s.limit > 0 && [1e5, 5e5, 1e6, 5e6].indexOf(s.limit) < 0 ? [s.limit] : []).sort(function (a, b) { return a - b; })
+          .map(function (n) { return '<option value="' + n + '"' + (n === s.limit ? " selected" : "") + '>' + esc(n < 0 ? L.noLimit : L.perDay.replace("%T", fmtTok(n))) + '</option>'; }).join("") + '</select></div>' +
+      '<div class="hintline">' + esc(L.usageNote.replace("%T", fmtTok(othDay) || "0")) + (s.limit > 0 ? " " + esc(L.ofLimit.replace("%L", fmtTok(s.limit))) : "") + '</div>' +
+      '<span class="lbl">' + esc(L.recent) + '</span>' + (runs.length ? '' : '<div class="empty">' + esc(L.noRuns) + '</div>') + '<div class="list">' + runs.map(function (r) {
       var rs = RES[r.result] || RES.fail, txt = L[rs[1]];
       var sub = [r.engine, r.model, fmtDur(r.durationMs), r.account].filter(Boolean).join(" · ");
       return '<div class="item"><div class="l1"><span class="mut mono">' + esc(fmtTime(r.time)) + '</span>' +
@@ -308,6 +312,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     }).join("") + '</div>';
   }
   function bindRuns() {
+    if ($("limit")) $("limit").onchange = call(function () { window.setLimit(Number($("limit").value)); });
     Array.prototype.forEach.call(panelEl.querySelectorAll(".lk"), function (a) {
       a.onclick = function () { window.openIssue(a.dataset.k); };
       a.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); a.click(); } };
@@ -320,7 +325,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     if (tab === "general" && view === "log") { sig = JSON.stringify(["log", logText, copied, L.back]); html = logHtml(L); }
     else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.teamMode, S.notify, S.autoUpdate, S.autostart, S.muteLabel, S.themeSetting, copied]); html = generalHtml(S); }
     else if (tab === "repos") { sig = JSON.stringify(["r", repos, repoMsg, L.pick]); html = reposHtml(L); }
-    else { sig = JSON.stringify(["u", S.runs, L.noRuns]); html = runsHtml(S); }
+    else { sig = JSON.stringify(["u", S.runs, S.limit, L.noRuns]); html = runsHtml(S); }
     if (sig === sigs.panel && !scrollLog) return;
     var keep = sigs.panel.charAt(2) === sig.charAt(2) ? panelEl.scrollTop : 0;
     sigs.panel = sig;
@@ -341,10 +346,13 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
       if (my !== seq) return; // a newer refresh already took over
       busy = false; S = s;
       drawHead(); drawTabs(); drawPanel();
+      if (!readySent) { readySent = true; try { window.ready(); } catch (e) {} }
     }, function () { clearTimeout(dog); if (my === seq) busy = false; });
   }
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") window.close(); });
-  var born = Date.now();
+  var born = Date.now(), readySent = false;
+  // The window is kept and only hidden on close: showing it again starts like a fresh open (General tab, new state).
+  window.onShown = function () { born = Date.now(); hadFocus = false; view = ""; tab = "general"; sigs.tabs = ""; sigs.panel = ""; refresh(); };
   window.onerror = function (msg, src, line, col) {
     try { window.jsError(String(msg) + " (" + line + ":" + col + ")"); } catch (e) {}
   };

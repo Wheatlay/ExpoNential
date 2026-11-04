@@ -158,6 +158,37 @@ func patchTeamMode(mode string) {
 	}
 }
 
+// othersLimit: tokens per day for other people's analyses on this PC (-1 = no limit), as the server reports it.
+var othersLimit atomic.Int64
+
+func setOthersLimit(v *int64) {
+	if v == nil {
+		othersLimit.Store(-1)
+	} else {
+		othersLimit.Store(*v)
+	}
+}
+
+// changeOthersLimit saves a new limit on the server (n < 0 = no limit).
+func changeOthersLimit(n int64) {
+	defer func() { _ = recover() }()
+	cfg := loadConfig()
+	a, err := getAuth()
+	if err != nil || a == nil || cfg.DeviceID == "" {
+		return
+	}
+	var body any = n
+	if n < 0 {
+		body = nil
+	}
+	if err := request(a, "PATCH", "/api/agents/"+cfg.DeviceID, map[string]any{"maxOthersTokensPerDay": body}, 10*time.Second, nil); err != nil {
+		logf("limit not saved on the server: %s", shortErr(err))
+		return
+	}
+	othersLimit.Store(n)
+	notifyStatus()
+}
+
 func setAutoUpdate(on bool) { updateConfig(func(c *Config) { c.AutoUpdate = &on }); notifyStatus() }
 
 func setNotifyOthers(on bool) { updateConfig(func(c *Config) { c.NotifyOthers = &on }); notifyStatus() }

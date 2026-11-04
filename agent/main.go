@@ -9,7 +9,7 @@ import (
 	"exponential-agent/internal/app"
 )
 
-var version = "0.4.12"
+var version = "0.4.13"
 
 //go:embed assets/exponential.ico
 var icon []byte

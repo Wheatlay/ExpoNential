@@ -392,7 +392,7 @@ type UsageInfo = { runs: number; forOthers: number; costUsd: number; tokens: num
 /** Tokeny w zapisie skróconym języka użytkownika (np. "1,2 mln", po polsku "tys."/"mln"). */
 const tok = (n: number) => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
 const byRequesterText = (u: UsageInfo) => u.byRequester.map((b) => `${b.name} ${b.runs} · ${t('{n} tokens', { n: tok(b.tokens) })}`).join(' · ') || null;
-const LIMITS = [1e6, 5e6, 10e6, 50e6];
+const LIMITS = [1e5, 5e5, 1e6, 5e6];
 
 function ClaudeConnect() {
   const qc = useQueryClient();

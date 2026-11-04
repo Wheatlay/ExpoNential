@@ -41,6 +41,7 @@ type settingsState struct {
 	Version      string            `json:"version"`
 	UpdateTo     string            `json:"updateTo"`
 	Dev          bool              `json:"dev"`
+	Limit        int64             `json:"limit"` // -1 = no limit
 	TeamMode     string            `json:"teamMode"`
 	Notify       bool              `json:"notify"`
 	AutoUpdate   bool              `json:"autoUpdate"`
@@ -57,7 +58,7 @@ func settingsLabels(lang string) map[string]string {
 			"notify": "Powiadomienia o analizach dla innych", "autoUpdate": "Aktualizuj automatycznie", "check": "Sprawdź aktualizacje", "checkShort": "Sprawdź", "checking": "Sprawdzam…", "upToDate": "Aktualna", "checkFailed": "Nie udało się", "close": "Zamknij", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
 			"sys": "Systemowy", "dark": "Ciemny", "oled": "OLED", "light": "Jasny", "open": "Otwórz Exponential", "ai": "Ustawienia AI", "uninstall": "Odinstaluj…",
 			"version": "agent %V", "update": "Zaktualizuj do %V",
-			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Zużycie", "usageOwn": "Twoje (30 dni)", "usageOthers": "Dla innych (30 dni)", "analysesN": "analiza|analizy|analiz", "usageNote": "Dla innych w ostatniej dobie: %T", "recent": "Ostatnie analizy", "offReason": "Nie bierzesz zleceń innych, więc nie ma czego wyciszać", "change": "Zmień folder", "srcAutoLong": "znaleziony automatycznie", "srcManualLong": "wybrany ręcznie", "srcCloneLong": "sklonowany przez agenta", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
+			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Zużycie", "usageOwn": "Twoje (30 dni)", "usageOthers": "Dla innych (30 dni)", "analysesN": "analiza|analizy|analiz", "usageNote": "Dla innych w ostatniej dobie: %T", "limitLbl": "Limit dla innych na dobę", "noLimit": "Bez limitu", "perDay": "%T / dobę", "ofLimit": "z %L", "recent": "Ostatnie analizy", "offReason": "Nie bierzesz zleceń innych, więc nie ma czego wyciszać", "change": "Zmień folder", "srcAutoLong": "znaleziony automatycznie", "srcManualLong": "wybrany ręcznie", "srcCloneLong": "sklonowany przez agenta", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
 			"loading": "Wczytuję…", "logEmpty": "Log jest pusty", "repoErr": "Brak połączenia z serwerem", "noProjects": "Brak projektów", "noRepo": "brak repo w projekcie", "unmapped": "brak mapowania",
 			"ok": "ok", "pick": "Wybierz folder", "remove": "Usuń", "srcAuto": "auto", "srcManual": "ręcznie", "srcClone": "klon", "srcHook": "hook",
 			"nofolder": "brak folderu", "notclone": "to nie klon repo", "norepo": "brak repo w projekcie", "noRuns": "Brak analiz",
@@ -68,7 +69,7 @@ func settingsLabels(lang string) map[string]string {
 		"notify": "Notifications for analyses for others", "autoUpdate": "Update automatically", "check": "Check for updates", "checkShort": "Check", "checking": "Checking…", "upToDate": "Up to date", "checkFailed": "Could not check", "close": "Close", "autostart": "Start with Windows", "theme": "Theme",
 		"sys": "System", "dark": "Dark", "oled": "OLED", "light": "Light", "open": "Open Exponential", "ai": "AI settings", "uninstall": "Uninstall…",
 		"version": "agent %V", "update": "Update to %V",
-		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Usage", "usageOwn": "Yours (30 days)", "usageOthers": "For others (30 days)", "analysesN": "analysis|analyses", "usageNote": "For others in the last 24 h: %T", "recent": "Recent analyses", "offReason": "You do not take requests from others, so there is nothing to mute", "change": "Change folder", "srcAutoLong": "found automatically", "srcManualLong": "chosen by you", "srcCloneLong": "cloned by the agent", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
+		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Usage", "usageOwn": "Yours (30 days)", "usageOthers": "For others (30 days)", "analysesN": "analysis|analyses", "usageNote": "For others in the last 24 h: %T", "limitLbl": "Limit for others per day", "noLimit": "No limit", "perDay": "%T / day", "ofLimit": "of %L", "recent": "Recent analyses", "offReason": "You do not take requests from others, so there is nothing to mute", "change": "Change folder", "srcAutoLong": "found automatically", "srcManualLong": "chosen by you", "srcCloneLong": "cloned by the agent", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
 		"loading": "Loading…", "logEmpty": "The log is empty", "repoErr": "Cannot reach the server", "noProjects": "No projects", "noRepo": "no repo in the project", "unmapped": "not mapped",
 		"ok": "ok", "pick": "Choose folder", "remove": "Remove", "srcAuto": "auto", "srcManual": "manual", "srcClone": "clone", "srcHook": "hook",
 		"nofolder": "folder missing", "notclone": "not a clone of the repo", "norepo": "no repo in the project", "noRuns": "No analyses yet",
@@ -96,7 +97,7 @@ func buildSettingsState() (st settingsState) {
 	return settingsState{
 		Theme: currentTheme(), ThemeSetting: ts, L: settingsLabels(lang),
 		Who:   strings.TrimSpace(cfg.UserName + " · " + hostOf(cfg.URL)),
-		State: text, Kind: kind, Version: Version, UpdateTo: upd, Dev: devMode(),
+		State: text, Kind: kind, Version: Version, UpdateTo: upd, Dev: devMode(), Limit: othersLimit.Load(),
 		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), AutoUpdate: autoUpdateOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
 		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted), Runs: loadRuns(),
 	}
@@ -122,6 +123,9 @@ func bg(name string, f func()) {
 }
 
 var lastState atomic.Pointer[settingsState]
+
+// settingsShow re-shows the kept settings window (nil while none exists).
+var settingsShow atomic.Pointer[func()]
 
 // stateWithin builds the window state but answers within 2 s: on a slow build it returns the last known state
 // (and logs it), so the window keeps working.
@@ -196,8 +200,8 @@ func toggleMute() { setMuted(!isMuted()) }
 // openSettings shows the mini settings window (or brings the open one to the front).
 func openSettings() {
 	if !settingsOpen.CompareAndSwap(false, true) {
-		if h := settingsHwnd.Load(); h != 0 && !devMode() {
-			procSetForeground.Call(h)
+		if f := settingsShow.Load(); f != nil {
+			(*f)()
 		}
 		return
 	}
@@ -239,10 +243,32 @@ func openSettings() {
 		ww, wh := int32(float64(settingsW)*sc), int32(float64(settingsH)*sc)
 		wa := workArea()
 		margin := int32(12 * sc)
-		placeTopmost(hwnd, wa.Right-ww-margin, wa.Bottom-wh-margin, ww, wh, true)
-		if !devMode() {
-			procSetForeground.Call(hwnd)
+		show := func() {
+			placeTopmost(hwnd, wa.Right-ww-margin, wa.Bottom-wh-margin, ww, wh, true)
+			if !devMode() {
+				procSetForeground.Call(hwnd)
+			}
 		}
+		reshow := func() {
+			show()
+			w.Dispatch(func() { w.Eval("window.onShown && window.onShown()") })
+		}
+		settingsShow.Store(&reshow)
+		defer settingsShow.Store(nil)
+		var shown atomic.Bool
+		_ = w.Bind("ready", func() {
+			defer guard("ready")
+			if shown.CompareAndSwap(false, true) {
+				show()
+			}
+		})
+		// Fallback: show after 3 s even if the page never reported (so a broken page is still visible and closable).
+		go func() {
+			time.Sleep(3 * time.Second)
+			if shown.CompareAndSwap(false, true) {
+				show()
+			}
+		}()
 
 		_ = w.Bind("getState", func() settingsState {
 			defer guard("getState")
@@ -281,6 +307,9 @@ func openSettings() {
 		_ = w.Bind("checkNow", func() string {
 			defer guard("checkNow")
 			return checkNow()
+		})
+		_ = w.Bind("setLimit", func(n float64) {
+			bg("setLimit", func() { changeOthersLimit(int64(n)) })
 		})
 		_ = w.Bind("getLog", func() string {
 			defer guard("getLog")
@@ -354,7 +383,7 @@ func openSettings() {
 		_ = w.Bind("jsError", func(msg string) { logf("settings js: %s", msg) })
 		_ = w.Bind("close", func() {
 			defer guard("close")
-			w.Destroy() // WM_CLOSE handled by the live loop: DestroyWindow, then WM_DESTROY ends the loop (Terminate first left a dead, unresponsive window)
+			hideWindow(hwnd) // kept for an instant reopen; the process exit destroys it
 		})
 		w.SetHtml(applyUI(settingsHTML, currentTheme()))
 		w.Run()

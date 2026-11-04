@@ -619,6 +619,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 		Repos        []json.RawMessage `json:"repos"`
 		CloneAllowed []any             `json:"cloneAllowed"`
 		TeamMode     string            `json:"teamMode"`
+		Limit        *int64            `json:"maxOthersTokensPerDay"`
 	}
 	if err := request(a, "GET", "/api/agent/work?"+qs.Encode(), nil, 0, &res); err != nil {
 		return err
@@ -644,6 +645,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 		mergeServerRepos(sr)
 	}
 	syncTeamMode(a, cfg, res.TeamMode)
+	setOthersLimit(res.Limit)
 	go syncLang(a)
 	*delay, *errLogged = 2, false
 	var job *pollJob
