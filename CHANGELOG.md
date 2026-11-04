@@ -18,6 +18,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Your PCs: team requests and the limit can be changed while the PC is offline; "Without asking" is turned on only in the agent window on that PC (grayed out on the web with the reason). Claude Code setup reads "tracker and work trace in all accounts (3)".
 
+## Agent [0.4.10] - 04.11.2026
+
+- After a self-update the Start menu shortcut opens the window again (the new process did not listen while the old one was closing).
+
 ## Agent [0.4.9] - 04.11.2026
 
 - The agent window no longer turns into a dead "Not responding" window after Escape or clicking outside it (it was closed without being destroyed).

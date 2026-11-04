@@ -49,7 +49,8 @@ func removeStartMenuLink() { _ = os.Remove(startMenuLink()) }
 func listenForOpen() {
 	name, _ := windows.UTF16PtrFromString(openEventName)
 	h, err := windows.CreateEvent(nil, 0, 0, name) // auto-reset
-	if err != nil {
+	// ERROR_ALREADY_EXISTS still returns a valid handle (after a self-update the old process holds the event for a moment).
+	if h == 0 && err != nil {
 		logf("open event: %s", err)
 		return
 	}

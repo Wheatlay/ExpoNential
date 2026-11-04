@@ -19,7 +19,7 @@ const dumpEventName = `Local\ExponentialAgentDump`
 func listenForDump() {
 	name, _ := windows.UTF16PtrFromString(dumpEventName)
 	h, err := windows.CreateEvent(nil, 0, 0, name)
-	if err != nil {
+	if h == 0 && err != nil {
 		return
 	}
 	go func() {
