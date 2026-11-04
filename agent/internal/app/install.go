@@ -23,8 +23,8 @@ func checkURL(u string) error {
 	return nil
 }
 
-func startDetachedExe(path string) error {
-	c := exec.Command(path, "start")
+func startDetachedExe(path string, extra ...string) error {
+	c := exec.Command(path, append([]string{"start"}, extra...)...)
 	detachCmd(c)
 	if err := c.Start(); err != nil {
 		return err

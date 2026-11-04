@@ -141,7 +141,7 @@ var pendingUpdate atomic.Pointer[updateInfo]
 
 // updateLoop: once at start, then every 24 h (Windows only).
 func updateLoop() {
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS != "windows" || devMode() {
 		return
 	}
 	for {
@@ -362,6 +362,31 @@ func showUpdatedCard() {
 	}
 	updCard.Done(to)
 	cardsChanged()
+}
+
+// checkNow: "Check for updates" in the window. Returns "current", "error" or the new version (which then
+// installs by itself when auto-update is on, otherwise the window shows the update button).
+func checkNow() string {
+	u, err := checkUpdate()
+	if err != nil {
+		logf("update check: %s", err)
+		return "error"
+	}
+	pendingUpdate.Store(u)
+	trayMu.Lock()
+	updateVer = ""
+	if u != nil {
+		updateVer = u.Version
+	}
+	trayMu.Unlock()
+	notifyStatus()
+	if u == nil {
+		return "current"
+	}
+	if autoUpdateOn() && !devMode() && !updating.Load() {
+		autoInstall(u)
+	}
+	return u.Version
 }
 
 // autoInstall: silent self-update in the background; on failure falls back to the update card.

@@ -27,7 +27,7 @@ func runWithTray(loop func()) {
 			systray.SetIcon(IconICO)
 		}
 		systray.SetTitle("Exponential")
-		systray.SetTooltip(statusText(lang))
+		systray.SetTooltip(devPrefix() + statusText(lang))
 		systray.SetOnTapped(openSettings)
 		cfg := loadConfig()
 		settings := systray.AddMenuItem(tx("Ustawienia…", "Settings…"), "")
@@ -49,7 +49,7 @@ func runWithTray(loop func()) {
 		sync := func() {
 			c := loadConfig()
 			text, _ := statusParts(lang)
-			systray.SetTooltip("Exponential · " + text)
+			systray.SetTooltip(devPrefix() + "Exponential · " + text)
 			state.SetTitle(text + " · agent " + Version + updateSuffix(lang))
 			until, muted := mutedUntilOf(c, time.Now())
 			mute.SetTitle(muteItemTitle(lang, until, muted))

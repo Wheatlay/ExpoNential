@@ -18,6 +18,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Your PCs: team requests and the limit can be changed while the PC is offline; "Without asking" is turned on only in the agent window on that PC (grayed out on the web with the reason). Claude Code setup reads "tracker and work trace in all accounts (3)".
 
+## Agent [0.4.9] - 04.11.2026
+
+- The agent window no longer turns into a dead "Not responding" window after Escape or clicking outside it (it was closed without being destroyed).
+- No white window flashing in the top-left corner when the window opens; dark background before the page paints.
+- Close button; "Check for updates" under "Update automatically"; "Mute for 24 h" under team requests; "Not taking" shown in red.
+- The Start menu shortcut opens the window also when the agent was not running.
+- Dev mode for testing (EXPONENTIAL_DEV=1) and a goroutine dump command for diagnosing hangs.
+
 ## Agent [0.4.8] - 04.11.2026
 
 - The agent window no longer hangs after a click: setting changes run in the background, the state read answers within 2 s (last known state otherwise), and any action slower than 3 s is written to the log by name.

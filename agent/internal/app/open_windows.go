@@ -75,14 +75,15 @@ func signalOpen() bool {
 
 // cmdOpen: starts the agent when none runs, then asks it to show its window.
 func cmdOpen() error {
+	// This process has the foreground (the user clicked the shortcut); let the agent bring its window forward.
+	allowForeground()
 	if agentPID() != 0 && signalOpen() {
 		return nil
 	}
 	if agentPID() == 0 {
 		self, _ := os.Executable()
-		if err := startDetachedExe(self); err != nil {
-			return err
-		}
+		// A fresh agent opens its window itself once the tray is up (the event may not exist yet).
+		return startDetachedExe(self, "--open")
 	}
 	for i := 0; i < 50; i++ {
 		if signalOpen() {
@@ -92,3 +93,8 @@ func cmdOpen() error {
 	}
 	return nil
 }
+
+var procAllowSetFg = windows.NewLazySystemDLL("user32.dll").NewProc("AllowSetForegroundWindow")
+
+// allowForeground: ASFW_ANY, so the agent process may take the foreground when it shows its window.
+func allowForeground() { procAllowSetFg.Call(uintptr(0xFFFFFFFF)) }

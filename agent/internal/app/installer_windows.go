@@ -161,7 +161,7 @@ func runInstallerWindow(mode string) (shown bool) {
 			openURL(u + "/settings")
 		}
 	})
-	_ = w.Bind("close", func() { w.Dispatch(func() { w.Terminate() }) })
+	_ = w.Bind("close", func() { w.Destroy() }) // WM_CLOSE handled by the live loop (Terminate first left a dead, unresponsive window) })
 
 	w.SetHtml(applyUI(installerHTML, currentTheme()))
 	w.Run()

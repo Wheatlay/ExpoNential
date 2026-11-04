@@ -533,6 +533,10 @@ func cmdStart() {
 	go sweepWebviewTemp()
 	runWithTray(func() {
 		listenForOpen()
+		if openAtStart {
+			go openSettings()
+		}
+		listenForDump()
 		go ensureStartMenuLink(installedPath())
 		go updateLoop()
 		go cleanupOldExe()

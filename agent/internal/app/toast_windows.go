@@ -78,15 +78,19 @@ func toastThread() {
 	}()
 	dataPath := filepath.Join(os.TempDir(), fmt.Sprintf("exponential-agent-webview-toast-%d", os.Getpid()))
 	sc := dpiScale()
-	w := webview2.NewWithOptions(webview2.WebViewOptions{
-		DataPath:  dataPath,
-		AutoFocus: false,
-		WindowOptions: webview2.WindowOptions{
-			Title:  "Exponential",
-			Width:  uint(float64(toastWidth) * sc),
-			Height: uint(120 * sc),
-			IconId: 1,
-		},
+	webviewBackground()
+	var w webview2.WebView
+	offscreen(func() {
+		w = webview2.NewWithOptions(webview2.WebViewOptions{
+			DataPath:  dataPath,
+			AutoFocus: false,
+			WindowOptions: webview2.WindowOptions{
+				Title:  "Exponential",
+				Width:  uint(float64(toastWidth) * sc),
+				Height: uint(120 * sc),
+				IconId: 1,
+			},
+		})
 	})
 	if w == nil {
 		fail()

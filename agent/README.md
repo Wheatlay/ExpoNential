@@ -98,3 +98,13 @@ The poll response may carry `repos` (project to folder map set in the tracker) a
 - **No system dialogs**: uninstall ("Odinstalować agenta?" then progress and result), expired link, install errors and "already connected" are views of the branded window; message boxes remain only when WebView2 cannot be created. `uninstall` stops the agent first and only then unregisters the computer (a running agent would re-create it); an expired access token is refreshed (and the DELETE retried once on 401).
 - **Updates**: a newer release puts an accent dot on the tray icon (drawn at runtime into the .ico frames) and shows one card in the toast window: "Dostępna wersja X" / "Zaktualizuj" / ✕ (skip this version, `updateDismissed` in `config.json`). The click turns it into "Pobieram… 42%" (Content-Length), "Instaluję…", then the agent restarts and the new process shows "Zaktualizowano do X" for 6 s (`updatedTo` flag in `config.json`). Failure shows "Aktualizacja nie powiodła się" with "Spróbuj ponownie". The tray menu item stays.
 - Data folder additions: `runs.json`. No new registry keys or outside traces.
+
+## Dev mode (testing the windows on a developer machine)
+
+`EXPONENTIAL_DEV=1` marks a test build: "DEV" next to the version in the window and in the tray tooltip, self-update
+off (a test build is never replaced by the published release), and the WebView2 debug port 9333 open. Build to a
+scratch folder (`GOOS=windows go build -ldflags "-H windowsgui" -o <dir>/exponential-agent-dev.exe .`), stop the
+installed agent, then run `<dir>/exponential-agent-dev.exe open` with `EXPONENTIAL_DEV=1` set.
+`node agent/tools/devwin.mjs` drives the windows through the debug port: `health` (Not Responding check),
+`eval <js>`, `click <text>`, `key Escape`, `shot <file.png>`. `exponential-agent dump` makes a running agent write the
+stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window without a debugger).

@@ -40,6 +40,7 @@ type settingsState struct {
 	Kind         string            `json:"kind"`
 	Version      string            `json:"version"`
 	UpdateTo     string            `json:"updateTo"`
+	Dev          bool              `json:"dev"`
 	TeamMode     string            `json:"teamMode"`
 	Notify       bool              `json:"notify"`
 	AutoUpdate   bool              `json:"autoUpdate"`
@@ -53,7 +54,7 @@ func settingsLabels(lang string) map[string]string {
 	if lang == "pl" {
 		return map[string]string{"team": "Zlecenia zespołu", "ask": "Pytaj", "auto": "Bez pytania", "off": "Nie biorę",
 			"tipAsk": "Pytaj o zgodę przed analizą cudzego zlecenia", "tipAuto": "Uruchamiaj cudze zlecenia bez pytania", "tipOff": "Nie biorę cudzych zleceń",
-			"notify": "Powiadomienia o analizach dla innych", "autoUpdate": "Aktualizuj automatycznie", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
+			"notify": "Powiadomienia o analizach dla innych", "autoUpdate": "Aktualizuj automatycznie", "check": "Sprawdź aktualizacje", "checking": "Sprawdzam…", "upToDate": "Masz najnowszą wersję", "checkFailed": "Nie udało się sprawdzić", "close": "Zamknij", "autostart": "Uruchamiaj z Windows", "theme": "Motyw",
 			"sys": "Systemowy", "dark": "Ciemny", "oled": "OLED", "light": "Jasny", "open": "Otwórz Exponential", "ai": "Ustawienia AI", "uninstall": "Odinstaluj…",
 			"version": "agent %V", "update": "Zaktualizuj do %V",
 			"tabGeneral": "Ogólne", "tabRepos": "Repo", "tabRuns": "Analizy", "showLog": "Pokaż log", "copyLog": "Kopiuj log", "copied": "Skopiowano", "back": "Wstecz",
@@ -64,7 +65,7 @@ func settingsLabels(lang string) map[string]string {
 	}
 	return map[string]string{"team": "Team jobs", "ask": "Ask", "auto": "Don't ask", "off": "Don't take",
 		"tipAsk": "Ask before running someone else's analysis", "tipAuto": "Run others' analyses without asking", "tipOff": "Never take others' analyses",
-		"notify": "Notifications for analyses for others", "autoUpdate": "Update automatically", "autostart": "Start with Windows", "theme": "Theme",
+		"notify": "Notifications for analyses for others", "autoUpdate": "Update automatically", "check": "Check for updates", "checking": "Checking…", "upToDate": "You're up to date", "checkFailed": "Could not check", "close": "Close", "autostart": "Start with Windows", "theme": "Theme",
 		"sys": "System", "dark": "Dark", "oled": "OLED", "light": "Light", "open": "Open Exponential", "ai": "AI settings", "uninstall": "Uninstall…",
 		"version": "agent %V", "update": "Update to %V",
 		"tabGeneral": "General", "tabRepos": "Repos", "tabRuns": "Analyses", "showLog": "Show log", "copyLog": "Copy log", "copied": "Copied", "back": "Back",
@@ -95,7 +96,7 @@ func buildSettingsState() (st settingsState) {
 	return settingsState{
 		Theme: currentTheme(), ThemeSetting: ts, L: settingsLabels(lang),
 		Who:   strings.TrimSpace(cfg.UserName + " · " + hostOf(cfg.URL)),
-		State: text, Kind: kind, Version: Version, UpdateTo: upd,
+		State: text, Kind: kind, Version: Version, UpdateTo: upd, Dev: devMode(),
 		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), AutoUpdate: autoUpdateOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
 		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted), Runs: loadRuns(),
 	}
@@ -212,15 +213,19 @@ func openSettings() {
 		}()
 		dataPath := filepath.Join(os.TempDir(), fmt.Sprintf("exponential-agent-webview-settings-%d", os.Getpid()))
 		sc := dpiScale()
-		w := webview2.NewWithOptions(webview2.WebViewOptions{
-			DataPath:  dataPath,
-			AutoFocus: true,
-			WindowOptions: webview2.WindowOptions{
-				Title:  "Exponential",
-				Width:  uint(float64(settingsW) * sc),
-				Height: uint(float64(settingsH) * sc),
-				IconId: 1,
-			},
+		webviewBackground()
+		var w webview2.WebView
+		offscreen(func() {
+			w = webview2.NewWithOptions(webview2.WebViewOptions{
+				DataPath:  dataPath,
+				AutoFocus: true,
+				WindowOptions: webview2.WindowOptions{
+					Title:  "Exponential",
+					Width:  uint(float64(settingsW) * sc),
+					Height: uint(float64(settingsH) * sc),
+					IconId: 1,
+				},
+			})
 		})
 		if w == nil {
 			openApp() // no WebView2: open the web settings instead
@@ -270,6 +275,10 @@ func openSettings() {
 		})
 		_ = w.Bind("update", func() {
 			bg("update", func() { runUpdate() })
+		})
+		_ = w.Bind("checkNow", func() string {
+			defer guard("checkNow")
+			return checkNow()
 		})
 		_ = w.Bind("getLog", func() string {
 			defer guard("getLog")
@@ -343,7 +352,7 @@ func openSettings() {
 		_ = w.Bind("jsError", func(msg string) { logf("settings js: %s", msg) })
 		_ = w.Bind("close", func() {
 			defer guard("close")
-			w.Dispatch(func() { w.Terminate() })
+			w.Destroy() // WM_CLOSE handled by the live loop: DestroyWindow, then WM_DESTROY ends the loop (Terminate first left a dead, unresponsive window)
 		})
 		w.SetHtml(applyUI(settingsHTML, currentTheme()))
 		w.Run()

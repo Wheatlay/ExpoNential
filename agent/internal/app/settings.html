@@ -14,6 +14,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .who { min-width: 0; flex: 1; }
 .who b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ver { display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 12px; }
+.ver .dev { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--warning-text, #f0a35a); border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; }
 .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 9999px; font-size: 12px; font-weight: 500; border: 1px solid; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
 .pill i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 .pill.ok { color: var(--success-text); background: color-mix(in srgb, var(--success) 12%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); }
@@ -30,6 +31,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .seg button.on { color: var(--text-primary); }
 .seg button.on.accent { background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-text); }
 .seg button.on.success { background: color-mix(in srgb, var(--success) 14%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); }
+.seg button.on.danger { background: color-mix(in srgb, var(--danger) 14%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); color: var(--danger-text); }
 .seg button.on.neutral { background: var(--bg-tertiary); border-color: var(--border-tertiary); color: var(--text-secondary); }
 .row { display: flex; align-items: center; gap: 10px; height: 28px; cursor: pointer; color: var(--text-secondary); }
 .row span { flex: 1; }
@@ -43,6 +45,13 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .btn.sm { height: 24px; padding: 0 8px; font-size: 12px; }
 .btn.mute { background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning-text); }
 .btn.mute:hover { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+.x { all: unset; cursor: pointer; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: var(--text-tertiary); font-size: 18px; line-height: 1; flex: none; }
+.x:hover { background: var(--bg-hover, rgba(255,255,255,.06)); color: var(--text-primary); }
+.x:focus-visible { outline: 2px solid var(--accent); }
+.chkrow { margin: -4px 0 2px; padding-left: 2px; }
+.ver { white-space: nowrap; }
+.btn.chk { all: unset; cursor: pointer; font-size: 12px; color: var(--accent-text); }
+.btn.chk:hover { text-decoration: underline; }
 .btn.upd { height: 22px; padding: 0 8px; font-size: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-text); }
 .btn.ok { background: color-mix(in srgb, var(--success) 14%, transparent); border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); }
 .btn.link { border-color: transparent; color: var(--text-secondary); padding: 0 8px; }
@@ -98,7 +107,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   var MARK = '<svg viewBox="0 0 26 26" aria-hidden="true"><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3 L22 22 Z" fill="#5e6ad2"/><path d="M2 22 C10 22 14 21 18 14 C20 10 21 6 22 3" fill="none" stroke="#7180ff" stroke-width="1.6"/></svg>';
   var $ = function (id) { return document.getElementById(id); };
   var headEl = $("head"), tabsEl = $("tabs"), panelEl = $("panel");
-  var S = null, tab = "general", view = "", repos = null, repoMsg = {}, logText = null, copied = false, picking = false, busy = false, seq = 0;
+  var checkMsg = "", S = null, tab = "general", view = "", repos = null, repoMsg = {}, logText = null, copied = false, picking = false, busy = false, seq = 0;
   var sigs = { head: "", tabs: "", panel: "" };
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
@@ -117,15 +126,17 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 
   function drawHead() {
     var s = S, L = s.L;
-    var sig = JSON.stringify([s.who, s.version, s.updateTo, s.state, s.kind, s.theme]);
+    var sig = JSON.stringify([s.who, s.dev, s.version, s.updateTo, s.state, s.kind, s.theme]);
     if (sig === sigs.head) return;
     sigs.head = sig;
     document.documentElement.setAttribute("data-theme", s.theme);
     headEl.innerHTML = '<span class="tile">' + MARK + '</span><div class="who"><b>' + esc(s.who) + '</b>' +
-      '<div class="ver"><span>' + esc(L.version.replace("%V", s.version)) + '</span>' +
+      '<div class="ver"><span>' + esc(L.version.replace("%V", s.version)) + '</span>' + (s.dev ? '<span class="dev">DEV</span>' : "") +
       (s.updateTo ? '<button class="btn upd" id="upd">' + esc(L.update.replace("%V", s.updateTo)) + '</button>' : "") + '</div></div>' +
-      '<span class="pill ' + esc(s.kind) + '" title="' + esc(s.state) + '"><i></i>' + esc(s.state) + '</span>';
+      '<span class="pill ' + esc(s.kind) + '" title="' + esc(s.state) + '"><i></i>' + esc(s.state) + '</span>' +
+      '<button class="x" id="close" aria-label="' + esc(L.close) + '" title="' + esc(L.close) + '">&#x2715;</button>';
     if ($("upd")) $("upd").onclick = call(window.update);
+    $("close").onclick = function () { window.close(); };
   }
 
   function drawTabs() {
@@ -149,11 +160,12 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   function generalHtml(s) {
     var L = s.L;
     return '<div class="sec"><span class="lbl">' + esc(L.team) + '</span>' +
-      seg("team", [["ask", L.ask, "accent", L.tipAsk], ["auto", L.auto, "success", L.tipAuto], ["off", L.off, "neutral", L.tipOff]], s.teamMode) + '</div>' +
+      seg("team", [["ask", L.ask, "accent", L.tipAsk], ["auto", L.auto, "success", L.tipAuto], ["off", L.off, "danger", L.tipOff]], s.teamMode) + '</div>' +
+      '<button class="btn mute" id="mute">' + esc(s.muteLabel) + '</button>' +
       '<div class="sec"><div class="row' + (s.notify ? " on" : "") + '" id="notify" role="switch" tabindex="0" aria-checked="' + s.notify + '"><span>' + esc(L.notify) + '</span><i class="sw"></i></div>' +
       '<div class="row' + (s.autoUpdate ? " on" : "") + '" id="autoupdate" role="switch" tabindex="0" aria-checked="' + s.autoUpdate + '"><span>' + esc(L.autoUpdate) + '</span><i class="sw"></i></div>' +
+      '<div class="chkrow"><button class="btn chk" id="chk">' + esc(checkMsg || L.check) + '</button></div>' +
       '<div class="row' + (s.autostart ? " on" : "") + '" id="autostart" role="switch" tabindex="0" aria-checked="' + s.autostart + '"><span>' + esc(L.autostart) + '</span><i class="sw"></i></div></div>' +
-      '<button class="btn mute" id="mute">' + esc(s.muteLabel) + '</button>' +
       '<div class="sec"><span class="lbl">' + esc(L.theme) + '</span>' +
       seg("theme", [["system", L.sys, "accent"], ["dark", L.dark, "accent"], ["oled", L.oled, "accent"], ["light", L.light, "accent"]], s.themeSetting) + '</div>' +
       '<div class="btns"><button class="btn" id="showlog">' + esc(L.showLog) + '</button><button class="btn' + (copied ? " ok" : "") + '" id="copylog">' + esc(copied ? L.copied : L.copyLog) + '</button></div>' +
@@ -162,6 +174,13 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   }
   function bindGeneral() {
     function toggle(id, f) { var el = $(id); el.onclick = call(function () { f(!el.classList.contains("on")); }); el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } }; }
+        if ($("chk")) $("chk").onclick = function () {
+      checkMsg = S.L.checking; sigs.panel = ""; refresh();
+      Promise.resolve(window.checkNow()).then(function (r) {
+        checkMsg = r === "current" ? S.L.upToDate : r === "error" ? S.L.checkFailed : ""; sigs.panel = ""; refresh();
+        setTimeout(function () { checkMsg = ""; sigs.panel = ""; refresh(); }, 4000);
+      }, function () { checkMsg = S.L.checkFailed; sigs.panel = ""; refresh(); });
+    };
     toggle("notify", window.setNotify); toggle("autoupdate", window.setAutoUpdate); toggle("autostart", window.setAutostart);
     $("mute").onclick = call(window.toggleMute);
     $("open").onclick = call(window.openApp); $("ai").onclick = call(window.openAI); $("uninstall").onclick = call(window.uninstall);
@@ -292,7 +311,9 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   window.addEventListener("unhandledrejection", function (e) {
     try { window.jsError("unhandled rejection: " + String(e.reason)); } catch (x) {}
   });
-  window.addEventListener("blur", function () { if (!picking && Date.now() - born > 1200) window.close(); });
+  var hadFocus = document.hasFocus(); window.addEventListener("focus", function () { hadFocus = true; });
+  // Closes on losing focus only after it really had focus (a window that never got it, e.g. started in the background, stays open).
+  window.addEventListener("blur", function () { if (hadFocus && !picking && Date.now() - born > 1200) window.close(); });
   document.addEventListener("contextmenu", function (e) { e.preventDefault(); });
   setInterval(refresh, 1000);
   refresh();

@@ -93,6 +93,7 @@ func status() {
 
 // Main runs the command line; no arguments = the double-click install flow.
 func Main(args []string) {
+	devSetup()
 	hadConsole := attachConsole()
 	if len(args) > 0 && args[0] == "hook" {
 		ev := ""
@@ -112,6 +113,7 @@ func Main(args []string) {
 	case "login":
 		err = cmdLogin(rest)
 	case "start":
+		openAtStart = contains(rest, "--open")
 		if contains(rest, "--detach") {
 			self, _ := os.Executable()
 			if err = startDetachedExe(self); err == nil {
@@ -122,6 +124,8 @@ func Main(args []string) {
 		}
 	case "open":
 		err = cmdOpen()
+	case "dump":
+		err = fireDump()
 	case "status":
 		status()
 	case "engine":
