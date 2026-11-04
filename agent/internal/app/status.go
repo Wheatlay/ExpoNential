@@ -2,6 +2,7 @@ package app
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -115,4 +116,38 @@ func updateSuffix(lang string) string {
 		return " · dostępna " + v
 	}
 	return " · " + v + " available"
+}
+
+// agentLang is the language of the agent's own windows: the account language mirrored from the server
+// (config.Lang), else the Windows UI language. Before login (installer start/error screens) uiLang() is used directly.
+func agentLang() string {
+	if l := loadConfig().Lang; l == "pl" || l == "en" {
+		return l
+	}
+	return uiLang()
+}
+
+var lastLangSync atomic.Int64 // unix seconds of the last /api/me language fetch
+
+// syncLang reads the account language from /api/me at most every 10 minutes (called from the poll loop, so the
+// window picks up a change made in the web app without a restart) and stores it in config.json when it changed.
+func syncLang(a *Auth) {
+	now := time.Now().Unix()
+	if last := lastLangSync.Load(); now-last < 600 || !lastLangSync.CompareAndSwap(last, now) {
+		return
+	}
+	var me struct {
+		Lang *string `json:"lang"`
+	}
+	if request(a, "GET", "/api/me", nil, 10*time.Second, &me) != nil {
+		lastLangSync.Store(0) // retry on the next poll
+		return
+	}
+	l := ""
+	if me.Lang != nil && (*me.Lang == "pl" || *me.Lang == "en") {
+		l = *me.Lang
+	}
+	if loadConfig().Lang != l {
+		updateConfig(func(c *Config) { c.Lang = l })
+	}
 }

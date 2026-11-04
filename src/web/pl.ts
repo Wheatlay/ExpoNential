@@ -670,6 +670,7 @@ export const pl: Record<string, string> = {
   'OLED black': 'Czarny OLED',
   'Light': 'Jasny',
   'Language': 'Język',
+  'Help translate…': 'Pomóż tłumaczyć…',
   'created {when}': 'utworzony {when}',
   'used {when}': 'użyty {when}',
   'never used': 'nieużywany',

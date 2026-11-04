@@ -28,7 +28,7 @@ import { ProjectBadge, ProjectSwitcher, useCurrentProject } from './ProjectSwitc
 import { NewProjectHost } from './NewProject.tsx';
 import { MeetingHost } from './Meetings.tsx';
 import { MeetingBanner, NotifyPrompt } from './Notifications.tsx';
-import { t } from './i18n.ts';
+import { syncLangFromServer, t } from './i18n.ts';
 import { Invite, Login, Reset } from './AuthScreens.tsx';
 import { ErrorState, LoadingState } from './states.tsx';
 
@@ -58,6 +58,7 @@ function App() {
   const demoMode = !!config.data?.demo;
   useLiveUpdates(!!me.data);
   useEffect(() => { if (me.data?.demo) markDemoSession(); }, [me.data?.demo]);
+  useEffect(() => { if (me.data) syncLangFromServer(me.data.lang); }, [me.data?.lang]);
   const projectName = projects.data?.find((p) => p.key === projectKey)?.name;
   useEffect(() => {
     baseTitle = projectName ? `${projectName} · Exponential` : 'Exponential';

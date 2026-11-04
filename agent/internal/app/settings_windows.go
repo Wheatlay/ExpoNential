@@ -82,7 +82,7 @@ func buildSettingsState() (st settingsState) {
 			st = settingsState{Theme: "dark", ThemeSetting: "system", L: settingsLabels("en"), TeamMode: teamAsk, Runs: []runRecord{}}
 		}
 	}()
-	lang := uiLang()
+	lang := agentLang()
 	cfg := loadConfig()
 	text, kind := statusParts(lang)
 	until, muted := mutedUntilOf(cfg, time.Now())

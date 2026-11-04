@@ -30,6 +30,8 @@ export const users = pgTable('users', {
   // Lokalna analiza (tracker://) zainstalowana na komputerze użytkownika; ustawia instalator.
   // Kreator podłączenia AI ukończony (przycisk Done przy pełnym celu).
   setupDoneAt: timestamp('setup_done_at', { withTimezone: true }),
+  // Preferowany język interfejsu ('en' | 'pl'); null = jeszcze nie wybrany. Web i agent podążają za tą wartością.
+  lang: text('lang'),
 }, (t) => [
   uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`).where(sql`${t.email} is not null`),
   uniqueIndex('users_login_lower_idx').on(sql`lower(${t.login})`),

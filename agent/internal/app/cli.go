@@ -179,7 +179,7 @@ func Main(args []string) {
 			msg := "Exponential agent was removed."
 			kind := uint32(dlgInfo)
 			if !forgot {
-				msg += "\n" + forgetFailedMsg(uiLang())
+				msg += "\n" + forgetFailedMsg(agentLang())
 				kind = dlgError
 			}
 			if hadConsole {
@@ -203,7 +203,7 @@ func askUninstall() {
 	if runInstallerWindow("uninstall") {
 		return
 	}
-	pl := uiLang() == "pl"
+	pl := agentLang() == "pl"
 	q := "Uninstall the Exponential agent from this computer?"
 	if pl {
 		q = "Odinstalować agenta Exponential z tego komputera?"
@@ -219,7 +219,7 @@ func askUninstall() {
 	if err != nil {
 		msg, kind = err.Error(), dlgError
 	} else if !forgot {
-		msg += "\n" + forgetFailedMsg(uiLang())
+		msg += "\n" + forgetFailedMsg(agentLang())
 		kind = dlgError
 	}
 	msgBox(msg, kind)

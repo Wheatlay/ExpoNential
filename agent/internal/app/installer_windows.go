@@ -97,7 +97,7 @@ func runInstallerWindow(mode string) (shown bool) {
 		go func() {
 			if mode != "" {
 				cfg := loadConfig()
-				info := installInfo{Lang: uiLang(), State: mode, User: cfg.UserName, Host: hostOf(cfg.URL)}
+				info := installInfo{Lang: agentLang(), State: mode, User: cfg.UserName, Host: hostOf(cfg.URL)}
 				b, _ := json.Marshal(info)
 				push("setInfo(" + string(b) + ")")
 				return

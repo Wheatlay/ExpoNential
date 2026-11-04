@@ -2,7 +2,7 @@ import { pl } from './pl.ts';
 
 /**
  * Język interfejsu: angielski tekst w kodzie jest kluczem, słownik pl.ts go tłumaczy. Wybór zapisany
- * w przeglądarce (Settings › Appearance), domyślnie język przeglądarki. Zmiana przeładowuje stronę,
+ * na koncie (Settings › Appearance) i w przeglądarce, domyślnie język przeglądarki. Zmiana przeładowuje stronę,
  * więc t() nie potrzebuje kontekstu Reacta. Kompletność słownika sprawdza tests/i18n.test.ts.
  */
 export type Lang = 'en' | 'pl';
@@ -20,8 +20,33 @@ export const lang: Lang = detect();
 export const locale = lang === 'pl' ? 'pl-PL' : 'en-GB';
 document.documentElement.lang = lang;
 
-export function setLang(l: Lang) {
+/** Zapisuje wybór w koncie (serwer to źródło prawdy dla przeglądarki i agenta), potem w przeglądarce i przeładowuje. */
+export async function setLang(l: Lang) {
+  try {
+    await fetch('/api/me', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'exponential' }, body: JSON.stringify({ lang: l }), credentials: 'same-origin' });
+  } catch { /* offline: wybór i tak zostaje w przeglądarce */ }
   try { localStorage.setItem('lang', l); } catch { /* prywatne okno */ }
+  location.reload();
+}
+
+/** Po załadowaniu /api/me: język z konta wygrywa z lokalnym. Jedno przeładowanie (flaga w sessionStorage chroni przed pętlą). */
+export function syncLangFromServer(serverLang: Lang | null | undefined) {
+  if (serverLang !== 'en' && serverLang !== 'pl') {
+    // Profile empty but this browser has a choice from before the profile setting existed: move it to the profile once
+    // (the agent and other browsers follow the profile).
+    let saved: string | null = null;
+    try { saved = localStorage.getItem('lang'); } catch { /* storage blocked */ }
+    if (serverLang === null && (saved === 'en' || saved === 'pl')) {
+      void fetch('/api/me', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'exponential' }, body: JSON.stringify({ lang: saved }) }).catch(() => {});
+    }
+    return;
+  }
+  if (serverLang === lang) return;
+  try {
+    if (sessionStorage.getItem('langSynced')) return;
+    sessionStorage.setItem('langSynced', '1');
+    localStorage.setItem('lang', serverLang);
+  } catch { return; }
   location.reload();
 }
 

@@ -14,7 +14,7 @@ import (
 // The icon is best-effort: when it cannot be created the loop still runs.
 // Left click on the icon opens the mini settings window (SetOnTapped); the menu opens on right click.
 func runWithTray(loop func()) {
-	lang := uiLang()
+	lang := agentLang()
 	pl := lang == "pl"
 	tx := func(p, e string) string {
 		if pl {

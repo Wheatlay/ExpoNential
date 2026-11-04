@@ -204,7 +204,7 @@ func toastPush() {
 		Prompts []pc              `json:"prompts"`
 		Infos   []ic              `json:"infos"`
 		Update  *updateSnap       `json:"update"`
-	}{Theme: currentTheme(), L: toastLabels(uiLang()), Prompts: []pc{}, Infos: []ic{}}
+	}{Theme: currentTheme(), L: toastLabels(agentLang()), Prompts: []pc{}, Infos: []ic{}}
 	if u := updCard.Snapshot(); u.Phase != updNone {
 		st.Update = &u
 	}

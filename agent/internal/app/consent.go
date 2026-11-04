@@ -177,7 +177,7 @@ func requesterName(rq requesterInfo) string {
 	if rq.Name != "" {
 		return rq.Name
 	}
-	if uiLang() == "pl" {
+	if agentLang() == "pl" {
 		return "Ktoś z zespołu"
 	}
 	return "Someone from the team"

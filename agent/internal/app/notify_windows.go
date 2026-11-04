@@ -64,7 +64,7 @@ func notifyOther(key, name string) {
 		}
 		prepareToast()
 		title := name + " · analysis " + key
-		if uiLang() == "pl" {
+		if agentLang() == "pl" {
 			title = name + " · analiza " + key
 		}
 		n := toast.Notification{AppID: toastAppID, Title: title, Icon: toastIcon}

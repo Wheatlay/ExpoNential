@@ -15,7 +15,7 @@ import (
 //   1 issue access (MCP server "tracker" in Claude Code / Codex), 2 work trace (Claude Code plugin), 3 background agent.
 
 func ltx(p, e string) string {
-	if uiLang() == "pl" {
+	if agentLang() == "pl" {
 		return p
 	}
 	return e

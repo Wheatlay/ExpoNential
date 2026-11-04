@@ -12,7 +12,7 @@ import (
 )
 
 // Version is set by main (ldflags -X main.version).
-var Version = "0.4.11"
+var Version = "0.4.12"
 
 type RepoEntry struct {
 	Path   string `json:"path"`
@@ -46,6 +46,7 @@ type Config struct {
 	MutedUntil      float64              `json:"mutedUntil,omitempty"`      // ms until which the agent is muted (no prompts, others' jobs skipped)
 	TeamMode        string               `json:"teamMode,omitempty"`        // ask | auto | off (source of truth: the server)
 	Theme           string               `json:"theme,omitempty"`           // system | dark | light
+	Lang            string               `json:"lang,omitempty"`            // en | pl, mirrors the account language on the server (empty = Windows UI language)
 	AutoUpdate      *bool                `json:"autoUpdate,omitempty"`      // install new versions by itself when idle (default on)
 	UpdateDismissed string               `json:"updateDismissed,omitempty"` // agent version whose update card was dismissed
 	UpdatedTo       string               `json:"updatedTo,omitempty"`       // version a self-update was started for (the new process shows "updated" once)
@@ -53,7 +54,7 @@ type Config struct {
 	raw map[string]json.RawMessage
 }
 
-var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers", "askOthers", "allowUntil", "declined", "goal", "mutedUntil", "teamMode", "theme", "updateDismissed", "updatedTo"}
+var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers", "askOthers", "allowUntil", "declined", "goal", "mutedUntil", "teamMode", "theme", "lang", "updateDismissed", "updatedTo"}
 
 func dataDir() string {
 	base := os.Getenv("LOCALAPPDATA")

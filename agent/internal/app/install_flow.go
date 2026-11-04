@@ -88,7 +88,7 @@ func prepareInstall() (installInfo, *installCtx) {
 		for i := 0; i < 10 && agentPID() == 0; i++ {
 			time.Sleep(200 * time.Millisecond)
 		}
-		ci := installInfo{Lang: uiLang(), State: "connected", User: name, Host: hostOf(cfg.URL), Running: agentPID() != 0, Engine: cfg.Engine}
+		ci := installInfo{Lang: agentLang(), State: "connected", User: name, Host: hostOf(cfg.URL), Running: agentPID() != 0, Engine: cfg.Engine}
 		ci.Goal = 3
 		if cfg.Goal >= 1 && cfg.Goal < 3 {
 			ci.Goal = cfg.Goal

@@ -369,11 +369,15 @@ function Appearance() {
       </div>
       <div id="language" className="s-row">
         <span className="grow">{t('Language')}</span>
-        <div className="seg">
-          {(['pl', 'en'] as Lang[]).map((l) => (
-            <button key={l} className={lang === l ? 'on' : ''} onClick={() => { if (l !== lang) setLang(l); }}>{l === 'pl' ? 'Polski' : 'English'}</button>
-          ))}
-        </div>
+        <select className="input" value={lang} aria-label={t('Language')} onChange={(e) => {
+          const v = e.target.value;
+          if (v === '__help') { window.open('https://github.com/Wheatlay/ExpoNential/blob/main/docs/translating.md', '_blank', 'noopener'); e.target.value = lang; return; }
+          if (v !== lang) void setLang(v as Lang);
+        }}>
+          <option value="en">English</option>
+          <option value="pl">Polski</option>
+          <option value="__help">{t('Help translate…')}</option>
+        </select>
       </div>
     </div>
   );

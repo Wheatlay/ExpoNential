@@ -102,7 +102,7 @@ export async function registerApi(app: FastifyInstance) {
 
     const meShape = async (req: FastifyRequest) => {
       const [u] = await db.select({
-        setupDoneAt: users.setupDoneAt, passwordHash: users.passwordHash,
+        setupDoneAt: users.setupDoneAt, lang: users.lang, passwordHash: users.passwordHash,
         avatarUrl: users.avatarUrl, avatarCustom: users.avatarCustom, providerAvatarUrl: users.providerAvatarUrl, githubId: users.githubId,
       }).from(users).where(eq(users.id, req.user!.id));
       const mine = await ag.agentsLite(req.user!, true);
@@ -110,7 +110,7 @@ export async function registerApi(app: FastifyInstance) {
       // provider: skąd wraca zdjęcie po "Use … photo"; null = konto bez zdjęcia od dostawcy (zostają inicjały).
       return { ...req.user, avatarUrl: u?.avatarUrl ?? null, avatarCustom: !!u?.avatarCustom, provider: u?.providerAvatarUrl ? (u.githubId ? 'github' : 'google') : null,
         hasPassword: !!u?.passwordHash, hasAgent: mine.length > 0, agentOnline: mine.some((a) => a.online), agentLastSeen: lastSeen,
-        setupDoneAt: u?.setupDoneAt ?? null, aiStatus: await ag.aiStatus(req.user!, mine),
+        setupDoneAt: u?.setupDoneAt ?? null, lang: u?.lang ?? null, aiStatus: await ag.aiStatus(req.user!, mine),
         // Któryś komputer ma agenta starszego niż MIN_EXE_AGENT.
         agentOutdated: mine.some((a) => a.outdated), demo: process.env.DEMO_MODE === '1' };
     };
@@ -118,7 +118,7 @@ export async function registerApi(app: FastifyInstance) {
 
     // Własny profil: nazwa i zdjęcie (avatar: ścieżka z /api/uploads albo null = zdjęcie od dostawcy). Bez projectKey, żeby odświeżyli się wszyscy.
     r.put('/api/me', async (req) => {
-      const body = z.object({ name: z.string().max(200).optional(), avatar: z.string().max(300).nullable().optional() }).parse(req.body);
+      const body = z.object({ name: z.string().max(200).optional(), avatar: z.string().max(300).nullable().optional(), lang: z.enum(['en', 'pl']).nullable().optional() }).parse(req.body);
       await acc.updateProfile(req.user!.id, body);
       await svc.publish({ type: 'meta' });
       return meShape(req);

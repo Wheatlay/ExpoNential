@@ -45,6 +45,13 @@ afterAll(async () => { await dbmod?.sql.end(); });
 const row = async (id: number) => (await dbmod.db.select().from(schema.users).where(eq(schema.users.id, id)))[0];
 
 describe('profile', () => {
+  it('saves the language preference and clears it with null', async () => {
+    await acc.updateProfile(member.id, { lang: 'pl' });
+    expect((await row(member.id)).lang).toBe('pl');
+    await acc.updateProfile(member.id, { lang: null });
+    expect((await row(member.id)).lang).toBeNull();
+  });
+
   it('renames, trims and validates', async () => {
     await acc.updateProfile(member.id, { name: '  Nowa Nazwa ' });
     expect((await row(member.id)).name).toBe('Nowa Nazwa');

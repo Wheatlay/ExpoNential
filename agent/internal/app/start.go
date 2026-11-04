@@ -392,7 +392,7 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 				until = time.Now().Add(60 * time.Minute)
 			}
 			requeue = true
-			setLastErr(limitText(uiLang(), until))
+			setLastErr(limitText(agentLang(), until))
 			pauseAnalyses(until)
 			return
 		}
@@ -644,6 +644,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 		mergeServerRepos(sr)
 	}
 	syncTeamMode(a, cfg, res.TeamMode)
+	go syncLang(a)
 	*delay, *errLogged = 2, false
 	var job *pollJob
 	pending := 0

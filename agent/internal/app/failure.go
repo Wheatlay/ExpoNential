@@ -214,7 +214,7 @@ func pauseAnalyses(until time.Time) {
 	notifyStatus()
 	if first {
 		hm := until.Local().Format("15:04")
-		if uiLang() == "pl" {
+		if agentLang() == "pl" {
 			notifyText("Limit Claude wyczerpany · analizy wrócą o " + hm)
 		} else {
 			notifyText("Claude usage limit reached · analyses resume at " + hm)
