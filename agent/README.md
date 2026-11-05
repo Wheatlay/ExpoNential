@@ -118,7 +118,11 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 - **Open requests:** every poll asks `GET /api/agent/open-requests`; the repo's folder is opened with the editor CLI (`code`, `cursor`, `windsurf`; PATH, else `%LOCALAPPDATA%\Programs\...`), then `<scheme>://anthropic.claude-code/open?prompt=...`; `terminal` opens Windows Terminal (or a console) in the folder with `claude`.
 - **Rename tracker -> expo:** the Claude Code MCP server and plugin are `expo` / `expo@expo`; at start the agent removes a leftover `tracker` MCP server and `tracker@tracker` plugin and installs the new ones.
 
-## 0.4.17
+## 0.4.18
+
+- **Memory in the tray:** the settings and card windows (WebView2, a whole embedded browser: 6 processes, ~160 MB) are closed for real after 60 s hidden (`webviewIdleClose`) and created again when needed. Before, both stayed alive until the agent exited, and `webview.Destroy` after `Run` did nothing (it only posts WM_CLOSE to a loop that has ended); `destroyWebview` now calls DestroyWindow. Idle agent: 1 process, ~57 MB (was 7 processes, ~215 MB after any card).
+- **tracker -> expo plugin migration fixed:** the old `tracker` marketplace has the same URL, so `marketplace add` answered "already on disk", `expo` never existed and the install failed on every start. A marketplace with another name and the same URL is removed first.
+
 
 - **Found repos:** every poll sends `found` (JSON array of lowercase `owner/name` GitHub slugs from the git configs of the folders opened in Claude Code, VS Code, Cursor and Codex; max 100). The list is cached and refreshed in the background at most every 5 minutes.
 - **Discovery** runs every 5 minutes (was 60); the unchanged-history shortcut still keeps it cheap.

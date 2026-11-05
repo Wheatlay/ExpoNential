@@ -33,7 +33,13 @@ var toastW struct {
 	start  bool
 	ch     chan struct{}
 	retry  time.Time // after a failure the window may be created again from this moment
+	idle   int       // bumped on every hide/show; an idle close fires only if it did not change meanwhile
+	reaped bool      // the window was closed because it sat empty, not because it failed
 }
+
+// webviewIdleClose: how long a hidden WebView2 window (cards, settings) is kept before it is closed for real.
+// Hidden, it still holds a whole browser (several processes, a few hundred MB) while the agent sits in the tray.
+const webviewIdleClose = 60 * time.Second
 
 func init() { cardsChanged = toastPush }
 
@@ -44,6 +50,12 @@ func showPromptWindow() bool { return toastEnsure() }
 
 func toastEnsure() bool {
 	toastW.mu.Lock()
+	// An idle close is under way: let the old window go, then create a new one.
+	for i := 0; i < 60 && toastW.reaped; i++ {
+		toastW.mu.Unlock()
+		time.Sleep(50 * time.Millisecond)
+		toastW.mu.Lock()
+	}
 	if toastW.failed {
 		// The window failed or was closed earlier. Used to be permanent (no card until the agent restarted);
 		// now it is created again after a short pause.
@@ -107,7 +119,7 @@ func toastThread() {
 		fail()
 		return
 	}
-	defer func() { w.Destroy(); _ = os.RemoveAll(dataPath) }()
+	defer func() { destroyWebview(w); _ = os.RemoveAll(dataPath) }()
 	hwnd := uintptr(w.Window())
 	popupStyle(hwnd, false, true)
 	hideWindow(hwnd)
@@ -127,10 +139,18 @@ func toastThread() {
 	w.SetHtml(applyUI(toastHTML, currentTheme()))
 	w.Run()
 	toastW.mu.Lock()
-	toastW.failed, toastW.ready, toastW.w = true, false, nil
-	toastW.retry = time.Now().Add(5 * time.Second)
+	reaped := toastW.reaped
+	toastW.reaped, toastW.ready, toastW.w, toastW.hwnd = false, false, nil, 0
+	if reaped {
+		toastW.start = false // created again on the next card, no pause
+	} else {
+		toastW.failed = true
+		toastW.retry = time.Now().Add(5 * time.Second)
+	}
 	toastW.mu.Unlock()
-	logf("consent card window closed, it will be created again when needed")
+	if !reaped {
+		logf("consent card window closed, it will be created again when needed")
+	}
 	done()
 }
 
@@ -172,12 +192,15 @@ func toastAct(key, action string) {
 func toastReport(h int, rectsJSON string) {
 	toastW.mu.Lock()
 	hwnd, sc := toastW.hwnd, toastW.sc
+	toastW.idle++
+	gen := toastW.idle
 	toastW.mu.Unlock()
 	if hwnd == 0 {
 		return
 	}
 	if h <= 0 {
 		hideWindow(hwnd)
+		time.AfterFunc(webviewIdleClose, func() { toastReap(gen) })
 		return
 	}
 	var raw [][4]float64
@@ -191,6 +214,22 @@ func toastReport(h int, rectsJSON string) {
 		rects = append(rects, [4]int32{px(r[0]), px(r[1]), px(r[2]), px(r[3])})
 	}
 	clipToRects(hwnd, rects, px(12))
+}
+
+// toastReap closes the empty window if nothing was shown since the hide that scheduled it.
+func toastReap(gen int) {
+	if p, i := cards.Snapshot(); len(p) > 0 || len(i) > 0 || updCard.Snapshot().Phase != updNone {
+		return
+	}
+	toastW.mu.Lock()
+	defer toastW.mu.Unlock()
+	w := toastW.w
+	if w == nil || toastW.idle != gen || toastW.reaped {
+		return
+	}
+	toastW.reaped = true
+	toastW.ready = false // toastPush stops sending to the closing window
+	w.Destroy() // WM_CLOSE through the running message loop: the window, then the loop, end
 }
 
 // toastPush sends the current cards to the page (from any goroutine).

@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.18] - 05.11.2026
+
+- Agent in the tray no longer keeps ~160 MB: the settings window and the card window (consents, updates, notifications) are closed for real a minute after they are hidden, instead of staying alive until the agent exits. Idle: 1 process, ~57 MB (was 7 processes, ~215 MB after the first card).
+- The tracker -> expo plugin migration works: it failed on every start for everyone who had the old plugin ("Plugin expo not found in marketplace expo"), because the old marketplace with the same URL blocked adding the new one.
+- Dev tool `agent/tools/devwin.mjs key` dispatches the key in the page (Escape did nothing in a dev window without focus).
+
 ## Server [1.3.26] - 05.11.2026
 
 - Project history (Settings › History, project admins): who added, removed or changed the role of members, created or revoked invite links, created the project, and changed which settings (names of the fields only; secrets such as the Discord webhook are never stored), with date and time. 100 entries per page, Load more for older ones. Migration 0038 adds project_log; new endpoint GET /api/projects/:key/log.

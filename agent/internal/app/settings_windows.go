@@ -206,7 +206,17 @@ func openSettings() {
 	if !settingsOpen.CompareAndSwap(false, true) {
 		if f := settingsShow.Load(); f != nil {
 			(*f)()
+			return
 		}
+		// The hidden window is being closed (idle): wait for it to go, then open a new one.
+		go func() {
+			for i := 0; i < 40 && settingsOpen.Load(); i++ {
+				time.Sleep(50 * time.Millisecond)
+			}
+			if !settingsOpen.Load() {
+				openSettings()
+			}
+		}()
 		return
 	}
 	go func() {
@@ -239,7 +249,7 @@ func openSettings() {
 			openApp() // no WebView2: open the web settings instead
 			return
 		}
-		defer func() { w.Destroy(); _ = os.RemoveAll(dataPath) }()
+		defer func() { destroyWebview(w); _ = os.RemoveAll(dataPath) }()
 		hwnd := uintptr(w.Window())
 		settingsHwnd.Store(hwnd)
 		popupStyle(hwnd, true, false)
@@ -260,19 +270,39 @@ func openSettings() {
 		settingsShow.Store(&reshow)
 		// Click outside: when another program's window comes to the foreground, hide this one (not in dev mode,
 		// where the test driver works in the background; the folder picker belongs to this process, so it does not count).
+		defer settingsShow.Store(nil)
+		var shown atomic.Bool
 		stopWatch := make(chan struct{})
 		defer close(stopWatch)
 		go func() {
 			t := time.NewTicker(200 * time.Millisecond)
 			defer t.Stop()
 			wasFront := false
+			hiddenSince := time.Time{}
 			for {
 				select {
 				case <-stopWatch:
 					return
 				case <-t.C:
 				}
-				if devMode() || !windowVisible(hwnd) {
+				if !windowVisible(hwnd) {
+					wasFront = false
+					// Hidden for a while: close the window for real. A hidden WebView2 keeps a whole browser
+					// (several processes, a few hundred MB) alive while the agent sits in the tray.
+					if !shown.Load() {
+						continue
+					}
+					if hiddenSince.IsZero() {
+						hiddenSince = time.Now()
+					} else if time.Since(hiddenSince) >= webviewIdleClose {
+						settingsShow.Store(nil)
+						w.Destroy() // WM_CLOSE through the running message loop: the window, then the loop, end
+						return
+					}
+					continue
+				}
+				hiddenSince = time.Time{}
+				if devMode() {
 					wasFront = false
 					continue
 				}
@@ -287,8 +317,6 @@ func openSettings() {
 				}
 			}
 		}()
-		defer settingsShow.Store(nil)
-		var shown atomic.Bool
 		_ = w.Bind("ready", func() {
 			defer guard("ready")
 			if shown.CompareAndSwap(false, true) {
@@ -439,7 +467,7 @@ func openSettings() {
 		_ = w.Bind("jsError", func(msg string) { logf("settings js: %s", msg) })
 		_ = w.Bind("close", func() {
 			defer guard("close")
-			hideWindow(hwnd) // kept for an instant reopen; the process exit destroys it
+			hideWindow(hwnd) // kept for an instant reopen; closed for real after webviewIdleClose
 		})
 		w.SetHtml(applyUI(settingsHTML, currentTheme()))
 		w.Run()

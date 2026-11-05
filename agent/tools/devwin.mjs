@@ -62,8 +62,11 @@ const run = {
   async key() {
     const p = await settingsPage();
     const key = args[0];
-    await cdp(p, 'Input.dispatchKeyEvent', { type: 'keyDown', key, code: key, windowsVirtualKeyCode: key === 'Escape' ? 27 : 0 });
-    await cdp(p, 'Input.dispatchKeyEvent', { type: 'keyUp', key, code: key, windowsVirtualKeyCode: key === 'Escape' ? 27 : 0 });
+    // Dispatched in the page, not through Input.dispatchKeyEvent: a dev window is opened without focus, and native
+    // key events then never reach the page (Escape did nothing).
+    const k = JSON.stringify(key);
+    const expression = `(() => { const t = document.activeElement || document.body; for (const type of ['keydown', 'keyup']) t.dispatchEvent(new KeyboardEvent(type, { key: ${k}, code: ${k}, bubbles: true, cancelable: true })); return true; })()`;
+    await cdp(p, 'Runtime.evaluate', { expression, returnByValue: true });
     console.log('key', key);
   },
   async shot() {

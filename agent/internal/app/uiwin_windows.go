@@ -6,12 +6,15 @@ import (
 	"os"
 	"unsafe"
 
+	webview2 "github.com/jchv/go-webview2"
 	"golang.org/x/sys/windows/registry"
 )
 
 var (
 	procSetWinLong    = user32.NewProc("SetWindowLongPtrW")
 	procShowWindow    = user32.NewProc("ShowWindow")
+	procDestroyWindow = user32.NewProc("DestroyWindow")
+	procIsWindowW     = user32.NewProc("IsWindow")
 	procSetWinRgn     = user32.NewProc("SetWindowRgn")
 	procSysParamInfo  = user32.NewProc("SystemParametersInfoW")
 	procSetForeground = user32.NewProc("SetForegroundWindow")
@@ -112,3 +115,14 @@ func ownWindow(h uintptr) bool {
 	procWinThrProc.Call(h, uintptr(unsafe.Pointer(&pid)))
 	return int(pid) == os.Getpid()
 }
+
+// destroyWebview ends a WebView2 window after its message loop has returned (call on the window's thread).
+// webview.Destroy only posts WM_CLOSE, which nobody reads once Run is over: the window and its whole browser
+// (several processes, a few hundred MB) stayed alive until the agent exited. DestroyWindow is synchronous.
+func destroyWebview(w webview2.WebView) {
+	if h := uintptr(w.Window()); h != 0 && isWindow(h) {
+		procDestroyWindow.Call(h)
+	}
+}
+
+func isWindow(h uintptr) bool { r, _, _ := procIsWindowW.Call(h); return r != 0 }

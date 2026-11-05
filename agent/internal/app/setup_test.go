@@ -41,3 +41,16 @@ func TestStripEnvAndScrub(t *testing.T) {
 		t.Fatal("list")
 	}
 }
+
+func TestSameURLMarketplaces(t *testing.T) {
+	known := []byte(`{"tracker":{"source":{"source":"url","url":"https://t.example/agent/marketplace.json"}},
+		"expo":{"source":{"source":"url","url":"https://t.example/agent/marketplace.json"}},
+		"other":{"source":{"source":"github","repo":"a/b"}}}`)
+	got := sameURLMarketplaces(known, "https://t.example/agent/marketplace.json", "expo")
+	if len(got) != 1 || got[0] != "tracker" {
+		t.Fatalf("got %v, want [tracker]", got)
+	}
+	if got := sameURLMarketplaces([]byte("not json"), "x", "expo"); got != nil {
+		t.Fatalf("bad json: got %v", got)
+	}
+}

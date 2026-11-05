@@ -244,6 +244,25 @@ func setupAccess(engine, base string) error {
 	return nil
 }
 
+// sameURLMarketplaces: names of the marketplaces in known_marketplaces.json that point at url under a name other than keep.
+func sameURLMarketplaces(known []byte, url, keep string) []string {
+	var m map[string]struct {
+		Source struct {
+			URL string `json:"url"`
+		} `json:"source"`
+	}
+	if json.Unmarshal(known, &m) != nil {
+		return nil
+	}
+	var out []string
+	for name, v := range m {
+		if name != keep && strings.EqualFold(strings.TrimRight(v.Source.URL, "/"), strings.TrimRight(url, "/")) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 func setupTrace(base string) error {
 	bin := findEngine("claude")
 	if bin == "" {
@@ -252,6 +271,12 @@ func setupTrace(base string) error {
 	var bad []string
 	for _, d := range claudeConfigDirs() {
 		last := ""
+		// The same marketplace URL registered under another name (the old "tracker") makes "marketplace add" a
+		// no-op ("already on disk"), so "expo" never exists and the install fails on every start: remove it first.
+		known := readFile(filepath.Join(pluginDir(d), "plugins", "known_marketplaces.json"))
+		for _, name := range sameURLMarketplaces(known, base+"/agent/marketplace.json", mcpName) {
+			_, _ = runCmd(bin, []string{"plugin", "marketplace", "remove", name}, d, 90*time.Second, "")
+		}
 		for _, args := range claudePluginSteps(base) {
 			out, err := runCmd(bin, args, d, 90*time.Second, "")
 			if err != nil && !strings.Contains(strings.ToLower(out), "already") {
