@@ -5,6 +5,7 @@ import {
   type ActivityPayload,
 } from '../db/schema.ts';
 import { RuleError, identifier, isEmail, isNeedInfo, PRIORITIES } from './rules.ts';
+import { logProject } from './projectLog.ts';
 import { st } from './i18n.ts';
 import { relationsOf } from './relations.ts';
 import { notifyMentions } from './mentions.ts';
@@ -669,7 +670,10 @@ export async function saveUser(p: Project | null, input: { id?: number; login: s
       : dsql`lower(${users.login}) = lower(${input.login})`);
     if (dup) throw new RuleError(`${input.login} already has an account`, 'invalid');
     const [u] = await db.insert(users).values({ login: input.login, name: input.name || input.login, isAdmin: !!input.isAdmin, ...(byEmail ? { email: input.login } : {}) }).returning();
-    if (p) await db.insert(projectMembers).values({ projectId: p.id, userId: u.id, role: 'member' }).onConflictDoNothing();
+    if (p) {
+      const added = await db.insert(projectMembers).values({ projectId: p.id, userId: u.id, role: 'member' }).onConflictDoNothing().returning({ userId: projectMembers.userId });
+      if (added.length) await logProject(p.id, null, 'member_added', { targetUserId: u.id, data: { role: 'member', via: 'account' } });
+    }
   }
   await publish({ type: 'meta', projectKey: p?.key });
 }

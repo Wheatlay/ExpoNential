@@ -608,3 +608,14 @@ export const projectInvites = pgTable('project_invites', {
   usedBy: integer('used_by').references(() => users.id, { onDelete: 'set null' }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 });
+
+/** Dziennik projektu: zmiany na poziomie projektu (członkowie, role, zaproszenia, ustawienia). Bez sekretów w data. */
+export const projectLog = pgTable('project_log', {
+  id: serial('id').primaryKey(),
+  projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  actorId: integer('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  kind: text('kind').notNull(),
+  targetUserId: integer('target_user_id').references(() => users.id, { onDelete: 'set null' }),
+  data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('project_log_project_created_idx').on(t.projectId, t.createdAt.desc())]);

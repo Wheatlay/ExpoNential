@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.26] - 05.11.2026
+
+- Project history (Settings › History, project admins): who added, removed or changed the role of members, created or revoked invite links, created the project, and changed which settings (names of the fields only; secrets such as the Discord webhook are never stored), with date and time. 100 entries per page, Load more for older ones. Migration 0038 adds project_log; new endpoint GET /api/projects/:key/log.
+
 ## Server [1.3.25], Agent [0.4.17] - 05.11.2026
 
 - GitHub repo field (Settings › Integrations): a pasted URL (`https://github.com/owner/name.git`, `git@github.com:owner/name.git`) is reduced to `owner/name`, the repo is checked on GitHub (found / not found), and repos found on your own PCs are offered as one-click suggestions (only names, never paths; teammates' PCs are not used). A new switch lets agents clone the repo.

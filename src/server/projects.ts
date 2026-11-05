@@ -1,5 +1,6 @@
 import { and, asc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
+import { logProject, diffSettings } from './projectLog.ts';
 import { agentRepos, projectMembers, projects, statuses, users, type StatusType } from '../db/schema.ts';
 import { RuleError, isEmail, isProjectKey, normGithubRepo } from './rules.ts';
 import { uploadPath } from './account.ts';
@@ -84,6 +85,7 @@ export async function createProject(creatorId: number, input: { key: string; nam
   const [p] = await db.insert(projects).values({ key, name: input.name.trim(), ...(input.color ? { color: input.color } : {}) }).returning();
   await db.insert(projectMembers).values({ projectId: p.id, userId: creatorId, role: 'admin' });
   await seedProjectStatuses(p.id);
+  await logProject(p.id, creatorId, 'project_created');
   return p;
 }
 
@@ -93,7 +95,7 @@ export type ProjectPatch = Partial<{
   githubRepo: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean; agentsMayClone: boolean;
 }>;
 
-export async function updateProject(projectId: number, patch: ProjectPatch) {
+export async function updateProject(projectId: number, patch: ProjectPatch, actorId: number | null = null) {
   if (patch.name !== undefined && !patch.name.trim()) throw new RuleError('Project name cannot be empty', 'invalid');
   if (patch.logoUrl) uploadPath(patch.logoUrl); // pusty = bez logo
   if (patch.sprintLengthDays !== undefined && (!Number.isInteger(patch.sprintLengthDays) || patch.sprintLengthDays < 1 || patch.sprintLengthDays > 90)) {
@@ -115,7 +117,12 @@ export async function updateProject(projectId: number, patch: ProjectPatch) {
     const [old] = await db.select({ githubRepo: projects.githubRepo }).from(projects).where(eq(projects.id, projectId));
     if (old && old.githubRepo !== patch.githubRepo) await db.delete(agentRepos).where(eq(agentRepos.projectId, projectId));
   }
+  const [before] = await db.select().from(projects).where(eq(projects.id, projectId));
   const [p] = await db.update(projects).set({ ...patch, ...(patch.name ? { name: patch.name.trim() } : {}) }).where(eq(projects.id, projectId)).returning();
+  if (before && p) {
+    const fields = diffSettings(before, p, patch);
+    if (Object.keys(fields).length) await logProject(projectId, actorId, 'settings_changed', { data: { fields } });
+  }
   return p;
 }
 
@@ -146,18 +153,23 @@ export async function addMember(actor: ProjectUser, projectId: number, login: st
   const finalRole = role ?? 'member';
   await db.insert(projectMembers).values({ projectId, userId: user.id, role: finalRole })
     .onConflictDoUpdate({ target: [projectMembers.projectId, projectMembers.userId], set: { role: finalRole } });
+  if (!current) await logProject(projectId, actor.id || null, 'member_added', { targetUserId: user.id, data: { role: finalRole } });
+  else if (current.role !== finalRole) await logProject(projectId, actor.id || null, 'role_changed', { targetUserId: user.id, data: { from: current.role, to: finalRole } });
   return user;
 }
 
-export async function removeMember(projectId: number, userId: number) {
+export async function removeMember(projectId: number, userId: number, actorId: number | null = null) {
   const admins = (await listMembers(projectId)).filter((m) => m.role === 'admin');
   if (admins.length === 1 && admins[0].id === userId) throw new RuleError('A project needs at least one admin', 'invalid');
   await db.delete(projectMembers).where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)));
+  await logProject(projectId, actorId, 'member_removed', { targetUserId: userId });
 }
 
 /** Konto bez żadnego projektu (nowy admin z ADMIN_LOGINS, logowanie dev) dołącza do najstarszego projektu. */
 export async function ensureSomeMembership(userId: number) {
   if ((await projectsOf({ id: userId, isAdmin: false })).length) return;
   const p = (await listAllProjects())[0];
-  if (p) await db.insert(projectMembers).values({ projectId: p.id, userId, role: 'member' }).onConflictDoNothing();
+  if (!p) return;
+  const added = await db.insert(projectMembers).values({ projectId: p.id, userId, role: 'member' }).onConflictDoNothing().returning({ userId: projectMembers.userId });
+  if (added.length) await logProject(p.id, null, 'member_added', { targetUserId: userId, data: { role: 'member', via: 'auto' } });
 }

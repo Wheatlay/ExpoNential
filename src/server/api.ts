@@ -11,6 +11,7 @@ import * as svc from './service.ts';
 import * as acc from './account.ts';
 import * as sp from './sprints.ts';
 import * as pr from './projects.ts';
+import { listProjectLog, logProject } from './projectLog.ts';
 import * as ag from './agents.ts';
 import { addRelation, removeRelation } from './relations.ts';
 import { RuleError, normGithubRepo, parseIdentifier } from './rules.ts';
@@ -277,7 +278,7 @@ export async function registerApi(app: FastifyInstance) {
         body.githubRepo = repo;
       }
       if (body.discordWebhookUrl === '') body.discordWebhookUrl = null;
-      const next = await pr.updateProject(p.id, body);
+      const next = await pr.updateProject(p.id, body, req.user!.id);
       // Długość sprintu albo godzina review mogły się zmienić: przeliczamy sprinty i ich review.
       await sp.ensureProjectSprints(next);
       await svc.publish({ type: 'projects' });
@@ -329,7 +330,7 @@ export async function registerApi(app: FastifyInstance) {
     });
     r.delete<{ Params: { key: string; userId: string } }>('/api/projects/:key/members/:userId', async (req) => {
       const p = await manage(req, req.params.key);
-      await pr.removeMember(p.id, intParam(req.params.userId));
+      await pr.removeMember(p.id, intParam(req.params.userId), req.user!.id);
       await svc.publish({ type: 'meta', projectKey: p.key });
       await svc.publish({ type: 'projects' });
       return { ok: true };
@@ -341,10 +342,15 @@ export async function registerApi(app: FastifyInstance) {
       const body = z.object({ role: z.enum(['admin', 'member']).default('member') }).parse(req.body ?? {});
       return inv.createInvite(req.user!.id, p.id, body.role);
     });
+    r.get<{ Params: { key: string }; Querystring: { before?: string } }>('/api/projects/:key/log', async (req) => {
+      const p = await manage(req, req.params.key);
+      const before = req.query.before ? intParam(req.query.before) : undefined;
+      return listProjectLog(p.id, 100, before);
+    });
     r.get<{ Params: { key: string } }>('/api/projects/:key/invites', async (req) => inv.listInvites((await manage(req, req.params.key)).id));
     r.delete<{ Params: { key: string; id: string } }>('/api/projects/:key/invites/:id', async (req) => {
       const p = await manage(req, req.params.key);
-      await inv.revokeInvite(p.id, intParam(req.params.id));
+      await inv.revokeInvite(p.id, intParam(req.params.id), req.user!.id);
       return { ok: true };
     });
     r.post<{ Params: { key: string; id: string } }>('/api/projects/:key/invites/:id/renew', async (req) => {
@@ -506,6 +512,7 @@ export async function registerApi(app: FastifyInstance) {
       const p = await manage(req);
       const { view } = viewBody.parse(req.body);
       await db.update(projects).set({ defaultView: view }).where(eq(projects.id, p.id));
+      await logProject(p.id, req.user!.id, 'settings_changed', { data: { fields: { defaultView: 'changed' } } });
       await svc.publish({ type: 'view', projectKey: p.key });
       return { ok: true };
     });
@@ -691,7 +698,7 @@ export async function registerApi(app: FastifyInstance) {
     });
     r.put('/api/admin/sprint-length', async (req) => {
       const { days } = z.object({ days: z.number().int() }).parse(req.body);
-      await sp.setSprintLength(await manage(req), days);
+      await sp.setSprintLength(await manage(req), days, new Date(), req.user!.id);
       return { ok: true };
     });
 

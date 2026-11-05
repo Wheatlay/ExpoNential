@@ -3,6 +3,7 @@ import { and, desc, eq, gt, isNotNull, isNull, sql as dsql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db, type Tx } from '../db/index.ts';
 import { projectInvites, projectMembers, projects, users } from '../db/schema.ts';
+import { logProject } from './projectLog.ts';
 import { RuleError } from './rules.ts';
 
 type Exec = typeof db | Tx;
@@ -17,6 +18,7 @@ export async function createInvite(actorId: number, projectId: number, role: 'ad
   const token = randomBytes(24).toString('base64url');
   const expiresAt = new Date(Date.now() + INVITE_DAYS * 864e5);
   const [row] = await db.insert(projectInvites).values({ kind: 'invite', tokenHash: hashToken(token), projectId, role, createdBy: actorId, expiresAt }).returning();
+  await logProject(projectId, actorId, 'invite_created', { data: { role } });
   return { id: row.id, url: `${baseUrl()}/invite/${token}`, role, expiresAt };
 }
 
@@ -46,13 +48,15 @@ export async function renewInvite(actorId: number, projectId: number, id: number
     .where(and(eq(projectInvites.id, id), eq(projectInvites.projectId, projectId), eq(projectInvites.kind, 'invite'), isNull(projectInvites.usedAt), isNull(projectInvites.revokedAt)))
     .returning();
   if (!old) throw new RuleError('Invite not found', 'not_found');
+  await logProject(projectId, actorId, 'invite_revoked');
   return createInvite(actorId, projectId, old.role);
 }
 
-export async function revokeInvite(projectId: number, id: number) {
+export async function revokeInvite(projectId: number, id: number, actorId: number | null = null) {
   const rows = await db.update(projectInvites).set({ revokedAt: new Date() })
     .where(and(eq(projectInvites.id, id), eq(projectInvites.projectId, projectId), isNull(projectInvites.usedAt), isNull(projectInvites.revokedAt))).returning({ id: projectInvites.id });
   if (!rows.length) throw new RuleError('Invite not found', 'not_found');
+  await logProject(projectId, actorId, 'invite_revoked');
 }
 
 /** Ważne zaproszenie (nieużyte, nie cofnięte, nie wygasłe): dane do ekranu zaproszenia. Inaczej null. */
@@ -72,8 +76,11 @@ export async function consumeInvite(token: string, userId: number, exec: Exec = 
     .where(and(eq(projectInvites.tokenHash, hashToken(token)), eq(projectInvites.kind, 'invite'), isNotNull(projectInvites.projectId),
       isNull(projectInvites.usedAt), isNull(projectInvites.revokedAt), gt(projectInvites.expiresAt, new Date()))).returning();
   if (!inv?.projectId) return null;
+  const [before] = await exec.select({ role: projectMembers.role }).from(projectMembers).where(and(eq(projectMembers.projectId, inv.projectId), eq(projectMembers.userId, userId)));
   await exec.insert(projectMembers).values({ projectId: inv.projectId, userId, role: inv.role })
     .onConflictDoUpdate({ target: [projectMembers.projectId, projectMembers.userId], set: { role: dsql`case when ${projectMembers.role} = 'admin' then 'admin' else excluded.role end` } });
+  if (!before) await logProject(inv.projectId, null, 'member_added', { targetUserId: userId, data: { role: inv.role, via: 'invite' }, exec });
+  else if (before.role !== 'admin' && inv.role !== before.role) await logProject(inv.projectId, null, 'role_changed', { targetUserId: userId, data: { from: before.role, to: inv.role, via: 'invite' }, exec });
   const [p] = await exec.select({ key: projects.key, name: projects.name }).from(projects).where(eq(projects.id, inv.projectId));
   return { projectId: inv.projectId, projectKey: p.key, projectName: p.name, role: inv.role };
 }

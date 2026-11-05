@@ -64,6 +64,7 @@ export function Settings() {
       { id: 'labels', name: t('Labels and statuses'), render: () => <ProjectLabelsStatuses />, locked: lockedReason },
       { id: 'integrations', name: t('Integrations'), render: () => <ProjectIntegrations />, locked: lockedReason },
       { id: 'prompts', name: t('AI agent'), render: () => <ProjectPrompts />, locked: lockedReason },
+      { id: 'history', name: t('History'), render: () => <ProjectHistory />, locked: lockedReason },
     ] },
     ...(me?.isAdmin ? [{ name: t('Workspace'), items: [{ id: 'accounts', name: t('Accounts'), render: () => <><Accounts /><FeedbackProject /></> }] }] : []),
   ];
@@ -236,6 +237,8 @@ const SEARCH: SearchEntry[] = [
   { label: t('Deep'), to: 'prompts', target: 'agent-deep', keywords: ['model', 'claude', 'sonnet', 'opus', 'haiku', 'analiza', 'analysis', 'prompt', 'gleboka'] },
   { label: t('Analysis models'), to: 'prompts', target: 'agent-prompts', keywords: ['prompt', 'model', 'claude', 'agent', 'ai'] },
   { label: t('Team queue'), to: 'prompts', target: 'team-queue', keywords: ['analysis', 'analiza', 'kolejka', 'queue', 'zespol', 'team', 'agent'] },
+  // Projekt › Historia
+  { label: t('History'), to: 'history', target: 'project-history', keywords: ['dziennik', 'log', 'historia', 'zmiany', 'changes', 'audit', 'kto', 'who', 'members', 'czlonkowie', 'invites', 'zaproszenia'] },
   // Workspace › Konta
   { label: t('Who can log in to the workspace'), to: 'accounts', target: 'accounts-card', adminOnly: true, keywords: ['accounts', 'konta', 'admin', 'login', 'github', 'google', 'allow', 'zezwol'] },
   { label: t('Bug reports and ideas go to'), to: 'accounts', target: 'feedback-card', adminOnly: true, keywords: ['feedback', 'bug', 'idea', 'report', 'zgloszenie', 'blad', 'pomysl'] },
@@ -976,6 +979,65 @@ function InviteLinks() {
           </Tooltip>
         </div>
       ))}
+    </div>
+  );
+}
+
+type LogRow = { id: number; kind: string; data: Record<string, unknown>; createdAt: string; actor: { id: number; name: string } | null; target: { id: number; name: string } | null };
+const LOG_FIELDS: Record<string, string> = {
+  name: t('Name'), color: t('Project color'), logoUrl: t('Logo'), discordWebhookUrl: 'Discord webhook', meetingLocationUrl: t('Meeting place'),
+  sprintLengthDays: t('Sprint length'), reviewMeeting: t('Sprint review'), reviewTime: t('Sprint review time'), reviewMinutes: t('Sprint review time'),
+  githubRepo: t('GitHub repo'), deploySource: t('Deploys'), agentTeamQueue: t('Team queue'), agentsMayClone: t('Agents may clone the repo'),
+  analyzeModel: t('Analysis models'), deepModel: t('Analysis models'), defaultView: t('Default view'),
+  promptStart: t('AI agent'), promptAnalyze: t('AI agent'), promptClose: t('AI agent'), promptDeep: t('AI agent'),
+};
+const logStamp = (iso: string) => { const x = new Date(iso); return `${fmtDate(x)}, ${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`; };
+const roleName = (r: unknown) => (r === 'admin' ? t('Admin') : t('Member'));
+
+function logSentence(e: LogRow) {
+  const actor = e.actor?.name ?? t('System');
+  const user = e.target?.name ?? '';
+  const d = e.data;
+  switch (e.kind) {
+    case 'member_added':
+      if (d.via === 'invite') return t('{user} joined through an invite link as {role}', { user, role: roleName(d.role) });
+      return e.actor ? t('{actor} added {user} as {role}', { actor, user, role: roleName(d.role) }) : t('{user} was added as {role}', { user, role: roleName(d.role) });
+    case 'role_changed': return t('{actor} changed {user} from {from} to {to}', { actor, user, from: roleName(d.from), to: roleName(d.to) });
+    case 'member_removed': return t('{actor} removed {user}', { actor, user });
+    case 'invite_created': return t('{actor} created an invite link ({role})', { actor, role: roleName(d.role) });
+    case 'invite_revoked': return t('{actor} revoked an invite link', { actor });
+    case 'settings_changed': {
+      const labels = [...new Set(Object.keys((d.fields ?? {}) as object).map((k) => LOG_FIELDS[k] ?? k))];
+      return t('{actor} changed {fields}', { actor, fields: labels.join(', ') });
+    }
+    case 'project_created': return t('{actor} created the project', { actor });
+    default: return `${actor}: ${e.kind}`;
+  }
+}
+
+/** Dziennik projektu (admin projektu): kto i kiedy zmienił członków, role, zaproszenia i ustawienia. */
+function ProjectHistory() {
+  const c = useProject();
+  const key = c?.p.key;
+  const [rows, setRows] = useState<LogRow[]>([]);
+  const [more, setMore] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const load = (before?: number) => api<LogRow[]>(`/api/projects/${key}/log${before ? `?before=${before}` : ''}`).then((r) => {
+    setRows((x) => (before ? [...x, ...r] : r));
+    setMore(r.length >= 100);
+    setLoaded(true);
+  });
+  useEffect(() => { if (key && !c?.ro) void load(); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!c) return null;
+  return (
+    <div className="s-card" id="project-history">
+      {loaded && !rows.length && <div className="s-row"><span className="hint">{t('No changes recorded yet')}</span></div>}
+      {rows.map((e) => (
+        <div key={e.id} className="s-row">
+          <span className="grow">{logSentence(e)}<div className="hint">{logStamp(e.createdAt)}</div></span>
+        </div>
+      ))}
+      {more && <div className="s-row"><button className="btn sm" onClick={() => void load(rows[rows.length - 1]?.id)}>{t('Load more')}</button></div>}
     </div>
   );
 }
