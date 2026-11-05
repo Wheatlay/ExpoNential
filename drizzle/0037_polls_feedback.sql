@@ -1,0 +1,1 @@
+ALTER TABLE "meetings" ADD COLUMN "all_voted_notified_at" timestamp with time zone;

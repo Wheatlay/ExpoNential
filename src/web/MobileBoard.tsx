@@ -10,8 +10,25 @@ import { ident } from './project.ts';
 import { startOnPc } from './startWork.ts';
 import { toast } from './toast.ts';
 import { t } from './i18n.ts';
+import type { BoardRow, CardProps } from './Board.tsx';
 
-type Props = { columns: Status[]; visible: IssueRow[]; sorter: (a: IssueRow, b: IssueRow) => number; meta: Meta };
+type Props = { columns: Status[]; visible: IssueRow[]; sorter: (a: IssueRow, b: IssueRow) => number; meta: Meta; rows: BoardRow[]; props: CardProps };
+
+/** Lista jednego statusu podzielona jak wiersze tablicy (Display › Rows); bez grupowania jedna lista bez nagłówków. */
+function Grouped({ list, rows, render }: { list: IssueRow[]; rows: BoardRow[]; render: (i: IssueRow, key: string) => React.ReactNode }) {
+  if (!rows.length || rows[0].key === 'all') return <>{list.map((i) => render(i, String(i.id)))}</>;
+  return <>{rows.map((r) => {
+    const ids = new Set(r.issues.map((i) => i.id));
+    const part = list.filter((i) => ids.has(i.id));
+    if (!part.length) return null;
+    return (
+      <div key={r.key}>
+        <div className="m-sub">{r.icon}<span className="m-row-title">{r.label}</span><span className="n">{part.length}</span></div>
+        {part.map((i) => render(i, `${r.key}-${i.id}`))}
+      </div>
+    );
+  })}</>;
+}
 
 const isClosed = (s: Status) => s.type === 'completed' || s.type === 'canceled' || s.type === 'duplicate';
 
@@ -36,20 +53,20 @@ function useMoveSheet(meta: Meta) {
   };
 }
 
-function Row({ issue, meta, active, onOpen, onHold }: { issue: IssueRow; meta: Meta; active?: boolean; onOpen: () => void; onHold: () => void }) {
+function Row({ issue, meta, props, active, onOpen, onHold }: { issue: IssueRow; meta: Meta; props: CardProps; active?: boolean; onOpen: () => void; onHold: () => void }) {
   const assignee = meta.users.find((u) => u.id === issue.assigneeId);
   return (
     <button className={`m-row ${active ? 'on' : ''}`} onClick={onOpen} onContextMenu={(e) => { e.preventDefault(); onHold(); }}>
-      <PriorityIcon priority={issue.priority} />
-      <span className="m-row-id">{ident(issue.number)}</span>
+      {props.priority && <PriorityIcon priority={issue.priority} />}
+      {props.id && <span className="m-row-id">{ident(issue.number)}</span>}
       <span className="m-row-title"><InlineCode text={issue.title} /></span>
-      <Avatar user={assignee} size={20} />
+      {props.assignee && <Avatar user={assignee} size={20} />}
     </button>
   );
 }
 
 /** Telefon złożony: zakładki statusów, jeden status naraz, przesunięcie palcem zmienia zakładkę. */
-export function PhoneBoard({ columns, visible, sorter, meta }: Props) {
+export function PhoneBoard({ columns, visible, sorter, meta, rows, props }: Props) {
   const firstStarted = columns.find((s) => s.type === 'started' && visible.some((i) => i.statusId === s.id)) ?? columns[0];
   const [tab, setTab] = useState<number | undefined>(firstStarted?.id);
   const cur = columns.find((s) => s.id === tab) ?? columns[0];
@@ -79,7 +96,7 @@ export function PhoneBoard({ columns, visible, sorter, meta }: Props) {
         </div>
       </div>
       <div className="m-list">
-        {list.map((i) => <Row key={i.id} issue={i} meta={meta} onOpen={() => navigate(`/issue/${ident(i.number)}`)} onHold={() => hold(i, () => navigate(`/issue/${ident(i.number)}`))} />)}
+        <Grouped list={list} rows={rows} render={(i, k) => <Row key={k} issue={i} meta={meta} props={props} onOpen={() => navigate(`/issue/${ident(i.number)}`)} onHold={() => hold(i, () => navigate(`/issue/${ident(i.number)}`))} />} />
         {!list.length && <div className="hint m-empty">{t('No issues in {name}', { name: cur.name })}</div>}
       </div>
     </div>
@@ -87,7 +104,7 @@ export function PhoneBoard({ columns, visible, sorter, meta }: Props) {
 }
 
 /** Telefon rozłożony: lista po lewej, otwarte zgłoszenie po prawej. Zamknięte statusy zwinięte. */
-export function SplitBoard({ columns, visible, sorter, meta }: Props) {
+export function SplitBoard({ columns, visible, sorter, meta, rows, props }: Props) {
   const [sel, setSel] = useState<number | null>(null);
   const [openClosed, setOpenClosed] = useState<Record<number, boolean>>({});
   const hold = useMoveSheet(meta);
@@ -103,7 +120,7 @@ export function SplitBoard({ columns, visible, sorter, meta }: Props) {
               <button className="m-head" onClick={() => isClosed(s) && setOpenClosed((o) => ({ ...o, [s.id]: !o[s.id] }))}>
                 <StatusIcon status={s} fraction={startedFraction(meta.statuses, s)} /> {s.name} <span className="n">{list.length}</span>
               </button>
-              {!shut && list.map((i) => <Row key={i.id} issue={i} meta={meta} active={sel === i.number} onOpen={() => setSel(i.number)} onHold={() => hold(i, () => setSel(i.number))} />)}
+              {!shut && <Grouped list={list} rows={rows} render={(i, k) => <Row key={k} issue={i} meta={meta} props={props} active={sel === i.number} onOpen={() => setSel(i.number)} onHold={() => hold(i, () => setSel(i.number))} />} />}
             </section>
           );
         })}

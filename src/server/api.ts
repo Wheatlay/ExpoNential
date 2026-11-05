@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { and, asc, desc, eq, inArray, isNull, notInArray, sql as dsql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.ts';
-import { TAG_COLORS, apiTokens, inboxItems, issues, labels, projectMembers, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
+import { TAG_COLORS, apiTokens, inboxItems, issues, labels, meetings, projectMembers, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
 import { clearSessionCookie, createApiToken, requireAdmin, requireUser } from './auth.ts';
 import * as inv from './invites.ts';
 import { hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
@@ -13,9 +13,11 @@ import * as sp from './sprints.ts';
 import * as pr from './projects.ts';
 import * as ag from './agents.ts';
 import { addRelation, removeRelation } from './relations.ts';
-import { RuleError, parseIdentifier } from './rules.ts';
+import { RuleError, normGithubRepo, parseIdentifier } from './rules.ts';
+import { sendDiscord } from './notify.ts';
+import { st } from './i18n.ts';
 import { validTagName } from './mentions.ts';
-import { deployWebhookSecret } from './hooks.ts';
+import { deployWebhookSecret, githubRepoExists } from './hooks.ts';
 import { DEFAULT_MODELS, DEFAULT_PROMPTS, MODELS, PROMPT_KINDS, analysisModel, renderPrompt } from './prompts.ts';
 import { TYPE_LABEL_COLORS } from './analysis.ts';
 
@@ -159,7 +161,7 @@ export async function registerApi(app: FastifyInstance) {
     // Agent na PC (Go): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
     r.get<{ Querystring: Record<string, string> }>('/api/agent/work', async (req) => {
       const q = z.object({
-        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(1200).default('').transform((s) => s.slice(0, 300)), engine: z.enum(['claude', 'codex']).optional(), setup: z.string().max(4000).optional(), skip: z.string().max(1000).optional(),
+        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(1200).default('').transform((s) => s.slice(0, 300)), engine: z.enum(['claude', 'codex']).optional(), setup: z.string().max(4000).optional(), found: z.string().max(8000).optional(), skip: z.string().max(1000).optional(),
       }).parse(req.query);
       // Zamknięte połączenie przerywa czekanie, żeby pętla nie trzymała zapytań do bazy po odejściu agenta.
       const ac = new AbortController();
@@ -168,7 +170,7 @@ export async function registerApi(app: FastifyInstance) {
       let repos: Record<string, ag.RepoReport | string> | undefined;
       try { repos = z.record(z.string(), z.union([z.string(), z.object({ path: z.string().optional(), source: z.string().optional(), status: z.string().optional(), error: z.string().nullable().optional().transform((e) => e?.slice(0, 300)) })])).parse(JSON.parse(q.repos || '{}')); } catch { repos = {}; }
       const repoKeys = Object.keys(repos);
-      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error, ownOnly: q.engine === 'codex', setup: ag.parseSetup(q.setup), skip: ag.parseSkip(q.skip) }, ac.signal);
+      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error, ownOnly: q.engine === 'codex', setup: ag.parseSetup(q.setup), found: ag.parseFound(q.found), skip: ag.parseSkip(q.skip) }, ac.signal);
     });
     r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
       const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);
@@ -181,6 +183,16 @@ export async function registerApi(app: FastifyInstance) {
     });
     // Prośby o otwarcie edytora ("Start" z przeglądarki): agent odpytuje, odpowiedź czyści kolejkę tej osoby.
     r.get('/api/agent/open-requests', async (req) => ag.takeOpenRequests(req.user!.id));
+    // Polecenia dla PC (wybierz folder, klonuj, skanuj): agent odpytuje, odpowiedź czyści kolejkę tego PC.
+    r.get<{ Querystring: Record<string, string> }>('/api/agent/repo-actions', async (req) => {
+      const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.query);
+      await ag.requireOwnAgent(req.user!, deviceId);
+      return ag.takeRepoActions(deviceId);
+    });
+    r.post<{ Params: { id: string } }>('/api/agents/:id/repo-action', async (req) => {
+      const b = z.object({ kind: z.enum(ag.REPO_ACTION_KINDS), project: z.string().max(10).default('') }).parse(req.body);
+      return ag.requestRepoAction(req.user!, req.params.id, b);
+    });
     // "Start work": gdy mam komputer online, agent otwiera edytor z poleceniem; inaczej przeglądarka dostaje polecenie do skopiowania.
     r.post('/api/start-work', async (req) => {
       const b = z.object({ issueId: z.union([z.string(), z.number()]).optional(), issueNumber: z.union([z.string(), z.number()]).optional() }).parse(req.body);
@@ -250,7 +262,7 @@ export async function registerApi(app: FastifyInstance) {
       // Webhook to sekret: widzi go tylko admin projektu.
       return { ...project, discordWebhookUrl: canEdit ? project.discordWebhookUrl : null, role, canEdit, members: await pr.listMembers(project.id), defaultModels: DEFAULT_MODELS };
     });
-    r.patch<{ Params: { key: string } }>('/api/projects/:key', async (req) => {
+    r.patch<{ Params: { key: string } }>('/api/projects/:key', async (req, reply) => {
       const p = await manage(req, req.params.key);
       const body = z.object({
         name: z.string().optional(), color: z.string().optional(), logoUrl: z.string().max(300).optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).refine((u) => u === '' || /^https?:\/\/\S+$/i.test(u), 'Meeting location must be empty or an http(s) URL').optional(),
@@ -259,6 +271,11 @@ export async function registerApi(app: FastifyInstance) {
         githubRepo: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(),
         agentTeamQueue: z.boolean().optional(), agentsMayClone: z.boolean().optional(),
       }).parse(req.body);
+      if (body.githubRepo !== undefined) {
+        const repo = normGithubRepo(body.githubRepo);
+        if (repo === null) return reply.code(400).send({ error: 'Not a GitHub repo. Use owner/name or the repo URL.', code: 'invalid' });
+        body.githubRepo = repo;
+      }
       if (body.discordWebhookUrl === '') body.discordWebhookUrl = null;
       const next = await pr.updateProject(p.id, body);
       // Długość sprintu albo godzina review mogły się zmienić: przeliczamy sprinty i ich review.
@@ -266,6 +283,34 @@ export async function registerApi(app: FastifyInstance) {
       await svc.publish({ type: 'projects' });
       await svc.publish({ type: 'sprints', projectKey: p.key });
       return next;
+    });
+    // Podpowiedzi repo: repozytoria znalezione na własnych PC pytającego (bez ścieżek); trasa projektu sprawdza członkostwo.
+    r.get<{ Params: { key: string } }>('/api/projects/:key/repo-suggestions', async (req) => {
+      await ctx(req, req.params.key);
+      return ag.repoSuggestions(req.user!.id);
+    });
+    // Czy repo istnieje na GitHubie (cache 10 min).
+    r.get<{ Querystring: { name?: string } }>('/api/github/repo-check', async (req) => {
+      const name = normGithubRepo(z.string().max(200).parse(req.query.name ?? ''));
+      if (!name) throw new RuleError('Not a GitHub repo. Use owner/name or the repo URL.', 'invalid');
+      return { exists: await githubRepoExists(name) };
+    });
+    // Wiadomość próbna na kanał Discord projektu (admin projektu).
+    r.post<{ Params: { key: string } }>('/api/projects/:key/discord-test', async (req) => {
+      const p = await manage(req, req.params.key);
+      if (!p.discordWebhookUrl) throw new RuleError('Discord webhook is not set', 'invalid');
+      const ok = await sendDiscord(p, { title: st('Test message from Exponential'), description: p.name }, req.log as { warn: (o: object, m: string) => void });
+      if (ok) return { ok: true };
+      const [fresh] = await db.select({ e: projects.discordLastError }).from(projects).where(eq(projects.id, p.id));
+      return { ok: false, error: fresh?.e || 'Request failed' };
+    });
+    // Ostatnie miejsca spotkań projektu (90 dni, tylko http/https) do szybkiego wyboru.
+    r.get<{ Params: { key: string } }>('/api/projects/:key/recent-places', async (req) => {
+      const { project } = await ctx(req, req.params.key);
+      const rows = await db.select({ url: meetings.locationUrl, last: dsql<Date>`max(${meetings.createdAt})` }).from(meetings)
+        .where(and(eq(meetings.projectId, project.id), dsql`${meetings.locationUrl} ~* '^https?://'`, dsql`${meetings.createdAt} > now() - interval '90 days'`))
+        .groupBy(meetings.locationUrl).orderBy(desc(dsql`max(${meetings.createdAt})`)).limit(5);
+      return rows.map((x) => x.url).filter((u) => u !== project.meetingLocationUrl).slice(0, 4);
     });
     // Sekret webhooka deployu: tylko admin projektu.
     r.get<{ Params: { key: string } }>('/api/projects/:key/deploy-webhook-secret', async (req) => {

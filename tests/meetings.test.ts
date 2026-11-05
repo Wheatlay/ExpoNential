@@ -2,7 +2,7 @@
  * Spotkania: ankiety, propozycje terminów, wybór terminu, automatyczne sprint review,
  * przypomnienia bez dubli, Discord (lokalny serwer zamiast prawdziwego webhooka) i .ics.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import postgres from 'postgres';
 
@@ -28,6 +28,9 @@ let hook: Server;
 let hookUrl = '';
 
 beforeAll(async () => {
+  // Daty w testach to październik 2026: zegar stoi przed nimi (tylko Date, timery działają normalnie).
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-15T09:00:00Z'));
   const admin = postgres(ADMIN_URL, { onnotice: () => {} });
   await admin.unsafe('drop database if exists tracker_test_meetings with (force)');
   await admin.unsafe('create database tracker_test_meetings');
@@ -61,7 +64,7 @@ beforeAll(async () => {
   await dbmod.db.update(schema.projects).set({ discordWebhookUrl: hookUrl }).where(eq(schema.projects.key, 'ACME'));
   P = (await pr.getProjectByKey('ACME'))!;
 });
-afterAll(async () => { hook?.close(); await dbmod?.sql.end(); });
+afterAll(async () => { vi.useRealTimers(); hook?.close(); await dbmod?.sql.end(); });
 
 const at = (iso: string) => new Date(iso);
 
@@ -118,7 +121,7 @@ describe('time poll', () => {
     const [m] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === meetingId);
     await mt.vote(P, alice, m.slots[0].id, 'maybe');
     await mt.vote(P, alice, m.slots[0].id, 'no');
-    await mt.vote(P, alice, m.slots[1].id, 'yes');
+    await mt.vote(P, alice, m.slots[1].id, 'maybe');
     await mt.vote(P, alice, m.slots[1].id, null);
     const [m2] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === meetingId);
     expect(m2.slots[0].votes).toEqual([{ userId: alice.id, vote: 'no', note: null }]);
@@ -130,7 +133,7 @@ describe('time poll', () => {
     await mt.vote(P, alice, m.slots[1].id, 'maybe', ' dopiero od 12:30 ');
     let [m2] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === meetingId);
     expect(m2.slots[1].votes.find((v) => v.userId === alice.id)).toEqual({ userId: alice.id, vote: 'maybe', note: 'dopiero od 12:30' });
-    await mt.vote(P, alice, m.slots[1].id, 'yes', 'ignored');
+    await mt.vote(P, alice, m.slots[1].id, 'no', 'ignored');
     [m2] = (await mt.listMeetings(P, at('2026-01-01'))).filter((x) => x.id === meetingId);
     expect(m2.slots[1].votes.find((v) => v.userId === alice.id)?.note).toBeNull();
     await mt.vote(P, alice, m.slots[1].id, null);
@@ -155,6 +158,17 @@ describe('time poll', () => {
     await mt.createMeeting(P, pawel, { title: 'Cicho', kind: 'fixed', startsAt: at('2026-10-24T09:00:00Z'), endsAt: at('2026-10-24T09:30:00Z') });
     expect(discord).toHaveLength(0);
     await nt.saveNotifySettings(pawel.id, { discord: true });
+  });
+
+  it('agenda is saved and editable, but never sent to Discord', async () => {
+    discord.length = 0;
+    const m = await mt.createMeeting(P, alice, { title: 'Plan', kind: 'fixed', startsAt: at('2026-10-25T09:00:00Z'), endsAt: at('2026-10-25T09:30:00Z'), agenda: ' 1. ACME-1 \n' });
+    const [row] = await dbmod.sql`select agenda from meetings where id = ${m.id}`;
+    expect(row.agenda).toBe('1. ACME-1');
+    expect(JSON.stringify(discord)).not.toContain('ACME-1');
+    await mt.updateMeeting(P, alice, false, m.id, { agenda: '2. ACME-2' });
+    const [row2] = await dbmod.sql`select agenda from meetings where id = ${m.id}`;
+    expect(row2.agenda).toBe('2. ACME-2');
   });
 
   it('refuses bad input and meetings of other projects', async () => {
@@ -290,5 +304,133 @@ describe('calendar feed', () => {
     const theirs = await mt.icsFor(outsider.id, at('2026-10-01T00:00:00Z'));
     expect(theirs).toContain('project=WEB');
     expect(theirs).not.toContain('Planowanie Q4');
+  });
+});
+
+describe('polls: everyone voted and past times', () => {
+  let V: import('../src/server/projects.ts').Project;
+  let bob: { id: number; name: string };
+  let carol: { id: number; name: string };
+  let sendPush: import('vitest').MockInstance<typeof import('../src/server/notify.ts').sendPush>;
+  const pushes = (match: (title: string, body: string) => boolean) =>
+    sendPush.mock.calls.filter(([, payload]) => match(payload.title, payload.body));
+  const timePicked = () => pushes((title) => title.endsWith(': time picked'));
+  const everyoneVoted = () => pushes((_t, body) => body === 'Wszyscy zagłosowali. Wybierz termin.');
+  const row = async (id: number) => (await mt.listMeetings(V, at('2026-01-01'))).find((x) => x.id === id)!;
+  const mk = async (title: string, days: string[], attendeeIds?: number[]) => {
+    const m = await mt.createMeeting(V, alice, {
+      title, kind: 'poll', attendeeIds, slots: days.map((d) => ({ startsAt: at(`${d}T09:00:00Z`), endsAt: at(`${d}T10:00:00Z`) })),
+    });
+    const slots = (await row(m.id)).slots;
+    return { id: m.id, slots };
+  };
+
+  beforeAll(async () => {
+    V = await pr.createProject(alice.id, { key: 'VOT', name: 'Vote' });
+    const b = await pr.addMember({ id: 0, isAdmin: true }, V.id, 'bob');
+    const c = await pr.addMember({ id: 0, isAdmin: true }, V.id, 'carol');
+    bob = { id: b.id, name: 'Bob' };
+    carol = { id: c.id, name: 'Carol' };
+    sendPush = vi.spyOn(nt, 'sendPush').mockResolvedValue(0);
+  });
+
+  it('unanimous yes schedules that slot and tells everyone, including the last voter', async () => {
+    sendPush.mockClear();
+    const { id, slots } = await mk('Zgoda', ['2026-10-20', '2026-10-21']);
+    await mt.vote(V, alice, slots[0].id, 'yes');
+    await mt.vote(V, bob, slots[0].id, 'yes');
+    expect((await row(id)).status).toBe('polling');
+    await mt.vote(V, carol, slots[0].id, 'yes');
+    const m = await row(id);
+    expect([m.status, m.startsAt?.toISOString()]).toEqual(['scheduled', '2026-10-20T09:00:00.000Z']);
+    const [call] = timePicked().filter(([, p]) => p.title.startsWith('Zgoda'));
+    expect([...call[0]].sort()).toEqual([alice.id, bob.id, carol.id].sort());
+    expect(call[1].body).toContain('wszyscy się zgodzili');
+  });
+
+  it('"maybe" is not a yes', async () => {
+    const { id, slots } = await mk('Może', ['2026-10-20']);
+    await mt.vote(V, alice, slots[0].id, 'yes');
+    await mt.vote(V, bob, slots[0].id, 'maybe');
+    await mt.vote(V, carol, slots[0].id, 'yes');
+    expect((await row(id)).status).toBe('polling');
+  });
+
+  it('an uninvited person cannot vote and does not count; the invited ones decide', async () => {
+    const { id, slots } = await mk('Dla dwojga', ['2026-10-20'], [bob.id]);
+    await mt.vote(V, alice, slots[0].id, 'yes');
+    await expect(mt.vote(V, carol, slots[0].id, 'no')).rejects.toThrow(/invited/);
+    expect((await row(id)).status).toBe('polling');
+    await mt.vote(V, bob, slots[0].id, 'yes');
+    expect((await row(id)).status).toBe('scheduled');
+  });
+
+  it('an inactive user does not block; with two unanimous slots the earliest wins', async () => {
+    const { id, slots } = await mk('Dwa wspólne', ['2026-10-22', '2026-10-21']);
+    expect(slots.map((s) => s.startsAt.toISOString())).toEqual(['2026-10-21T09:00:00.000Z', '2026-10-22T09:00:00.000Z']);
+    for (const s of [slots[1], slots[0]]) for (const u of [alice, bob]) await mt.vote(V, u, s.id, 'yes');
+    expect((await row(id)).status).toBe('polling'); // carol milczy
+    await dbmod.sql`update users set active = false where id = ${carol.id}`;
+    await mt.vote(V, alice, slots[1].id, 'yes');
+    const m = await row(id);
+    expect([m.status, m.startsAt?.toISOString()]).toEqual(['scheduled', '2026-10-21T09:00:00.000Z']);
+    await dbmod.sql`update users set active = true where id = ${carol.id}`;
+  });
+
+  it('everyone voted without agreement notifies the organizer once; a new time resets it', async () => {
+    sendPush.mockClear();
+    const { id, slots } = await mk('Bez zgody', ['2026-10-20', '2026-10-21']);
+    await mt.vote(V, alice, slots[0].id, 'yes');
+    await mt.vote(V, alice, slots[1].id, 'no');
+    await mt.vote(V, bob, slots[0].id, 'no');
+    await mt.vote(V, bob, slots[1].id, 'yes');
+    await mt.vote(V, carol, slots[0].id, 'maybe');
+    expect(everyoneVoted()).toHaveLength(0);
+    await mt.vote(V, carol, slots[1].id, 'maybe');
+    expect(everyoneVoted()).toHaveLength(1);
+    const [[to, payload]] = everyoneVoted();
+    expect([to, payload.title]).toEqual([[alice.id], 'Bez zgody']);
+    await mt.vote(V, carol, slots[0].id, 'no');
+    expect(everyoneVoted()).toHaveLength(1);
+    expect((await row(id)).status).toBe('polling');
+
+    const added = await mt.proposeSlot(V, bob, id, { startsAt: at('2026-10-23T09:00:00Z') });
+    const [reset] = await dbmod.sql`select all_voted_notified_at from meetings where id = ${id}`;
+    expect(reset.all_voted_notified_at).toBeNull();
+    await mt.vote(V, alice, added.id, 'no');
+    await mt.vote(V, carol, added.id, 'no');
+    expect(everyoneVoted()).toHaveLength(2);
+  });
+
+  it('a time that has passed cannot be voted, proposed or picked', async () => {
+    const { id, slots } = await mk('Część minęła', ['2026-10-10', '2026-10-20']);
+    await expect(mt.vote(V, alice, slots[0].id, 'yes')).rejects.toThrow(/already passed/);
+    await expect(mt.proposeSlot(V, alice, id, { startsAt: at('2026-10-11T09:00:00Z') })).rejects.toThrow(/already passed/);
+    await expect(mt.pickSlot(V, alice, false, id, slots[0].id)).rejects.toThrow(/already passed/);
+    await mt.vote(V, alice, slots[1].id, 'yes');
+  });
+
+  it('a poll whose times all passed expires quietly and is not auto-picked', async () => {
+    const { id, slots } = await mk('Przeterminowana', ['2026-10-12', '2026-10-13']);
+    await dbmod.sql`insert into meeting_votes (slot_id, user_id, vote) select ${slots[0].id}, id, 'yes' from users where id in (${alice.id}, ${bob.id}, ${carol.id})`;
+    sendPush.mockClear();
+    discord.length = 0;
+    await mt.runReminders(at('2026-10-15T09:00:00Z'));
+    expect((await row(id)).status).toBe('expired');
+    expect(sendPush).not.toHaveBeenCalled();
+    expect(discord).toHaveLength(0);
+    // Na liście dopóki ostatni termin mieści się w oknie, potem znika.
+    expect((await mt.listMeetings(V, at('2026-10-13T00:00:00Z'))).some((x) => x.id === id)).toBe(true);
+    expect((await mt.listMeetings(V, at('2026-10-14T00:00:00Z'))).some((x) => x.id === id)).toBe(false);
+    await expect(mt.pickSlot(V, alice, false, id, slots[0].id)).rejects.toThrow(/passed/);
+  });
+
+  it('concurrent last votes pick the time once', async () => {
+    sendPush.mockClear();
+    const { id, slots } = await mk('Wyścig', ['2026-10-20']);
+    await mt.vote(V, alice, slots[0].id, 'yes');
+    await Promise.all([mt.vote(V, bob, slots[0].id, 'yes'), mt.vote(V, carol, slots[0].id, 'yes')]);
+    expect((await row(id)).status).toBe('scheduled');
+    expect(timePicked().filter(([, p]) => p.title.startsWith('Wyścig'))).toHaveLength(1);
   });
 });

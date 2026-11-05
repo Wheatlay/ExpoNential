@@ -117,3 +117,10 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 - **Installer** always stops a running agent before replacing or starting, and comes to the foreground.
 - **Open requests:** every poll asks `GET /api/agent/open-requests`; the repo's folder is opened with the editor CLI (`code`, `cursor`, `windsurf`; PATH, else `%LOCALAPPDATA%\Programs\...`), then `<scheme>://anthropic.claude-code/open?prompt=...`; `terminal` opens Windows Terminal (or a console) in the folder with `claude`.
 - **Rename tracker -> expo:** the Claude Code MCP server and plugin are `expo` / `expo@expo`; at start the agent removes a leftover `tracker` MCP server and `tracker@tracker` plugin and installs the new ones.
+
+## 0.4.17
+
+- **Found repos:** every poll sends `found` (JSON array of lowercase `owner/name` GitHub slugs from the git configs of the folders opened in Claude Code, VS Code, Cursor and Codex; max 100). The list is cached and refreshed in the background at most every 5 minutes.
+- **Discovery** runs every 5 minutes (was 60); the unchanged-history shortcut still keeps it cheap.
+- **Repo actions:** every poll asks `GET /api/agent/repo-actions` (`clone`, `pick`, `rescan`). `clone` ignores `cloneAllowed` (the owner clicked it) and runs one at a time; `pick` opens the folder picker (Windows) and validates the folder; `rescan` repeats discovery and refreshes the found list.
+- **Other people's requests** run in a persistent detached worktree (`worktrees/<KEY>` in the data folder) of the remote default branch (the owner's HEAD when there is none), after `fetch`. It is reset with `checkout --detach -f` and `clean -fd` (ignored files such as `node_modules` stay), so the owner's folder and uncommitted work are not used.

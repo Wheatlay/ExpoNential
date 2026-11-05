@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, lte, ne, notInArray, or } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import {
   meetingReminders, meetingSlots, meetingVotes, meetings, projectMembers, projects, reminderSends, sprints, users,
@@ -35,7 +35,7 @@ export type MeetingDto = Awaited<ReturnType<typeof listMeetings>>[number];
 export async function listMeetings(p: Project, since = new Date(Date.now() - 14 * 864e5)) {
   const rows = await db.select().from(meetings).where(and(
     eq(meetings.projectId, p.id), ne(meetings.status, 'cancelled'),
-    or(eq(meetings.status, 'polling'), gte(meetings.startsAt, since)),
+    or(inArray(meetings.status, ['polling', 'expired']), gte(meetings.startsAt, since)),
   )).orderBy(asc(meetings.startsAt), asc(meetings.id));
   if (!rows.length) return [];
   const ids = rows.map((m) => m.id);
@@ -44,7 +44,9 @@ export async function listMeetings(p: Project, since = new Date(Date.now() - 14 
     db.select().from(meetingReminders).where(inArray(meetingReminders.meetingId, ids)),
   ]);
   const votes = slots.length ? await db.select().from(meetingVotes).where(inArray(meetingVotes.slotId, slots.map((s) => s.id))) : [];
-  return rows.map((m) => ({
+  // Wygasła ankieta (żaden termin już nie jest przed nami) jest na liście tak długo, jak jej ostatni termin mieści się w `since`.
+  const lastSlot = (id: number) => Math.max(0, ...slots.filter((s) => s.meetingId === id).map((s) => s.startsAt.getTime()));
+  return rows.filter((m) => m.status !== 'expired' || lastSlot(m.id) >= since.getTime()).map((m) => ({
     ...m,
     reminders: rems.filter((r) => r.meetingId === m.id).map((r) => r.offsetMinutes).sort((a, b) => b - a),
     slots: slots.filter((s) => s.meetingId === m.id).map((s) => ({
@@ -120,6 +122,7 @@ export type NewMeeting = {
   startsAt?: Date;
   endsAt?: Date;
   locationUrl?: string;
+  agenda?: string;
   reminders?: number[];
   /** Puste/brak = cały projekt. */
   attendeeIds?: number[] | null;
@@ -146,7 +149,7 @@ export async function createMeeting(p: Project, actor: Actor, input: NewMeeting,
     if (!slots.length) throw new RuleError('Propose at least one time', 'invalid');
     slots.forEach((s) => checkRange(s.startsAt, s.endsAt));
     [m] = await db.insert(meetings).values({
-      projectId: p.id, title, kind: 'poll', status: 'polling', locationUrl: cleanLocationUrl(input.locationUrl), createdBy: actor.id, attendeeIds,
+      projectId: p.id, title, kind: 'poll', status: 'polling', locationUrl: cleanLocationUrl(input.locationUrl), agenda: (input.agenda ?? '').trim(), createdBy: actor.id, attendeeIds,
     }).returning();
     await db.insert(meetingSlots).values(slots.map((s) => ({ meetingId: m.id, startsAt: s.startsAt, endsAt: s.endsAt, proposedBy: actor.id })));
   } else {
@@ -154,7 +157,7 @@ export async function createMeeting(p: Project, actor: Actor, input: NewMeeting,
     checkRange(input.startsAt, input.endsAt);
     [m] = await db.insert(meetings).values({
       projectId: p.id, title, kind: 'fixed', status: 'scheduled', startsAt: input.startsAt, endsAt: input.endsAt,
-      locationUrl: cleanLocationUrl(input.locationUrl), createdBy: actor.id, attendeeIds,
+      locationUrl: cleanLocationUrl(input.locationUrl), agenda: (input.agenda ?? '').trim(), createdBy: actor.id, attendeeIds,
     }).returning();
   }
   await setReminders(m.id, reminders);
@@ -183,11 +186,14 @@ export async function proposeSlot(p: Project, actor: Actor, meetingId: number, i
   const len = first ? first.endsAt.getTime() - first.startsAt.getTime() : 60 * MIN;
   const endsAt = input.endsAt ?? new Date(input.startsAt.getTime() + len);
   checkRange(input.startsAt, endsAt);
+  if (input.startsAt.getTime() <= Date.now()) throw new RuleError('This time has already passed', 'invalid');
   const [dup] = await db.select().from(meetingSlots).where(and(eq(meetingSlots.meetingId, m.id), eq(meetingSlots.startsAt, input.startsAt)));
   if (dup) throw new RuleError('This time is already proposed', 'invalid');
   const reason = input.reason?.trim() || null;
   const [slot] = await db.insert(meetingSlots).values({ meetingId: m.id, startsAt: input.startsAt, endsAt, proposedBy: actor.id, reason }).returning();
   await db.insert(meetingVotes).values({ slotId: slot.id, userId: actor.id, vote: 'yes' });
+  // Komplet terminów znów niepełny: "wszyscy zagłosowali" może przyjść jeszcze raz.
+  await db.update(meetings).set({ allVotedNotifiedAt: null }).where(eq(meetings.id, m.id));
   await changed(p);
   const url = meetingUrl(p, m.id);
   if (await discordAllowed(m)) {
@@ -199,13 +205,14 @@ export async function proposeSlot(p: Project, actor: Actor, meetingId: number, i
 }
 
 /** note: powód przy "maybe"; przy innym głosie się czyści. */
-export async function vote(p: Project, actor: Actor, slotId: number, v: Vote | null, note?: string | null) {
+export async function vote(p: Project, actor: Actor, slotId: number, v: Vote | null, note?: string | null, log?: Log) {
   const [row] = await db.select({ slot: meetingSlots, meeting: meetings }).from(meetingSlots)
     .innerJoin(meetings, eq(meetings.id, meetingSlots.meetingId))
     .where(and(eq(meetingSlots.id, slotId), eq(meetings.projectId, p.id)));
   if (!row) throw new RuleError('Time not found', 'not_found');
   if (row.meeting.status !== 'polling') throw new RuleError('Voting on this meeting is closed', 'invalid');
   if (!invited(row.meeting, actor.id)) throw new RuleError('Only invited people can vote', 'forbidden');
+  if (row.slot.startsAt.getTime() <= Date.now()) throw new RuleError('This time has already passed', 'invalid');
   if (v === null) await db.delete(meetingVotes).where(and(eq(meetingVotes.slotId, slotId), eq(meetingVotes.userId, actor.id)));
   else {
     const n = v === 'maybe' ? note?.trim() || null : null;
@@ -213,6 +220,36 @@ export async function vote(p: Project, actor: Actor, slotId: number, v: Vote | n
       .onConflictDoUpdate({ target: [meetingVotes.slotId, meetingVotes.userId], set: { vote: v, note: n } });
   }
   await changed(p);
+  await afterVote(p, row.meeting.id, log);
+}
+
+/**
+ * Po głosie: wszyscy zaproszeni na "yes" na jakimś przyszłym terminie = termin wybiera się sam (najwcześniejszy);
+ * wszyscy odpowiedzieli, ale zgody nie ma = jedno powiadomienie dla organizatora.
+ */
+async function afterVote(p: Project, meetingId: number, log?: Log) {
+  const [m] = await db.select().from(meetings).where(eq(meetings.id, meetingId));
+  if (!m || m.status !== 'polling') return;
+  const now = new Date();
+  const slots = (await db.select().from(meetingSlots).where(eq(meetingSlots.meetingId, m.id)).orderBy(asc(meetingSlots.startsAt), asc(meetingSlots.id)))
+    .filter((s) => s.startsAt.getTime() > now.getTime());
+  const voters = await recipients(p, m);
+  if (!slots.length || !voters.length) return;
+  const votes = await db.select().from(meetingVotes).where(inArray(meetingVotes.slotId, slots.map((s) => s.id)));
+  const said = (slotId: number, userId: number) => votes.find((x) => x.slotId === slotId && x.userId === userId);
+  const unanimous = slots.find((s) => voters.every((u) => said(s.id, u)?.vote === 'yes'));
+  if (unanimous) {
+    await applyPick(p, m, unanimous, null, log);
+    return;
+  }
+  if (!slots.every((s) => voters.every((u) => said(s.id, u)))) return;
+  const [claimed] = await db.update(meetings).set({ allVotedNotifiedAt: now })
+    .where(and(eq(meetings.id, m.id), eq(meetings.status, 'polling'), isNull(meetings.allVotedNotifiedAt))).returning({ id: meetings.id });
+  if (!claimed) return;
+  const to = m.createdBy == null
+    ? (await db.select({ id: projectMembers.userId }).from(projectMembers).where(and(eq(projectMembers.projectId, p.id), eq(projectMembers.role, 'admin')))).map((r) => r.id)
+    : [m.createdBy];
+  await sendPush(to, { title: m.title, body: st('Everyone voted. Pick a time.'), url: meetingUrl(p, m.id), tag: `meeting-${m.id}` }, log);
 }
 
 /** Organizator, admin projektu; sprint review (bez organizatora) może przesunąć każdy członek. */
@@ -223,19 +260,33 @@ function canEdit(m: { createdBy: number | null; kind: MeetingKind }, actor: Acto
 export async function pickSlot(p: Project, actor: Actor, isAdmin: boolean, meetingId: number, slotId: number, log?: Log) {
   const m = await requireMeeting(p, meetingId);
   if (!(isAdmin || m.createdBy === actor.id)) throw new RuleError('Only the organizer or a project admin can pick the time', 'forbidden');
+  if (m.status === 'expired') throw new RuleError('All proposed times have passed', 'invalid');
   if (m.status !== 'polling') throw new RuleError('The time is already picked', 'invalid');
   const [slot] = await db.select().from(meetingSlots).where(and(eq(meetingSlots.id, slotId), eq(meetingSlots.meetingId, m.id)));
   if (!slot) throw new RuleError('Time not found', 'not_found');
-  await db.update(meetings).set({ status: 'scheduled', startsAt: slot.startsAt, endsAt: slot.endsAt }).where(eq(meetings.id, m.id));
+  if (slot.startsAt.getTime() <= Date.now()) throw new RuleError('This time has already passed', 'invalid');
+  if (!(await applyPick(p, m, slot, actor, log))) throw new RuleError('The time is already picked', 'invalid');
+}
+
+/**
+ * Zamyka ankietę na wybranym terminie. Zmiana statusu jest jednym zapytaniem z warunkiem "wciąż polling":
+ * przy wyścigu (dwa ostatnie głosy naraz) skutki uboczne wykona tylko jeden. actor = null: wybór automatyczny
+ * (wszyscy na "yes"), powiadomienie idzie do wszystkich, także do ostatniego głosującego.
+ */
+async function applyPick(p: Project, m: typeof meetings.$inferSelect, slot: typeof meetingSlots.$inferSelect, actor: Actor | null, log?: Log) {
+  const [done] = await db.update(meetings).set({ status: 'scheduled', startsAt: slot.startsAt, endsAt: slot.endsAt })
+    .where(and(eq(meetings.id, m.id), eq(meetings.status, 'polling'))).returning({ id: meetings.id });
+  if (!done) return false;
   await changed(p);
   const url = meetingUrl(p, m.id);
   if (await discordAllowed(m)) await sendDiscord(p, { title: st('Time picked: {title}', { title: m.title }), description: `${formatDateTime(slot.startsAt)}${m.locationUrl ? ` · ${m.locationUrl}` : ''}`, url, color: 0x4cb782 }, log);
-  const others = (await recipients(p, m)).filter((id) => id !== actor.id);
-  await sendPush(others, { title: `${m.title}: time picked`, body: `${formatTime(slot.startsAt)} · picked by ${actor.name}`, url, tag: `meeting-${m.id}` }, log);
+  const to = (await recipients(p, m)).filter((id) => id !== actor?.id);
+  await sendPush(to, { title: `${m.title}: time picked`, body: `${formatTime(slot.startsAt)} · ${actor ? `picked by ${actor.name}` : st('everyone said yes')}`, url, tag: `meeting-${m.id}` }, log);
+  return true;
 }
 
 export async function updateMeeting(p: Project, actor: Actor, isAdmin: boolean, id: number, patch: {
-  title?: string; locationUrl?: string; reminders?: number[]; startsAt?: Date; endsAt?: Date; attendeeIds?: number[] | null;
+  title?: string; locationUrl?: string; agenda?: string; reminders?: number[]; startsAt?: Date; endsAt?: Date; attendeeIds?: number[] | null;
 }) {
   const m = await requireMeeting(p, id);
   if (!canEdit(m, actor, isAdmin)) throw new RuleError('Only the organizer or a project admin can change this meeting', 'forbidden');
@@ -245,6 +296,7 @@ export async function updateMeeting(p: Project, actor: Actor, isAdmin: boolean, 
     set.title = patch.title.trim();
   }
   if (patch.locationUrl !== undefined) set.locationUrl = cleanLocationUrl(patch.locationUrl);
+  if (patch.agenda !== undefined) set.agenda = patch.agenda.trim();
   if (patch.attendeeIds !== undefined) {
     if (m.kind === 'sprint_review') throw new RuleError('Sprint review is for the whole team', 'invalid');
     set.attendeeIds = await checkAttendees(p, patch.attendeeIds, m.createdBy);
@@ -351,6 +403,7 @@ function whenTitle(offset: number) {
  * dostaje przypomnienia od nowa.
  */
 export async function runReminders(now = new Date(), log?: Log) {
+  await expirePolls(now);
   const rows = await db.select({ m: meetings, offset: meetingReminders.offsetMinutes, project: projects })
     .from(meetings)
     .innerJoin(meetingReminders, eq(meetingReminders.meetingId, meetings.id))
@@ -380,6 +433,18 @@ export async function runReminders(now = new Date(), log?: Log) {
     }
   }
   return sent;
+}
+
+/** Ankieta, w której każdy termin już minął, wygasa: bez powiadomień, tylko odświeżenie widoku. */
+export async function expirePolls(now = new Date()) {
+  const gone = await db.update(meetings).set({ status: 'expired' }).where(and(
+    eq(meetings.status, 'polling'),
+    sql`not exists (select 1 from ${meetingSlots} where ${meetingSlots.meetingId} = ${meetings.id} and ${meetingSlots.startsAt} > ${now.toISOString()}::timestamptz)`,
+  )).returning({ projectId: meetings.projectId });
+  if (!gone.length) return 0;
+  const keys = await db.select({ key: projects.key }).from(projects).where(inArray(projects.id, [...new Set(gone.map((g) => g.projectId))]));
+  for (const k of keys) await publish({ type: 'meetings', projectKey: k.key });
+  return gone.length;
 }
 
 // ---------- kalendarz .ics ----------

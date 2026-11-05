@@ -374,7 +374,7 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 		model = res.Model
 	}
 	logf("start %s (%s, %s)", key, engine, model)
-	dir, cl, err := prepareWorkdir(projectKey, entry, engine)
+	dir, cl, err := prepareWorkdir(projectKey, entry, engine, claim.Requester != nil && own != 0 && claim.Requester.ID != own)
 	if err != nil {
 		fail(err)
 		return
@@ -622,8 +622,12 @@ func pollOnce(delay *int, errLogged *bool) error {
 	if sk := skipParam(); sk != "" {
 		qs.Set("skip", sk)
 	}
+	if f := cachedFoundSlugs(false); len(f) > 0 {
+		fj, _ := json.Marshal(f)
+		qs.Set("found", string(fj))
+	}
 	var res struct {
-		Jobs         []pollJob         `json:"jobs"`
+		Jobs         []pollJob        `json:"jobs"`
 		Repos        []json.RawMessage `json:"repos"`
 		CloneAllowed []any             `json:"cloneAllowed"`
 		TeamMode     string            `json:"teamMode"`
@@ -655,6 +659,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 	syncTeamMode(a, cfg, res.TeamMode)
 	setOthersLimit(res.Limit)
 	go syncLang(a)
+	go pollRepoActions(a)  // clone / pick folder / rescan clicked in the web app
 	go pollOpenRequests(a) // "open in editor / terminal" requests from the web app
 	*delay, *errLogged = 2, false
 	var job *pollJob

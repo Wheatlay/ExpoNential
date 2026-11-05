@@ -14,8 +14,25 @@ export function onSprintsEnsured(fn: (p: Project) => Promise<void>) {
   afterEnsure.push(fn);
 }
 
-export async function setSprintLength(p: Project, days: number) {
+/**
+ * Nowa długość obowiązuje od razu: aktywny sprint dostaje koniec start + długość (najwcześniej jutro, żeby nie zamknąć
+ * go w trakcie dnia), a zaplanowane po nim są układane od nowa jeden za drugim. Przegląd sprintu idzie za końcem (afterEnsure).
+ */
+export async function setSprintLength(p: Project, days: number, now = new Date()) {
   await updateProject(p.id, { sprintLengthDays: days });
+  const all = await listSprints(p);
+  const active = all.find((s) => s.status === 'active');
+  if (active) {
+    const tomorrow = new Date(startOfDay(now).getTime() + DAY);
+    let end = new Date(Math.max(active.startsAt.getTime() + days * DAY, tomorrow.getTime()));
+    await db.update(sprints).set({ endsAt: end }).where(eq(sprints.id, active.id));
+    for (const s of all.filter((x) => x.status === 'planned' && x.startsAt >= active.startsAt)) {
+      const next = new Date(end.getTime() + days * DAY);
+      await db.update(sprints).set({ startsAt: end, endsAt: next }).where(eq(sprints.id, s.id));
+      end = next;
+    }
+  }
+  await ensureProjectSprints(p, now);
   await publish({ type: 'sprints', projectKey: p.key });
 }
 

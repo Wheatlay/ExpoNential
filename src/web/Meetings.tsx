@@ -15,6 +15,8 @@ import { getProjectKey } from './project.ts';
 import { PersonLink } from './PersonCard.tsx';
 import { useProjectDetail } from './projectDetail.ts';
 import { locale, t, tn } from './i18n.ts';
+import { MarkdownField } from './IssuePage.tsx';
+import { Markdown } from './Markdown.tsx';
 
 // ---------- czas (przeglądarka zespołu jest w czasie polskim) ----------
 
@@ -70,6 +72,14 @@ export function bestSlot(slots: MeetingSlot[]) {
   }
   // Remis na górze: żaden termin nie jest "best" (inaczej wygrywał po prostu pierwszy).
   return tie ? null : best;
+}
+
+/** Wszyscy zaproszeni (aktywni) odpowiedzieli na każdy przyszły termin ankiety, a nic jeszcze nie wybrano. */
+export function allVoted(m: Meeting, users: { id: number; active: boolean }[], now = Date.now()) {
+  if (m.status !== 'polling') return false;
+  const slots = m.slots.filter((s) => new Date(s.startsAt).getTime() > now);
+  const people = users.filter((u) => u.active && isInvited(m, u.id));
+  return slots.length > 0 && people.length > 0 && slots.every((s) => people.every((u) => s.votes.some((v) => v.userId === u.id)));
 }
 
 export function useCanManageMeeting() {
@@ -176,6 +186,7 @@ function NewMeeting({ date }: { date?: Date }) {
   const start = date ?? (() => { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); return d; })();
   if (date && date.getHours() === 0) start.setHours(10, 0, 0, 0);
   const [title, setTitle] = useState('');
+  const [agenda, setAgenda] = useState('');
   const [mode, setMode] = useState<'poll' | 'fixed'>('poll');
   const [slots, setSlots] = useState([{ date: dateInput(start), time: timeInput(start), end: timeInput(new Date(start.getTime() + 60 * 60000)) }]);
   // Koniec idzie za początkiem: przesunięcie startu zachowuje długość terminu.
@@ -204,8 +215,8 @@ function NewMeeting({ date }: { date?: Date }) {
     try {
       const range = (i: number) => ({ startsAt: times[i].toISOString(), endsAt: new Date(times[i].getTime() + length(slots[i])).toISOString() });
       const body = mode === 'poll'
-        ? { title, kind: 'poll', slots: times.map((_, i) => range(i)), locationUrl: location, reminders, attendeeIds: invitees }
-        : { title, kind: 'fixed', ...range(0), locationUrl: location, reminders, attendeeIds: invitees };
+        ? { title, kind: 'poll', slots: times.map((_, i) => range(i)), locationUrl: location, agenda, reminders, attendeeIds: invitees }
+        : { title, kind: 'fixed', ...range(0), locationUrl: location, agenda, reminders, attendeeIds: invitees };
       await api('/api/meetings', { method: 'POST', body });
       try { localStorage.setItem(LOCATION_KEY(), location); } catch { /* prywatne okno */ }
       await qc.invalidateQueries({ queryKey: ['meetings'] });
@@ -223,6 +234,7 @@ function NewMeeting({ date }: { date?: Date }) {
       <div className="crumbs"><CurrentProjectBadge /> {project?.name} <Icon.chevronRight size={12} /> {t('New meeting')}</div>
       <input className="title" autoFocus placeholder={t('Meeting title')} value={title} onChange={(e) => setTitle(e.target.value)} aria-label={t('Meeting title')}
         onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }} />
+      <div className="meeting-agenda desc-field"><div className="desc-label">{t('Agenda')}</div><textarea className="md-edit md-sm" placeholder={t('Optional')} aria-label={t('Agenda')} value={agenda} onChange={(e) => setAgenda(e.target.value)} /></div>
       <div className="meeting-modes">
         <button className={`chip ${mode === 'poll' ? 'on' : ''}`} onClick={() => { setMode('poll'); }}>{t('Poll for a time')}</button>
         <button className={`chip ${mode === 'fixed' ? 'on' : ''}`} onClick={() => { setMode('fixed'); setSlots((s) => s.slice(0, 1)); }}>{t('Fixed time')}</button>
@@ -292,7 +304,7 @@ function MeetingDialog({ id }: { id: number }) {
       </Backdrop>
     );
   }
-  return m.status === 'polling' ? <PollDialog m={m} /> : <ScheduledDialog m={m} />;
+  return m.status === 'polling' || m.status === 'expired' ? <PollDialog m={m} /> : <ScheduledDialog m={m} />;
 }
 
 function PollDialog({ m }: { m: Meeting }) {
@@ -300,7 +312,12 @@ function PollDialog({ m }: { m: Meeting }) {
   const me = useMe().data;
   const meta = useMeta().data;
   const canManage = useCanManageMeeting();
-  const best = bestSlot(m.slots);
+  const expired = m.status === 'expired';
+  const now = Date.now();
+  // Termin z przeszłości nie przyjmuje głosów ani wyboru; wygasła ankieta nie ma już żadnego otwartego terminu.
+  const slotOff = (s: MeetingSlot) => (expired ? t('All proposed times have passed') : new Date(s.startsAt).getTime() <= now ? t('This time has already passed') : null);
+  const open = m.slots.filter((s) => !slotOff(s));
+  const best = bestSlot(open);
   const [picked, setPicked] = useState<number | null>(null);
   const first = m.slots[0] ? new Date(m.slots[0].startsAt) : new Date();
   const [suggest, setSuggest] = useState({ date: dateInput(first), time: '', reason: '' });
@@ -312,9 +329,10 @@ function PollDialog({ m }: { m: Meeting }) {
   const organizer = name(m.createdBy);
   const isOrganizer = !!me && m.createdBy === me.id;
   const canPick = !!me && (isOrganizer ||canManage({ createdBy: -1, kind: 'poll' }));
-  const roDetails = canManage(m) ? null : t('Only the organizer or a project admin can change this meeting');
+  const roDetails = expired ? t('All proposed times have passed') : canManage(m) ? null : t('Only the organizer or a project admin can change this meeting');
   const patchDetails = (body: object, msg = t('Saved')) => api(`/api/meetings/${m.id}`, { method: 'PATCH', body }).then(() => { toast(msg); return refresh(); });
-  const target = m.slots.find((s) => s.id === picked) ?? best ?? m.slots[0];
+  const target = open.find((s) => s.id === picked) ?? best ?? open[0];
+  const noAdd = notInvited ?? (expired ? t('All proposed times have passed') : null);
   const voters = new Set(m.slots.flatMap((s) => s.votes.map((v) => v.userId))).size;
 
   const myVote = (s: MeetingSlot) => s.votes.find((v) => v.userId === me?.id)?.vote;
@@ -352,34 +370,35 @@ function PollDialog({ m }: { m: Meeting }) {
       <div className="meeting-head">
         <div className="meeting-title">{m.title}</div>
         <div className="hint">
-          {organizer[0].toUpperCase() + organizer.slice(1)} {tn(m.slots.filter((s) => s.proposedBy === m.createdBy).length, 'proposed {n} time', 'proposed {n} times')} · {t('anyone can suggest another')}
+          {organizer[0].toUpperCase() + organizer.slice(1)} {tn(m.slots.filter((s) => s.proposedBy === m.createdBy).length, 'proposed {n} time', 'proposed {n} times')} · {expired ? t('No time was set') : t('anyone can suggest another')}
           {isHttpUrl(m.locationUrl) ? <> · <a href={m.locationUrl} target="_blank" rel="noreferrer">{m.locationUrl.replace(/^https?:\/\//, '')}</a></> : null}
         </div>
       </div>
+      <Agenda m={m} ro={roDetails} patch={patchDetails} />
 
       <div className="poll-table">
         <div className="poll-row poll-head" style={{ gridTemplateColumns: cols }}>
           <div className="hint">{t('{a} of {b} voted', { a: voters, b: people.length })}</div>
           {m.slots.map((s) => (
-            <button key={s.id} className={`poll-cell poll-time ${s.id === best?.id ? 'best' : ''} ${canPick && s.id === target?.id ? 'target' : ''}`}
-              disabled={!canPick} title={canPick ? t('Select this time to pick it') : undefined} onClick={() => setPicked(s.id)}>
+            <button key={s.id} className={`poll-cell poll-time ${s.id === best?.id ? 'best' : ''} ${canPick && s.id === target?.id ? 'target' : ''} ${slotOff(s) ? 'past' : ''}`}
+              disabled={!canPick || !!slotOff(s)} title={slotOff(s) ?? (canPick ? t('Select this time to pick it') : undefined)} onClick={() => setPicked(s.id)}>
               <div className="strong">{fmtDayDate(s.startsAt)} · {fmtTime(s.startsAt)} {s.id === best?.id && <span className="best-tag">{t('best')}</span>}
                 {me && !notInvited && !myVote(s) && <span className="unvoted-dot" title={t('You have not answered this time yet')} />}</div>
               <div className="hint">{s.proposedBy === m.createdBy ? t('proposed by {name}', { name: name(s.proposedBy) }) : t('suggested by {name}', { name: name(s.proposedBy) })}{s.reason ? ` · “${s.reason}”` : ''}</div>
             </button>
           ))}
         </div>
-        <VoteRows slots={m.slots} people={others} cols={cols} />
+        <VoteRows slots={m.slots} people={others} cols={cols} dim={(s) => !!slotOff(s)} />
         {me && (
           <div className="poll-row mine" style={{ gridTemplateColumns: cols }}>
             <div className="poll-person" style={{ fontWeight: 600 }}><Avatar user={people.find((u) => u.id === me.id) ?? { id: me.id, name: me.name, avatarUrl: null }} size={20} />{t('You')}</div>
             {m.slots.map((s) => (
-              <Tooltip key={s.id} text={notInvited}>
-                <div className={`poll-cell vote-cell ${!myVote(s) && !notInvited ? 'unvoted' : ''}`}>
+              <Tooltip key={s.id} text={notInvited ?? slotOff(s)}>
+                <div className={`poll-cell vote-cell ${slotOff(s) ? 'past' : ''} ${!myVote(s) && !notInvited ? 'unvoted' : ''}`}>
                   <div className="vote-chips">
                     {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
                       <button key={v} className={`chip ${myVote(s) === v ? 'on' : ''}`} style={myVote(s) === v ? { borderColor: VOTE_COLOR[v], color: VOTE_COLOR[v] } : undefined}
-                        disabled={!!notInvited} onClick={() => setVote(s, v)}>{VOTE_LABEL[v]}</button>
+                        disabled={!!(notInvited ?? slotOff(s))} onClick={() => setVote(s, v)}>{VOTE_LABEL[v]}</button>
                     ))}
                   </div>
                   {myVote(s) === 'maybe' && (
@@ -392,15 +411,51 @@ function PollDialog({ m }: { m: Meeting }) {
           </div>
         )}
       </div>
+      {/* Telefon: zamiast szerokiej tabeli karta na każdy termin (mój głos + głosy innych), bez przewijania w bok. */}
+      <div className="poll-list">
+        <div className="hint">{t('{a} of {b} voted', { a: voters, b: people.length })}</div>
+        {m.slots.map((s) => (
+          <div key={s.id} className={`poll-list-slot ${canPick && s.id === target?.id ? 'target' : ''} ${slotOff(s) ? 'past' : ''}`}>
+            <button className="poll-time" disabled={!canPick || !!slotOff(s)} title={slotOff(s) ?? (canPick ? t('Select this time to pick it') : undefined)} onClick={() => setPicked(s.id)}>
+              <div className="strong">{fmtDayDate(s.startsAt)} · {fmtTime(s.startsAt)} {s.id === best?.id && <span className="best-tag">{t('best')}</span>}
+                {me && !notInvited && !myVote(s) && <span className="unvoted-dot" title={t('You have not answered this time yet')} />}</div>
+              <div className="hint">{s.proposedBy === m.createdBy ? t('proposed by {name}', { name: name(s.proposedBy) }) : t('suggested by {name}', { name: name(s.proposedBy) })}{s.reason ? ` · “${s.reason}”` : ''}</div>
+            </button>
+            {me && (
+              <Tooltip text={notInvited ?? slotOff(s)}>
+                <div className="vote-chips">
+                  {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
+                    <button key={v} className={`chip ${myVote(s) === v ? 'on' : ''}`} style={myVote(s) === v ? { borderColor: VOTE_COLOR[v], color: VOTE_COLOR[v] } : undefined}
+                      disabled={!!(notInvited ?? slotOff(s))} onClick={() => setVote(s, v)}>{VOTE_LABEL[v]}</button>
+                  ))}
+                </div>
+              </Tooltip>
+            )}
+            {me && myVote(s) === 'maybe' && (
+              <textarea className="input vote-note" rows={1} placeholder={t('Why? (optional)')} aria-label={t('Why maybe')} defaultValue={myNote(s)}
+                onBlur={(e) => saveNote(s, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }} />
+            )}
+            {others.map((u) => {
+              const v = s.votes.find((x) => x.userId === u.id);
+              return (
+                <div key={u.id} className="poll-list-vote">
+                  <PersonLink userId={u.id} className="grow"><Avatar user={u} size={18} />{u.name}</PersonLink>
+                  <span style={{ color: v ? VOTE_COLOR[v.vote] : 'var(--text-quaternary)', fontWeight: 600 }}>{v ? (v.vote === 'maybe' && v.note ? v.note : VOTE_LABEL[v.vote]) : '–'}</span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
 
       <div className="suggest-row">
         <span style={{ fontWeight: 600 }}>{t('Suggest another time')}</span>
-        <DateInput aria-label={t('Day')} value={suggest.date} disabled={!!notInvited} onChange={(v) => setSuggest((s) => ({ ...s, date: v }))} />
-        <TimeInput aria-label={t('Time')} value={suggest.time} disabled={!!notInvited} onChange={(v) => setSuggest((s) => ({ ...s, time: v }))} />
-        <input placeholder={t('Why? (optional)')} aria-label={t('Reason')} value={suggest.reason} className="input suggest-reason" disabled={!!notInvited}
+        <DateInput aria-label={t('Day')} value={suggest.date} disabled={!!noAdd} onChange={(v) => setSuggest((s) => ({ ...s, date: v }))} />
+        <TimeInput aria-label={t('Time')} value={suggest.time} disabled={!!noAdd} onChange={(v) => setSuggest((s) => ({ ...s, time: v }))} />
+        <input placeholder={t('Why? (optional)')} aria-label={t('Reason')} value={suggest.reason} className="input suggest-reason" disabled={!!noAdd}
           onChange={(e) => setSuggest((s) => ({ ...s, reason: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') void addTime(); }} />
-        <Tooltip text={notInvited ?? (suggest.time ? null : t('Pick a day and time'))}>
-          <button className="btn sm" disabled={!!notInvited || !suggest.time} onClick={() => void addTime()}>{t('Add')}</button>
+        <Tooltip text={noAdd ?? (suggest.time ? null : t('Pick a day and time'))}>
+          <button className="btn sm" disabled={!!noAdd || !suggest.time} onClick={() => void addTime()}>{t('Add')}</button>
         </Tooltip>
       </div>
 
@@ -413,7 +468,7 @@ function PollDialog({ m }: { m: Meeting }) {
         <HelpTip text={t('A suggested time becomes a new column; everyone gets a Discord ping to vote on it.')} />
         <span className="spacer" />
         <button className="btn" onClick={closeDialog}>{t('Close')}</button>
-        <Tooltip text={canPick ? null : t('Only {name} or a project admin can pick the time', { name: organizer })}>
+        <Tooltip text={expired ? t('All proposed times have passed') : canPick ? null : t('Only {name} or a project admin can pick the time', { name: organizer })}>
           <button className={isOrganizer ? 'btn primary' : 'btn'} disabled={!canPick || !target} onClick={() => void pick()}>
             {target ? t('Pick {when}', { when: `${fmtDayDate(target.startsAt)}, ${fmtTime(target.startsAt)}` }) : t('Pick a time')}
           </button>
@@ -431,7 +486,7 @@ const pollCols = (n: number) => `180px repeat(${n}, 210px)`;
 
 
 /** Głosy innych osób, tylko do odczytu (ankieta w toku i podgląd po wyborze terminu). */
-function VoteRows({ slots, people, cols }: { slots: MeetingSlot[]; people: NonNullable<Parameters<typeof Avatar>[0]['user']>[]; cols: string }) {
+function VoteRows({ slots, people, cols, dim }: { slots: MeetingSlot[]; people: NonNullable<Parameters<typeof Avatar>[0]['user']>[]; cols: string; dim?: (s: MeetingSlot) => boolean }) {
   return people.map((u) => (
     <div key={u.id} className="poll-row" style={{ gridTemplateColumns: cols }}>
       <div className="poll-person"><PersonLink userId={u.id}><Avatar user={u} size={20} />{u.name}</PersonLink></div>
@@ -440,7 +495,7 @@ function VoteRows({ slots, people, cols }: { slots: MeetingSlot[]; people: NonNu
         const note = s.votes.find((x) => x.userId === u.id)?.note;
         // Powód przy "Może" zastępuje samo słowo (ten sam kolor); długi ucinany do 2 linii, cały w dymku.
         return (
-          <div key={s.id} className="poll-cell" style={{ color: v ? VOTE_COLOR[v] : 'var(--text-quaternary)', fontWeight: 600 }} title={v === 'maybe' && note ? note : undefined}>
+          <div key={s.id} className={`poll-cell ${dim?.(s) ? 'past' : ''}`} style={{ color: v ? VOTE_COLOR[v] : 'var(--text-quaternary)', fontWeight: 600 }} title={v === 'maybe' && note ? note : undefined}>
             {v ? (v === 'maybe' && note ? <span className="poll-note">{note}</span> : VOTE_LABEL[v]) : '–'}
           </div>
         );
@@ -495,6 +550,13 @@ function PollVotes({ m }: { m: Meeting }) {
   );
 }
 
+/** Agenda: organizator/admin edytuje jak opis zgłoszenia (CHUB-42 staje się linkiem), reszta czyta; pusta i bez prawa edycji = nic. */
+function Agenda({ m, ro, patch }: { m: Meeting; ro: string | null; patch: (body: object) => Promise<unknown> }) {
+  const label = <div className="desc-label">{t('Agenda')}</div>;
+  if (ro) return m.agenda ? <div className="meeting-agenda desc-field">{label}<Markdown text={m.agenda} /></div> : null;
+  return <div className="meeting-agenda desc-field">{label}<MarkdownField value={m.agenda ?? ''} size="sm" placeholder={t('Add agenda…')} onSave={(v) => { if (v.trim() !== (m.agenda ?? '')) void patch({ agenda: v }); }} /></div>;
+}
+
 /** Gdzie, przypomnienia, kto: te same wiersze w ankiecie i w ustalonym spotkaniu (wewnątrz .meeting-grid). */
 function MeetingDetails({ m, ro, roInvite, patch }: { m: Meeting; ro: string | null; roInvite: string | null; patch: (body: object) => Promise<unknown> }) {
   const [location, setLocation] = useState(m.locationUrl);
@@ -545,6 +607,7 @@ function ScheduledDialog({ m }: { m: Meeting }) {
       <div className="hint mb-16">
         {whenLabel(m)} – {fmtTime(m.endsAt!)} · {m.kind === 'sprint_review' ? t('automatic sprint review') : organizer ? t('organized by {name}', { name: organizer }) : t('meeting')}
       </div>
+      <Agenda m={m} ro={ro} patch={patch} />
       {asAdmin && <div className="hint warn-text mb-12">{t('This is {name}\'s meeting. You can change it as an admin; every change reaches everyone invited.', { name: asAdmin })}</div>}
       <div className="row-8 mb-16">
         <Tooltip text={isHttpUrl(m.locationUrl) ? null : t('No meeting link set for this meeting')}>

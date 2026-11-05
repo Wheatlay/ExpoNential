@@ -95,13 +95,65 @@ func scrubSecrets(root string) int {
 	return n
 }
 
+// defaultRef: the remote default branch of a repo (origin/HEAD, then origin/main, origin/master); "" if none.
+func defaultRef(repoDir string) string {
+	ref := gitSafe([]string{"-C", repoDir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"}, "", 0)
+	for _, c := range []string{"origin/main", "origin/master"} {
+		if ref == "" && gitSafe([]string{"-C", repoDir, "rev-parse", "--verify", c}, "", 0) != "" {
+			ref = c
+		}
+	}
+	return ref
+}
+
+// persistentWorktree: a reusable detached worktree of the default branch, kept between requests (ignored files such
+// as node_modules stay, untracked files go).
+func persistentWorktree(key string, entry RepoEntry) (string, func(), error) {
+	noop := func() {}
+	start := time.Now()
+	wt := filepath.Join(dataDir(), "worktrees", key)
+	if _, err := gitRun([]string{"-C", entry.Path, "fetch", "--prune", "origin"}, "", 300*time.Second); err != nil {
+		logf("%s: fetch failed, using what is local: %s", key, shortErr(err))
+	}
+	ref := defaultRef(entry.Path)
+	if ref == "" {
+		ref = "HEAD"
+	}
+	// Resolve in the owner's repo: inside the worktree "HEAD" would mean the worktree's own (stale) HEAD.
+	if sha := gitSafe([]string{"-C", entry.Path, "rev-parse", "--verify", ref + "^{commit}"}, "", 0); sha != "" {
+		ref = sha
+	}
+	if st, err := os.Stat(wt); err == nil && st.IsDir() && gitSafe([]string{"-C", wt, "rev-parse", "--is-inside-work-tree"}, "", 0) == "true" {
+		_, e1 := gitRun([]string{"-C", wt, "checkout", "--detach", "-f", ref}, "", 0)
+		_, e2 := gitRun([]string{"-C", wt, "clean", "-fd"}, "", 0)
+		if e1 == nil && e2 == nil {
+			logf("%s: worktree ready in %.1fs (%s)", key, time.Since(start).Seconds(), ref)
+			return wt, noop, nil
+		}
+	}
+	gitSafe([]string{"-C", entry.Path, "worktree", "remove", "--force", wt}, "", 0)
+	_ = os.RemoveAll(wt)
+	gitSafe([]string{"-C", entry.Path, "worktree", "prune"}, "", 0)
+	_ = os.MkdirAll(filepath.Dir(wt), 0o755)
+	if _, err := gitRun([]string{"-C", entry.Path, "worktree", "add", "--detach", wt, ref}, "", 600*time.Second); err != nil {
+		return "", noop, err
+	}
+	logf("%s: worktree ready in %.1fs (%s)", key, time.Since(start).Seconds(), ref)
+	return wt, noop, nil
+}
+
 // prepareWorkdir: own clones run in a fresh detached worktree of the up-to-date branch. Codex has no file denylist,
 // so it NEVER runs in a user folder: always a temp worktree of the local HEAD (no fetch), with secret-looking files
-// deleted. Claude on a user folder runs in place.
-func prepareWorkdir(key string, entry RepoEntry, engine string) (string, func(), error) {
+// deleted. Claude on a user folder runs in place for the owner's own requests; for other people's requests
+// (forOthers) it runs in a persistent worktree (data dir/worktrees/KEY) reset to the default branch before each run
+// (HEAD of the owner's folder when there is none), so the owner's uncommitted work is never used or touched.
+func prepareWorkdir(key string, entry RepoEntry, engine string, forOthers bool) (string, func(), error) {
 	noop := func() {}
 	isClone := entry.Source == "clone"
 	if !isClone && engine != "codex" {
+		if forOthers {
+			return persistentWorktree(key, entry)
+		}
 		return entry.Path, noop, nil
 	}
 	ref := "HEAD"
@@ -110,12 +162,7 @@ func prepareWorkdir(key string, entry RepoEntry, engine string) (string, func(),
 			return "", noop, err
 		}
 		// TODO: /api/projects does not expose a deploy branch; the remote default branch is used.
-		ref = gitSafe([]string{"-C", entry.Path, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"}, "", 0)
-		for _, c := range []string{"origin/main", "origin/master"} {
-			if ref == "" && gitSafe([]string{"-C", entry.Path, "rev-parse", "--verify", c}, "", 0) != "" {
-				ref = c
-			}
-		}
+		ref = defaultRef(entry.Path)
 		if ref == "" {
 			return "", noop, errors.New("cannot determine the default branch of the clone")
 		}

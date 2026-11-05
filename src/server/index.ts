@@ -20,6 +20,7 @@ import { registerUploads, UPLOADS_DIR } from './uploads.ts';
 import { registerDeploys } from './deploys.ts';
 import { registerCoolify } from './coolify.ts';
 import { registerMeetings } from './meetingsApi.ts';
+import { registerFeedback } from './feedback.ts';
 import { ensureSprintReviews, runReminders } from './meetings.ts';
 import { onSprintsEnsured } from './sprints.ts';
 import { maskUrl } from './rules.ts';
@@ -63,6 +64,7 @@ await registerUploads(app);
 await registerDeploys(app);
 await registerCoolify(app);
 await registerMeetings(app);
+await registerFeedback(app);
 
 // Przypomnienia o spotkaniach: co 30 s wysyłamy te, których czas minął (bez dubli, patrz reminder_sends).
 const reminders = setInterval(() => void runReminders(new Date(), app.log).catch((e) => app.log.error(e)), 30_000);

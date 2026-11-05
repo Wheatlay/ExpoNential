@@ -12,6 +12,7 @@ import { CommandMenu } from './CommandMenu.tsx';
 import { MenuHost } from './menu.tsx';
 import { PersonCardHost, PersonLink } from './PersonCard.tsx';
 import { InboxBell } from './Inbox.tsx';
+import { FeedbackButton, FeedbackHost } from './Feedback.tsx';
 import { NewIssueHost, openNewIssue } from './NewIssue.tsx';
 import { AskHost } from './AskModal.tsx';
 import { LightboxHost } from './ImageBlock.tsx';
@@ -123,6 +124,7 @@ function App() {
       <NewIssueHost />
       <NewProjectHost />
       <MeetingHost />
+      <FeedbackHost />
       <NotifyPrompt />
       <LightboxHost />
       <DoneGuardHost />
@@ -199,6 +201,7 @@ function Header({ page, number }: { page: string; number?: number }) {
         <Icon.search size={14} /><span className="grow">{t('Search issues…')}</span><kbd>Ctrl K</kbd>
       </button>
       <span className="header-end" />
+      <FeedbackButton />
       <InboxBell />
     </div>
   );

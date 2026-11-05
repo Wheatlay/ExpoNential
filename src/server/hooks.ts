@@ -67,6 +67,25 @@ export async function github(path: string) {
   return res.json();
 }
 
+const repoCheckCache = new Map<string, { at: number; exists: boolean | null }>();
+/** Czy repo istnieje na GitHubie: true / false (404) / null (inny błąd albo brak odpowiedzi w 5 s). Wynik trzymany 10 minut. */
+export async function githubRepoExists(name: string): Promise<boolean | null> {
+  const key = name.toLowerCase();
+  const hit = repoCheckCache.get(key);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.exists;
+  let exists: boolean | null = null;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${name}`, {
+      signal: AbortSignal.timeout(5000),
+      headers: { 'User-Agent': 'tracker', Accept: 'application/vnd.github+json', ...(process.env.GITHUB_API_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_API_TOKEN}` } : {}) },
+    });
+    exists = res.ok ? true : res.status === 404 ? false : null;
+  } catch { exists = null; }
+  if (repoCheckCache.size > 500) repoCheckCache.clear();
+  repoCheckCache.set(key, { at: Date.now(), exists });
+  return exists;
+}
+
 /**
  * Udany deploy: commity od poprzedniego deployu dostają wpis w issue_commit_deploys (na produkcji też deployed_at), a ich zadania wpis "Deployed".
  * Każde środowisko ma osobną historię deployów.

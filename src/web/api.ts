@@ -28,8 +28,8 @@ export type Sprint = { id: number; name: string; startsAt: string; endsAt: strin
 export type Vote = 'yes' | 'maybe' | 'no';
 export type MeetingSlot = { id: number; startsAt: string; endsAt: string; proposedBy: number | null; reason: string | null; votes: { userId: number; vote: Vote; note?: string | null }[] };
 export type Meeting = {
-  id: number; title: string; kind: 'poll' | 'fixed' | 'sprint_review'; status: 'polling' | 'scheduled' | 'cancelled';
-  startsAt: string | null; endsAt: string | null; locationUrl: string; sprintId: number | null; createdBy: number | null;
+  id: number; title: string; kind: 'poll' | 'fixed' | 'sprint_review'; status: 'polling' | 'scheduled' | 'cancelled' | 'expired';
+  startsAt: string | null; endsAt: string | null; locationUrl: string; agenda: string; sprintId: number | null; createdBy: number | null;
   /** null = cały projekt */
   attendeeIds: number[] | null;
   reminders: number[]; slots: MeetingSlot[];
@@ -168,11 +168,15 @@ export function isInvited(m: Pick<Meeting, 'attendeeIds' | 'createdBy'>, userId:
 
 /** Czeka na mój głos, gdy choć jeden termin nie ma mojej odpowiedzi (np. ktoś dodał nowy po moim głosowaniu). */
 export function awaitsMyVote(m: Meeting, meId: number | undefined) {
-  return m.status === 'polling' && !!meId && isInvited(m, meId) && m.slots.some((s) => !s.votes.some((v) => v.userId === meId));
+  const now = Date.now();
+  return m.status === 'polling' && !!meId && isInvited(m, meId) && m.slots.some((s) => new Date(s.startsAt).getTime() > now && !s.votes.some((v) => v.userId === meId));
 }
 
 /** Klucz odrzuconego przypomnienia o ankiecie: z liczbą terminów, więc nowy termin przywraca przypomnienie. */
 export const pollAlertKey = (m: Meeting) => `p${m.id}:${m.slots.length}`;
+
+/** Zgłaszanie błędów i pomysłów: czy admin wybrał projekt (admin dostaje też jego id). */
+export const useFeedbackInfo = () => useQuery({ queryKey: ['feedback'], queryFn: () => api<{ configured: boolean; projectId?: number | null }>('/api/feedback'), staleTime: 60_000 });
 
 export const useConfig = () => useQuery({ queryKey: ['config'], queryFn: () => api<AppConfig>('/api/config'), staleTime: Infinity, retry: false });
 export const useMe = () => useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me'), retry: false, staleTime: Infinity });

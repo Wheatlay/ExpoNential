@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ADD COLUMN "found_repos" jsonb DEFAULT '[]'::jsonb NOT NULL;

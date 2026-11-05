@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,7 +22,9 @@ const (
 	maxCandidates = 300
 	maxChildren   = 50
 	maxPathLen    = 260
-	discoverEvery = 60 * time.Minute
+	discoverEvery = 5 * time.Minute
+	foundEvery    = 5 * time.Minute
+	maxFound      = 100
 )
 
 var driveRe = regexp.MustCompile(`^[A-Za-z]:`)
@@ -345,15 +348,14 @@ func discoverSignature(todo []Project) string {
 	return b.String()
 }
 
-// hasRemote reads the repo's git config directly (no git process) and says whether a remote points to githubRepo.
-// Handles worktrees and submodules, where .git is a file pointing to the real git dir.
-func hasRemote(dir, githubRepo string) bool {
-	want := strings.ToLower(githubRepo)
+// gitConfigOf returns the contents of the repo's git config (no git process), or nil. Handles worktrees and
+// submodules, where .git is a file pointing to the real git dir.
+func gitConfigOf(dir string) []byte {
 	gitDir := filepath.Join(dir, ".git")
 	if st, err := os.Stat(gitDir); err == nil && !st.IsDir() {
 		line := strings.TrimSpace(string(readFile(gitDir)))
 		if !strings.HasPrefix(line, "gitdir:") {
-			return false
+			return nil
 		}
 		gitDir = strings.TrimSpace(strings.TrimPrefix(line, "gitdir:"))
 		if !filepath.IsAbs(gitDir) {
@@ -367,13 +369,81 @@ func hasRemote(dir, githubRepo string) bool {
 			gitDir = c
 		}
 	}
-	for _, l := range strings.Split(string(readFile(filepath.Join(gitDir, "config"))), "\n") {
+	return readFile(filepath.Join(gitDir, "config"))
+}
+
+// configURLs lists every "url =" value of a git config.
+func configURLs(cfg []byte) []string {
+	var out []string
+	for _, l := range strings.Split(string(cfg), "\n") {
 		l = strings.TrimSpace(l)
-		if k, v, ok := strings.Cut(l, "="); ok && strings.TrimSpace(k) == "url" && slug(strings.TrimSpace(v)) == want {
+		if k, v, ok := strings.Cut(l, "="); ok && strings.TrimSpace(k) == "url" {
+			out = append(out, strings.TrimSpace(v))
+		}
+	}
+	return out
+}
+
+// hasRemote reads the repo's git config directly (no git process) and says whether a remote points to githubRepo.
+func hasRemote(dir, githubRepo string) bool {
+	want := strings.ToLower(githubRepo)
+	for _, u := range configURLs(gitConfigOf(dir)) {
+		if slug(u) == want {
 			return true
 		}
 	}
 	return false
+}
+
+var foundSlugRe = regexp.MustCompile(`^[a-z0-9_.-]+/[a-z0-9_.-]+$`)
+
+// foundRepoSlugs lists the GitHub repos (owner/name, lowercase) of the candidate folders on this PC.
+func foundRepoSlugs() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, c := range candidateFolders() {
+		for _, u := range configURLs(gitConfigOf(c)) {
+			if s := slug(u); foundSlugRe.MatchString(s) && !seen[s] {
+				seen[s] = true
+				out = append(out, s)
+			}
+		}
+	}
+	sort.Strings(out)
+	if len(out) > maxFound {
+		out = out[:maxFound]
+	}
+	return out
+}
+
+var (
+	foundMu      sync.Mutex
+	foundCache   []string
+	foundAt      time.Time
+	foundRunning bool
+)
+
+// cachedFoundSlugs returns the last computed list and starts a background refresh when it is older than foundEvery
+// (or force is true), so the poll never waits for the folder walk.
+func cachedFoundSlugs(force bool) []string {
+	foundMu.Lock()
+	defer foundMu.Unlock()
+	if (force || time.Since(foundAt) >= foundEvery) && !foundRunning {
+		foundRunning = true
+		go func() {
+			defer func() {
+				_ = recover()
+				foundMu.Lock()
+				foundRunning = false
+				foundMu.Unlock()
+			}()
+			l := foundRepoSlugs()
+			foundMu.Lock()
+			foundCache, foundAt = l, time.Now()
+			foundMu.Unlock()
+		}()
+	}
+	return foundCache
 }
 
 // discoverLoop runs discovery now and then every discoverEvery.

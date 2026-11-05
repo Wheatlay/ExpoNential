@@ -81,3 +81,16 @@ export function maskUrl(url: string) {
 export function isEmail(s: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 }
+
+
+/**
+ * Pole "GitHub repo": przyjmuje owner/name, adres https://github.com/owner/name(.git)(/...), github.com/owner/name i git@github.com:owner/name.git.
+ * Zwraca owner/name (wielkość liter bez zmian), pusty tekst zostaje pusty (czyści pole), niepasujące = null.
+ */
+export function normGithubRepo(s: string): string | null {
+  const v = s.trim().replace(/^git@github\.com:/i, '').replace(/^(https?:\/\/)?(www\.)?github\.com\//i, '');
+  if (!v) return '';
+  const [owner = '', rawName = ''] = v.split(/[?#]/)[0].split('/');
+  const out = `${owner}/${rawName.replace(/\.git$/i, '')}`;
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(out) ? out : null;
+}

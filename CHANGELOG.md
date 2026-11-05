@@ -2,6 +2,20 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.25], Agent [0.4.17] - 05.11.2026
+
+- GitHub repo field (Settings › Integrations): a pasted URL (`https://github.com/owner/name.git`, `git@github.com:owner/name.git`) is reduced to `owner/name`, the repo is checked on GitHub (found / not found), and repos found on your own PCs are offered as one-click suggestions (only names, never paths; teammates' PCs are not used). A new switch lets agents clone the repo.
+- Settings › My AI: each PC has a Repos section (state per project, Choose folder, Clone, Rescan sent to the agent; needs agent 0.4.17). The "no PC has the repo" pill on an analysis opens it.
+- Discord: a Test button sends a test message to the project channel. Meeting place: recent places from the project's meetings as quick picks.
+- Agent heartbeat carries the repos found on the PC (`found`); new endpoints repo-suggestions, repo-action, repo-actions, repo-check, discord-test, recent-places.
+- Meetings: an agenda field (markdown, issue IDs become links) in new meetings, polls and fixed meetings; editable by the organizer or a project admin. Not sent in notifications or .ics.
+- Phone/tablet: the poll dialog shows one card per time instead of the wide vote table; Display › Rows groups the list, ID/Assignee/Priority switch row parts, board-only options are greyed out; list+preview shows the title before the properties.
+- Agent 0.4.17: reports repo names found on the PC, looks for repos every 5 min, runs Clone / Choose folder / Rescan from Settings, and runs other people's requests in a reusable worktree per project (data folder/worktrees/KEY, reset to the default branch, ignored files such as node_modules kept); own requests still run in place.
+- Polls: a poll whose times have all passed expires quietly (no notification), stays greyed in the calendar and opens read-only with "No time was set"; a single past time can no longer be voted on, proposed or picked and is greyed in the poll dialog.
+- Polls: when every invited person said yes to the same future time, it is picked automatically (the earliest such time), and everyone gets a push. When everyone has voted but there is no agreement, the organizer gets one push (a new time re-arms it) and the calendar lists the poll under "Ready to pick".
+- Report a bug or idea: a flag button next to the bell and a Ctrl+K command open a small dialog (Bug / Idea, title, description with pasted screenshots). It creates an issue in the project a workspace admin picks in Settings › Workspace (labels Bug / Feature, page, browser and app version attached for bugs); the reporter does not need to be a member of that project. Limit: 10 per person per hour.
+- Migration 0037 adds meetings.all_voted_notified_at.
+
 ## Server [1.3.24] - 05.11.2026
 
 - Deploys are detected automatically: Settings › Integrations no longer asks for a deploy source. GitHub Deployments events, Coolify apps built from the project repo and the CI webhook create their environments from the first event (shown with a source label); removed ones are not re-added, and a manually added environment can still be created.

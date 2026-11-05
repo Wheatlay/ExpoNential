@@ -410,7 +410,7 @@ export const issueViews = pgTable('issue_views', {
 // ---------- spotkania ----------
 
 export type MeetingKind = 'poll' | 'fixed' | 'sprint_review';
-export type MeetingStatus = 'polling' | 'scheduled' | 'cancelled';
+export type MeetingStatus = 'polling' | 'scheduled' | 'cancelled' | 'expired';
 export type Vote = 'yes' | 'maybe' | 'no';
 
 /** Spotkanie całego projektu: ankieta na termin, stały termin albo automatyczne sprint review. */
@@ -424,12 +424,16 @@ export const meetings = pgTable('meetings', {
   startsAt: timestamp('starts_at', { withTimezone: true }),
   endsAt: timestamp('ends_at', { withTimezone: true }),
   locationUrl: text('location_url').notNull().default(''),
+  // Agenda / opis (markdown, odnośniki do zgłoszeń). Nie idzie do powiadomień ani .ics.
+  agenda: text('agenda').notNull().default(''),
   sprintId: integer('sprint_id').references(() => sprints.id, { onDelete: 'cascade' }),
   // Ręcznie przesunięte sprint review nie wraca na termin z ustawień projektu.
   manuallyEdited: boolean('manually_edited').notNull().default(false),
   // Zaproszone osoby; null = cały projekt. Niezaproszeni widzą spotkanie, ale bez powiadomień.
   attendeeIds: integer('attendee_ids').array(),
   createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  // Kiedy organizator dostał "wszyscy zagłosowali" (raz na komplet terminów; nowy termin zeruje).
+  allVotedNotifiedAt: timestamp('all_voted_notified_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('meetings_project_idx').on(t.projectId, t.startsAt), uniqueIndex('meetings_sprint_uniq').on(t.sprintId)]);
 
@@ -521,6 +525,8 @@ export const agents = pgTable('agents', {
   currentRequesterId: integer('current_requester_id').references(() => users.id, { onDelete: 'set null' }),
   // Co agent widzi ustawione na komputerze (z plików konfiguracji, przy każdym odpytaniu): MCP i plugin per konto Claude, Codex, Cursor.
   setup: jsonb('setup').$type<AgentSetup>(),
+  // Repozytoria GitHub (owner/name, małe litery) znalezione na tym PC przez agenta; podpowiedzi pola repo w projekcie.
+  foundRepos: jsonb('found_repos').$type<string[]>().notNull().default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

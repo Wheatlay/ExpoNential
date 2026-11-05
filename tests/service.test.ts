@@ -421,6 +421,21 @@ describe('hardening', () => {
     const starts = list.map((s) => s.startsAt.getTime());
     expect(new Set(starts).size).toBe(starts.length);
   });
+
+  it('changing sprint length resizes the active and planned sprints', async () => {
+    const now = new Date(Date.UTC(2031, 0, 11, 12));
+    await sprints.ensureProjectSprints(P, now);
+    await sprints.setSprintLength(P, 3, now);
+    const list = await sprints.listSprints(P);
+    const active = list.find((s) => s.status === 'active')!;
+    const planned = list.filter((s) => s.status === 'planned' && s.startsAt >= active.startsAt);
+    const DAY = 864e5;
+    expect(active.endsAt.getTime()).toBeGreaterThan(now.getTime());
+    expect(active.endsAt.getTime() - active.startsAt.getTime()).toBeLessThanOrEqual(Math.max(3 * DAY, active.endsAt.getTime() - active.startsAt.getTime()));
+    expect(planned.length).toBeGreaterThan(0);
+    expect(planned[0].startsAt.getTime()).toBe(active.endsAt.getTime());
+    expect(planned[0].endsAt.getTime() - planned[0].startsAt.getTime()).toBe(3 * DAY);
+  });
 });
 
 describe('status roles', () => {

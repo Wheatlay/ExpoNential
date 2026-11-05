@@ -564,11 +564,16 @@ textarea.md-edit {
 .m-row-id { color: var(--text-tertiary); font-size: var(--text-sm); flex-shrink: 0; }
 .m-row-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text-primary); }
 .m-empty { padding: 40px 16px; text-align: center; }
-.split-list { width: 320px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--border-primary); }
+.m-sub { display: flex; align-items: center; gap: 8px; height: var(--control-md); padding: 0 14px; color: var(--text-secondary); font-size: var(--text-sm); background: var(--bg-secondary); border-bottom: 1px solid var(--border-primary); }
+.m-sub .n { color: var(--text-tertiary); }
+.split-list { width: 280px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid var(--border-primary); }
 .m-head { display: flex; align-items: center; gap: 8px; width: 100%; height: var(--control-lg); padding: 0 14px; font-size: var(--text-xs); text-transform: uppercase;
   letter-spacing: 0.04em; color: var(--text-secondary); font-weight: 500; position: sticky; top: 0; background: var(--bg-primary); z-index: 1; }
 .split-detail { flex: 1; min-width: 0; display: flex; }
 .split-detail .issue-page { flex: 1; }
+/* Lista + podgląd: tytuł i treść od góry, właściwości pod nimi (nad treścią zjadały cały ekran). */
+.split-detail .props-panel { order: 1; border-bottom: 0; border-top: 1px solid var(--border-primary); }
+.split-detail .issue-content { padding: 20px 20px 40px; }
 /* arkusz od dołu: menu przytrzymanego wiersza na telefonie */
 .popover.sheet { left: 0; right: 0; bottom: 0; max-width: none; border-radius: var(--radius-xl) var(--radius-xl) 0 0; padding: 12px 8px 16px; }
 .popover.sheet .menu-item { height: var(--control-lg); font-size: var(--text-lg); }
@@ -885,8 +890,8 @@ a.sub-row > button { display: inline-flex; }
 .cal-card:hover { background: color-mix(in srgb, var(--kind) 30%, var(--bg-secondary)); }
 .cal-card.option { background: transparent; border-style: dashed; }
 /* Opcja, na którą już odpowiedziałem: przygaszona (ramka i tekst), czekające zostają wyraźne. */
-.cal-card.option.answered, .cal-month-item.option.answered { opacity: 0.5; }
-.cal-card.option.answered:hover, .cal-month-item.option.answered:hover { opacity: 0.85; }
+.cal-card.option.answered, .cal-month-item.option.answered, .cal-card.option.expired, .cal-month-item.option.expired { opacity: 0.5; }
+.cal-card.option.answered:hover, .cal-month-item.option.answered:hover, .cal-card.option.expired:hover, .cal-month-item.option.expired:hover { opacity: 0.85; }
 /* Sprint review: druga linia obramowania (rodzaj pokazuje obramowanie, kolor to samo spotkanie). */
 .cal-card.is-review { outline: 1px solid var(--kind); outline-offset: 2px; }
 .cal-card.option:hover { background: color-mix(in srgb, var(--kind) 8%, transparent); }
@@ -943,6 +948,8 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .poll-list { display: none; flex-direction: column; gap: 8px; }
 .poll-list-slot { border: 1px solid var(--border-secondary); border-radius: var(--radius-lg); padding: 10px; display: flex; flex-direction: column; gap: 6px; }
 .poll-list-slot.target { border-color: var(--accent); }
+/* Termin ankiety z przeszłości (albo cała ankieta wygasła): przygaszony, głosy i wybór wyłączone. */
+.poll-cell.past, .poll-list-slot.past { opacity: 0.5; }
 /* Imię nigdy się nie ściska; głos albo powód "Może" bierze resztę wiersza i zawija się w niej (do prawej). */
 .poll-list-vote { display: flex; gap: 8px; align-items: flex-start; }
 .poll-list-vote .grow { flex: 0 0 auto; }
@@ -952,6 +959,7 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .poll-time { text-align: left; color: var(--text-primary); }
 .poll-time:disabled { cursor: default; }
 .poll-time.best { background: color-mix(in srgb, var(--success) 10%, transparent); box-shadow: inset 0 -2px 0 var(--success); }
+.poll-list .poll-time { padding: 0; background: none; }
 .poll-time.target { box-shadow: inset 0 -2px 0 var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .best-tag { font-size: var(--text-xs); color: var(--success-text); }
 .poll-person { display: flex; gap: 8px; align-items: center; }
@@ -972,8 +980,8 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
   /* Dni jeden pod drugim: wspólne wiersze nie mają sensu, każdy dzień to zwykła lista. */
   /* Ramka, bo na czarnym (OLED) tło dnia zlewa się z tłem strony. */
   .cal-day { display: flex; flex-direction: column; gap: 8px; grid-row: auto; border: 1px solid var(--border-secondary); }
-  .poll-votes .poll-table { display: none; }
-  .poll-votes .poll-list { display: flex; }
+  .poll-table { display: none; }
+  .poll-list { display: flex; }
   .cal-slot { grid-row: auto !important; }
   .cal-sep { height: 1px; grid-row: auto; }
   /* Full width above the calendar (props-panel puts it first); the divider is its bottom border. */
@@ -1430,6 +1438,7 @@ textarea.md-edit.md-md { min-height: 120px; }
 .s-details > summary > svg { transition: transform 0.12s; color: var(--text-tertiary); }
 .s-details[open] > summary > svg { transform: rotate(90deg); }
 .s-row.s-details { display: block; }
+.s-details.flash > summary { background: var(--bg-hover); border-radius: var(--radius-md); }
 /* == end My AI layout == */
 
 /* ---------- zmiana z zewnątrz (SSE), kolejność aktywności, błąd analizy ---------- */
@@ -1450,3 +1459,12 @@ textarea.md-edit.md-md { min-height: 120px; }
 .settings-nav .nav-item.locked { opacity: 0.5; cursor: not-allowed; }
 .settings-nav .nav-item.locked:hover { background: none; }
 .card-meta .pill { min-width: 0; }
+.meeting-agenda { margin: 8px 0 16px; }
+/* Tło jak pola formularza w oknie (Where), nie jak karta opisu zgłoszenia. */
+.meeting-agenda.desc-field { background: var(--bg-primary); }
+/* Jedna ramka: pole pisania w środku ramki agendy nie ma własnej. */
+.meeting-agenda textarea.md-edit { border: 0; background: transparent; padding: 0; box-shadow: none; }
+/* Zgłoś błąd/pomysł: czerwona flaga, żeby było ją widać obok dzwonka. */
+.feedback-btn { color: var(--danger); }
+.feedback-btn:hover { color: var(--danger); }
+.feedback-btn:disabled { color: var(--text-quaternary); }

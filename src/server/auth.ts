@@ -116,6 +116,7 @@ const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
   [/^POST$/, /^\/api\/agent\/runs$/],
   [/^POST$/, /^\/api\/agent\/consent-pending$/],
   [/^GET$/, /^\/api\/agent\/open-requests$/],
+  [/^GET$/, /^\/api\/agent\/repo-actions$/],
   [/^POST$/, /^\/api\/agent\/mcp-key$/], // klucz MCP dla instalatora agenta (pairing.ts sprawdza klienta grantu)
   [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
   [/^(DELETE|PATCH)$/, /^\/api\/agents\/[^/]+$/], // PATCH: tylko teamMode (api.ts)
@@ -126,6 +127,7 @@ const AGENT_ONLY: Array<[RegExp, RegExp]> = [
   [/^POST$/, /^\/api\/agent\/runs$/],
   [/^POST$/, /^\/api\/agent\/consent-pending$/],
   [/^GET$/, /^\/api\/agent\/open-requests$/],
+  [/^GET$/, /^\/api\/agent\/repo-actions$/],
   [/^(POST|DELETE)$/, /^\/api\/issues\/[^/]+\/analyze\/claim$/],
   [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
   [/^(DELETE|PATCH)$/, /^\/api\/agents\/[^/]+$/],

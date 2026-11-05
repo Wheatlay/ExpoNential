@@ -1,8 +1,10 @@
+import { enterSends, setEnterSends } from './keys.ts';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { TimeInput } from './DateTime.tsx';
 import { askConfirm } from './Confirm.tsx';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, useMe, useMeta, useProjects, useSprints, type Editor, type User } from './api.ts';
+import { normGithubRepo } from '../server/rules.ts';
+import { api, useFeedbackInfo, useMe, useMeta, useProjects, useSprints, type Editor, type User } from './api.ts';
 import { EDITOR_NAMES } from './startWork.ts';
 import { useProjectKey } from './project.ts';
 import { ProjectBadge } from './ProjectSwitcher.tsx';
@@ -63,7 +65,7 @@ export function Settings() {
       { id: 'integrations', name: t('Integrations'), render: () => <ProjectIntegrations />, locked: lockedReason },
       { id: 'prompts', name: t('AI agent'), render: () => <ProjectPrompts />, locked: lockedReason },
     ] },
-    ...(me?.isAdmin ? [{ name: t('Workspace'), items: [{ id: 'accounts', name: t('Accounts'), render: () => <Accounts /> }] }] : []),
+    ...(me?.isAdmin ? [{ name: t('Workspace'), items: [{ id: 'accounts', name: t('Accounts'), render: () => <><Accounts /><FeedbackProject /></> }] }] : []),
   ];
   const all = groups.flatMap((g) => g.items);
   const hash = useHash();
@@ -150,6 +152,7 @@ function goToSetting(h: Hint) {
     // Wiersz bywa niewyrenderowany (np. Środowiska bez źródła deployów): wtedy podświetlamy pierwszą kartę sekcji.
     const el = document.getElementById(h.target!) ?? document.querySelector<HTMLElement>('.settings-inner .s-card');
     if (!el) return;
+    if (el instanceof HTMLDetailsElement) el.open = true;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     el.classList.add('flash');
     setTimeout(() => el.classList.remove('flash'), 1600);
@@ -190,6 +193,7 @@ const SEARCH: SearchEntry[] = [
   { label: t('Delete account'), to: 'profile', target: 'profile-danger', keywords: ['usun', 'konto', 'delete', 'account', 'remove', 'anonymize'] },
   // Ty › Wygląd
   { label: t('Theme'), to: 'appearance', target: 'theme', keywords: ['dark', 'light', 'oled', 'motyw', 'ciemny', 'jasny', 'wyglad', 'appearance'] },
+  { label: t('Enter sends'), to: 'appearance', target: 'enter-sends', keywords: ['enter', 'ctrl', 'new line', 'nowa linia', 'wysyłanie', 'klawisz'] },
   { label: t('Language'), to: 'appearance', target: 'language', keywords: ['polski', 'english', 'jezyk', 'pl', 'en'] },
   // Ty › Powiadomienia
   { label: t('In Exponential'), to: 'notifications', target: 'notif-app', keywords: ['bell', 'banner', 'dzwonek', 'powiadomienia', 'notifications', 'inbox', 'skrzynka'] },
@@ -201,6 +205,7 @@ const SEARCH: SearchEntry[] = [
   { label: t('Editor'), to: 'claude', target: 'editor', keywords: ['vscode', 'vs code', 'cursor', 'windsurf', 'terminal', 'edytor', 'start work'] },
   { label: t('Connect AI'), to: 'claude', target: 'claude-connect', keywords: ['claude code', 'claude', 'codex', 'mcp', 'wizard', 'ai', 'polacz'] },
   { label: t('Your PCs'), to: 'claude', target: 'your-computers', keywords: ['agent', 'pc', 'komputer', 'computer', 'runner'] },
+  { label: t('Repos'), to: 'claude', target: 'agent-repos', keywords: ['clone', 'klonuj', 'folder', 'repo', 'repozytorium', 'agent', 'pc', 'rescan', 'path', 'sciezka'] },
   { label: t('API keys'), to: 'claude', target: 'tokens', keywords: ['api', 'key', 'klucz', 'token', 'tokens'] },
   // Ty › Hasło
   { label: t('Password'), to: 'password', target: 'password-card', keywords: ['login', 'haslo', 'e-mail', 'email', 'konto', 'account'] },
@@ -233,6 +238,7 @@ const SEARCH: SearchEntry[] = [
   { label: t('Team queue'), to: 'prompts', target: 'team-queue', keywords: ['analysis', 'analiza', 'kolejka', 'queue', 'zespol', 'team', 'agent'] },
   // Workspace › Konta
   { label: t('Who can log in to the workspace'), to: 'accounts', target: 'accounts-card', adminOnly: true, keywords: ['accounts', 'konta', 'admin', 'login', 'github', 'google', 'allow', 'zezwol'] },
+  { label: t('Bug reports and ideas go to'), to: 'accounts', target: 'feedback-card', adminOnly: true, keywords: ['feedback', 'bug', 'idea', 'report', 'zgloszenie', 'blad', 'pomysl'] },
 ];
 
 // Bez wielkości liter i polskich znaków, znak po znaku (długość się nie zmienia, więc indeksy pasują do oryginału).
@@ -362,6 +368,7 @@ function ProfileSettings() {
 
 function Appearance() {
   const [theme, setT] = useState<Theme>((document.documentElement.dataset.theme as Theme) ?? 'oled');
+  const [enter, setEnter] = useState(enterSends);
   return (
     <div className="s-card">
       <div id="theme" className="s-row">
@@ -373,6 +380,10 @@ function Appearance() {
             </button>
           ))}
         </div>
+      </div>
+      <div id="enter-sends" className="s-row">
+        <Tooltip text={t('Off: Enter adds a new line and Ctrl+Enter sends. Applies to comments, descriptions, answers and the agenda.')}><span className="grow">{t('Enter sends')}</span></Tooltip>
+        <button className={`switch ${enter ? 'on' : ''}`} role="switch" aria-checked={enter} aria-label={t('Enter sends')} onClick={() => { setEnterSends(!enter); setEnter(!enter); }} />
       </div>
       <div id="language" className="s-row">
         <span className="grow">{t('Language')}</span>
@@ -401,11 +412,55 @@ const tok = (n: number) => new Intl.NumberFormat(locale, { notation: 'compact', 
 const byRequesterText = (u: UsageInfo) => u.byRequester.map((b) => `${b.name} ${b.runs} · ${t('{n} tokens', { n: tok(b.tokens) })}`).join(' · ') || null;
 const LIMITS = [1e5, 5e5, 1e6, 5e6];
 
+type AgentRepo = { project: string; status: string; path: string; source: string; error: string | null };
+const MIN_REPO_ACTION_AGENT = [0, 4, 17];
+const agentCanRepoAction = (v?: string | null) => {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v ?? '');
+  if (!m) return false;
+  for (let i = 0; i < 3; i++) { const n = Number(m[i + 1]); if (n !== MIN_REPO_ACTION_AGENT[i]) return n > MIN_REPO_ACTION_AGENT[i]; }
+  return true;
+};
+
+/** Repozytoria projektów na jednym PC: stan per projekt, wybór folderu i klonowanie przez agenta (agent odbiera polecenie w kilka sekund). */
+function AgentRepos({ a, first, projects }: { a: { id: string; name: string; computerName: string; online: boolean; version?: string | null; repos?: AgentRepo[] }; first: boolean; projects: { key: string; name: string; githubRepo?: string }[] }) {
+  const qc = useQueryClient();
+  const pcName = a.name || a.computerName || t('Unnamed PC');
+  const off = !a.online ? t('This PC is offline') : !agentCanRepoAction(a.version) ? t('Update the agent on this PC first') : null;
+  const okCount = projects.filter((p) => a.repos?.find((r) => r.project === p.key)?.status === 'ok').length;
+  const send = (kind: 'clone' | 'pick' | 'rescan', project: string) => {
+    void api(`/api/agents/${a.id}/repo-action`, { method: 'POST', body: { kind, project } }).then(() => {
+      toast(t('Sent to {pc}', { pc: pcName }));
+      setTimeout(() => void qc.invalidateQueries({ queryKey: ['agents'] }), 5000);
+    });
+  };
+  return (
+    <details className="s-details" id={first ? 'agent-repos' : undefined}>
+      <summary><Icon.chevronRight size={12} /><span>{t('Repos')}</span><span className="hint">{okCount}/{projects.length}</span>
+        <span className="grow" />
+        <Tooltip text={off}><button type="button" className="btn sm" disabled={!!off} onClick={(e) => { e.preventDefault(); send('rescan', ''); }}>{t('Rescan')}</button></Tooltip>
+      </summary>
+      {projects.map((p) => {
+        const r = a.repos?.find((x) => x.project === p.key);
+        return (
+          <div key={p.key} className="my-pc-line">
+            <span className="grow">{p.key} · {p.name}</span>
+            {r?.status === 'ok' ? <Tooltip text={r.path}><span className="pill ok" tabIndex={0}>{t('OK')}</span></Tooltip>
+              : r ? <Tooltip text={r.error || null}><span className="pill stalled" tabIndex={0}>{t('Wrong folder')}</span></Tooltip>
+              : <span className="pill ended">{t('Not on this PC')}</span>}
+            <Tooltip text={off}><button type="button" className="btn sm" disabled={!!off} onClick={() => send('pick', p.key)}>{t('Choose folder')}</button></Tooltip>
+            <Tooltip text={off ?? (p.githubRepo ? null : t('The project has no GitHub repo'))}><button type="button" className="btn sm" disabled={!!off || !p.githubRepo} onClick={() => send('clone', p.key)}>{t('Clone')}</button></Tooltip>
+          </div>
+        );
+      })}
+    </details>
+  );
+}
+
 function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; version?: string | null; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxOthersTokensPerDay: number | null; limitReached24h: boolean; forOthers24h: number; forOthersTokens24h: number; claudeLimit: string; usage30d: UsageInfo; teamMode: TeamMode; setup?: { claude: { name: string; mcp: boolean; plugin: boolean }[]; codex: boolean; cursor: boolean } | null; repos?: { project: string; status: string }[] }[]>('/api/agents'), enabled: !!me && !me.demo });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; version?: string | null; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxOthersTokensPerDay: number | null; limitReached24h: boolean; forOthers24h: number; forOthersTokens24h: number; claudeLimit: string; usage30d: UsageInfo; teamMode: TeamMode; setup?: { claude: { name: string; mcp: boolean; plugin: boolean }[]; codex: boolean; cursor: boolean } | null; repos?: AgentRepo[] }[]>('/api/agents'), enabled: !!me && !me.demo });
   const projects = useProjects(!!me && !me.demo).data;
   const projectOf = (k: string) => projects?.find((p) => p.key === k);
   const refreshTeam = () => { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); };
@@ -463,7 +518,7 @@ function ClaudeConnect() {
               <button type="button" className="wiz-link" onClick={() => openSetupWizard(3)}>{t('Connect this PC')}</button>
             </div>
           )}
-          {(agentList.data ?? []).map((a) => {
+          {(agentList.data ?? []).map((a, ai) => {
             const teamOff = a.outdated ? t('Update the agent first') : null;
             return (
             <div key={a.id} className="my-pc">
@@ -525,6 +580,7 @@ function ClaudeConnect() {
                   </select>
                 </Tooltip>
               </div>
+              {projects && projects.length > 0 && <AgentRepos a={a} first={ai === 0} projects={projects} />}
             </div>
             );
           })}
@@ -538,7 +594,7 @@ export type ProjectDetail = {
   id: number; key: string; name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
-  githubRepo: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean;
+  githubRepo: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean; agentsMayClone: boolean;
   defaultModels: { analyze: string; deep: string };
   role: 'admin' | 'member'; canEdit: boolean;
   members: { id: number; login: string; name: string; avatarUrl: string | null; active: boolean; role: 'admin' | 'member' }[];
@@ -705,6 +761,95 @@ function DeployEnvs({ projectKey, ro }: { projectKey: string; ro: string | null 
   );
 }
 
+type PatchFn = (body: object, msg?: string) => Promise<void>;
+
+/** Pole GitHub repo: normalizacja wklejonego adresu, sprawdzenie na GitHubie, podpowiedzi z PC zespołu i przełącznik klonowania. */
+function GithubRepoRows({ p, ro, patch, demo }: { p: ProjectDetail; ro: string | null; patch: PatchFn; demo: boolean }) {
+  const check = useQuery({
+    queryKey: ['repo-check', p.githubRepo],
+    queryFn: () => api<{ exists: boolean | null }>(`/api/github/repo-check?name=${encodeURIComponent(p.githubRepo)}`),
+    enabled: !!p.githubRepo && !demo, staleTime: 10 * 60_000, retry: false,
+  });
+  const sugg = useQuery({ queryKey: ['repo-suggestions', p.key], queryFn: () => api<string[]>(`/api/projects/${p.key}/repo-suggestions`), enabled: !demo, staleTime: 60_000 });
+  const suggestions = (sugg.data ?? []).filter((r) => r.toLowerCase() !== p.githubRepo.toLowerCase());
+  const exists = p.githubRepo ? check.data?.exists : undefined;
+  return (
+    <>
+      <div id="github-repo" className="s-row s-group-head">
+        <Tooltip text={t('Analyze runs Claude in this repo, and only its commits are linked to {key} issues. After a change, reinstall local analysis.', { key: p.key })}><span className="s-label">{t('GitHub repo')}</span></Tooltip>
+        <Tooltip text={ro}>
+          <input className="input grow" key={p.githubRepo} disabled={!!ro} placeholder="owner/name" defaultValue={p.githubRepo}
+            onBlur={(e) => {
+              const raw = e.target.value.trim();
+              const v = normGithubRepo(raw) ?? raw;
+              e.target.value = v;
+              if (v !== p.githubRepo) void patch({ githubRepo: v });
+            }} />
+        </Tooltip>
+        {exists === true && <Tooltip text={t('Found on GitHub')}><span className="hint" tabIndex={0} role="img" aria-label={t('Found on GitHub')}><Icon.check size={14} /></span></Tooltip>}
+        {exists === false && <Tooltip text={t('The repo does not exist or is private.')}><span className="hint s-hint" tabIndex={0}>{t('Not found on GitHub')}</span></Tooltip>}
+        {suggestions.length > 0 && (
+          <span className="my-pc-pills s-hint">
+            <span className="hint">{t('On your PCs')}</span>
+            {suggestions.map((r) => (
+              <Tooltip key={r} text={ro}><button type="button" className="chip" disabled={!!ro} onClick={() => void patch({ githubRepo: r })}>{r}</button></Tooltip>
+            ))}
+          </span>
+        )}
+      </div>
+      {/* Ustawienie tego repo: wcięte pod polem repo (jak środowiska deployu), żeby było widać, do czego należy. */}
+      <div className="s-row s-sub last">
+        <Tooltip text={ro}>
+          <button className={`switch ${p.agentsMayClone ? 'on' : ''}`} role="switch" aria-checked={p.agentsMayClone} aria-label={t('Agents may clone the repo')}
+            disabled={!!ro} onClick={() => void patch({ agentsMayClone: !p.agentsMayClone })} />
+        </Tooltip>
+        <Tooltip text={t('A team PC without this repo clones it into the agent folder to run requests.')}><span className="grow">{t('Agents may clone the repo')}</span></Tooltip>
+      </div>
+    </>
+  );
+}
+
+function DiscordRow({ p, ro, patch }: { p: ProjectDetail; ro: string | null; patch: PatchFn }) {
+  const testReason = ro ?? (p.discordWebhookUrl ? null : t('Save a webhook URL first'));
+  return (
+    <div className="s-row" id="discord">
+      <Tooltip text={t('Meeting polls, picked times and reminders are posted to this channel with @here.')}><span className="s-label">Discord webhook</span></Tooltip>
+      <Tooltip text={ro}>
+        <input className="input grow" key={p.discordWebhookUrl ?? ''} disabled={!!ro} placeholder={ro ? t('Set by a project admin') : 'https://discord.com/api/webhooks/…'}
+          defaultValue={p.discordWebhookUrl ?? ''}
+          onBlur={(e) => e.target.value.trim() !== (p.discordWebhookUrl ?? '') && void patch({ discordWebhookUrl: e.target.value.trim() || null })} />
+      </Tooltip>
+      <Tooltip text={testReason}>
+        <button type="button" className="btn sm" disabled={!!testReason}
+          onClick={() => void api<{ ok: boolean; error?: string }>(`/api/projects/${p.key}/discord-test`, { method: 'POST' }).then((r) => toast(r.ok ? t('Test message sent') : t('Last Discord message failed {when}: {error}. Check the webhook URL.', { when: '', error: r.error ?? '' }), r.ok ? undefined : 'warn'))}>{t('Test')}</button>
+      </Tooltip>
+      {p.discordLastError && <span className="hint s-hint">{t('Last Discord message failed {when}: {error}. Check the webhook URL.', { when: p.discordLastErrorAt ? timeAgo(p.discordLastErrorAt) : '', error: p.discordLastError })}</span>}
+    </div>
+  );
+}
+
+/** Miejsce spotkań: pole oraz ostatnio używane adresy z spotkań projektu do jednego kliknięcia. */
+function MeetingPlaceRow({ p, ro, patch }: { p: ProjectDetail; ro: string | null; patch: PatchFn }) {
+  const places = useQuery({ queryKey: ['recent-places', p.key], queryFn: () => api<string[]>(`/api/projects/${p.key}/recent-places`), staleTime: 60_000 });
+  const label = (u: string) => { try { const x = new URL(u); return `${x.hostname}${x.pathname.length > 1 ? x.pathname.slice(0, 16) + (x.pathname.length > 16 ? '…' : '') : ''}`; } catch { return u; } };
+  const list = (places.data ?? []).filter((u) => u !== p.meetingLocationUrl);
+  return (
+    <div id="meeting-place" className="s-row">
+      <Tooltip text={t('Default meeting link (Teams, Discord, Meet…) for new meetings and sprint reviews.')}><span className="s-label">{t('Meeting place')}</span></Tooltip>
+      <Tooltip text={ro}>
+        <input className="input grow" key={p.meetingLocationUrl} disabled={!!ro} placeholder={t('Teams, Discord or Meet link')}
+          defaultValue={p.meetingLocationUrl}
+          onBlur={(e) => e.target.value.trim() !== p.meetingLocationUrl && void patch({ meetingLocationUrl: e.target.value.trim() })} />
+      </Tooltip>
+      {list.length > 0 && (
+        <span className="my-pc-pills s-hint">
+          {list.map((u) => <Tooltip key={u} text={ro ?? u}><button type="button" className="chip" disabled={!!ro} onClick={() => void patch({ meetingLocationUrl: u })}>{label(u)}</button></Tooltip>)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ProjectIntegrations() {
   const c = useProject();
   const demo = !!useMe().data?.demo;
@@ -713,31 +858,10 @@ function ProjectIntegrations() {
   const ro = c.ro ?? (demo ? t('Disabled in the demo') : null);
   return (
     <div className="s-card">
-      <div id="github-repo" className="s-row">
-        <Tooltip text={t('Analyze runs Claude in this repo, and only its commits are linked to {key} issues. After a change, reinstall local analysis.', { key: p.key })}><span className="s-label">{t('GitHub repo')}</span></Tooltip>
-        <Tooltip text={ro}>
-          <input className="input grow" key={p.githubRepo} disabled={!!ro} placeholder="owner/name" defaultValue={p.githubRepo}
-            onBlur={(e) => e.target.value.trim() !== p.githubRepo && void patch({ githubRepo: e.target.value.trim() })} />
-        </Tooltip>
-      </div>
+      <GithubRepoRows p={p} ro={ro} patch={patch} demo={demo} />
       <DeployEnvs projectKey={p.key} ro={ro} />
-      <div className="s-row" id="discord">
-        <Tooltip text={t('Meeting polls, picked times and reminders are posted to this channel with @here.')}><span className="s-label">Discord webhook</span></Tooltip>
-        <Tooltip text={ro}>
-          <input className="input grow" key={p.discordWebhookUrl ?? ''} disabled={!!ro} placeholder={ro ? t('Set by a project admin') : 'https://discord.com/api/webhooks/…'}
-            defaultValue={p.discordWebhookUrl ?? ''}
-            onBlur={(e) => e.target.value.trim() !== (p.discordWebhookUrl ?? '') && void patch({ discordWebhookUrl: e.target.value.trim() || null })} />
-        </Tooltip>
-        {p.discordLastError && <span className="hint s-hint">{t('Last Discord message failed {when}: {error}. Check the webhook URL.', { when: p.discordLastErrorAt ? timeAgo(p.discordLastErrorAt) : '', error: p.discordLastError })}</span>}
-      </div>
-      <div id="meeting-place" className="s-row">
-        <Tooltip text={t('Default meeting link (Teams, Discord, Meet…) for new meetings and sprint reviews.')}><span className="s-label">{t('Meeting place')}</span></Tooltip>
-        <Tooltip text={ro}>
-          <input className="input grow" key={p.meetingLocationUrl} disabled={!!ro} placeholder={t('Teams, Discord or Meet link')}
-            defaultValue={p.meetingLocationUrl}
-            onBlur={(e) => e.target.value.trim() !== p.meetingLocationUrl && void patch({ meetingLocationUrl: e.target.value.trim() })} />
-        </Tooltip>
-      </div>
+      <DiscordRow p={p} ro={ro} patch={patch} />
+      <MeetingPlaceRow p={p} ro={ro} patch={patch} />
     </div>
   );
 }
@@ -1045,6 +1169,30 @@ function Accounts() {
           </Tooltip>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** Projekt, do którego trafiają zgłoszenia błędów i pomysłów z przycisku w nagłówku (ustawia admin workspace). */
+function FeedbackProject() {
+  const demo = !!useMe().data?.demo;
+  const qc = useQueryClient();
+  const projectList = useProjects().data ?? [];
+  const info = useFeedbackInfo().data;
+  const reason = demo ? t('Disabled in the demo') : null;
+  return (
+    <div id="feedback-card" className="s-card">
+      <div className="s-row">
+        <span className="s-label">{t('Bug reports and ideas go to')}</span>
+        <span className="grow" />
+        <Tooltip text={reason}>
+          <select className="input" value={info?.projectId ?? ''} aria-label={t('Bug reports and ideas go to')} disabled={!!reason}
+            onChange={(e) => void api('/api/admin/feedback-project', { method: 'PUT', body: { projectId: e.target.value ? Number(e.target.value) : null } }).then(() => qc.invalidateQueries({ queryKey: ['feedback'] }))}>
+            <option value="">{t('None')}</option>
+            {projectList.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </Tooltip>
+      </div>
     </div>
   );
 }

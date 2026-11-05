@@ -8,7 +8,7 @@ import { Tooltip, openMenu } from './menu.tsx';
 import { linkProps } from './router.ts';
 import { toast } from './toast.ts';
 import {
-  fmtDay, meetingColor, fmtTime, joinLabel, openMeeting, openNewMeeting, sameDay, whenLabel,
+  allVoted, fmtDay, meetingColor, useCanManageMeeting, fmtTime, joinLabel, openMeeting, openNewMeeting, sameDay, whenLabel,
 } from './Meetings.tsx';
 import { locale, t, tn } from './i18n.ts';
 import { ErrorState } from './states.tsx';
@@ -25,7 +25,8 @@ const addDays = (d: Date, n: number) => { const x = new Date(d); x.setDate(x.get
 /** Odświeżanie "starts in X min" bez przeładowania danych. */
 const OTHER_COLOR = 'var(--text-quaternary)';
 
-type Item = { key: string; meeting: Meeting; startsAt: Date; endsAt: Date; option: boolean; slotId?: number };
+/** dim: opcja ankiety, której czas minął (ankieta wygasła albo ten termin jest w przeszłości). */
+type Item = { key: string; meeting: Meeting; startsAt: Date; endsAt: Date; option: boolean; slotId?: number; dim?: boolean };
 
 /** Na dany dzień: zaplanowane spotkania i terminy z trwających ankiet ("option"). */
 const minuteOfDay = (d: Date) => d.getHours() * 60 + d.getMinutes();
@@ -36,9 +37,9 @@ function itemsOn(meetings: Meeting[], day: Date): Item[] {
     if (m.status === 'scheduled' && m.startsAt && sameDay(new Date(m.startsAt), day)) {
       out.push({ key: `m${m.id}`, meeting: m, startsAt: new Date(m.startsAt), endsAt: new Date(m.endsAt!), option: false });
     }
-    if (m.status === 'polling') {
+    if (m.status === 'polling' || m.status === 'expired') {
       for (const s of m.slots) {
-        if (sameDay(new Date(s.startsAt), day)) out.push({ key: `s${s.id}`, meeting: m, startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt), option: true, slotId: s.id });
+        if (sameDay(new Date(s.startsAt), day)) out.push({ key: `s${s.id}`, meeting: m, startsAt: new Date(s.startsAt), endsAt: new Date(s.endsAt), option: true, slotId: s.id, dim: m.status === 'expired' || new Date(s.startsAt).getTime() <= Date.now() });
       }
     }
   }
@@ -53,6 +54,7 @@ export function Calendar() {
   const now = useNow();
   const meta = useMeta().data;
   const me = useMe().data;
+  const canManage = useCanManageMeeting();
   const [week, setWeek] = useState(() => weekStart(new Date()));
   const [view, setView] = useState<'week' | 'month'>(() => { try { return localStorage.getItem('calendar.view') === 'month' ? 'month' : 'week'; } catch { return 'week'; } });
   const [month, setMonth] = useState(() => monthStart(new Date()));
@@ -94,6 +96,8 @@ export function Calendar() {
   const scheduled = meetings.filter((m) => m.status === 'scheduled' && m.startsAt && isInvited(m, me?.id));
   const next = scheduled.find((m) => new Date(m.endsAt!) > now);
   const waiting = meetings.filter((m) => awaitsMyVote(m, me?.id));
+  // Organizator (albo admin): wszyscy odpowiedzieli, a termin nie wybrał się sam (brak zgody wszystkich).
+  const ready = meetings.filter((m) => canManage(m) && allVoted(m, meta?.users ?? []));
   const thisWeek = scheduled.filter((m) => new Date(m.startsAt!) >= weekStart(now) && new Date(m.startsAt!) < addDays(weekStart(now), 7));
   const range = `${days[0].getDate()} – ${days[4].toLocaleDateString(locale, { day: 'numeric', month: 'short' })}`;
   const isThisWeek = sameDay(week, weekStart(now));
@@ -198,6 +202,18 @@ export function Calendar() {
             })}
           </div>
         )}
+        {ready.length > 0 && (
+          <div className="props-group">
+            <h4>{t('Ready to pick')}</h4>
+            {ready.map((m) => (
+              <div key={m.id} className="vote-card">
+                <div style={{ fontWeight: 600 }}>{m.title}</div>
+                <div className="hint">{tn(m.slots.length, '{n} option', '{n} options')}</div>
+                <button className="btn sm primary" style={{ alignSelf: 'flex-start' }} onClick={() => openMeeting(m.id)}>{t('Pick time')}</button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="props-group">
           <h4>{t('Next meeting')}</h4>
           {next ? (
@@ -290,7 +306,7 @@ function MonthGrid({ month, meetings, now, onOpenWeek, meId }: { month: Date; me
               <Icon.plus size={14} />
             </button>
             {items.slice(0, 3).map((it) => (
-              <button key={it.key} className={`cal-month-item ${it.option ? 'option' : ''} ${it.option && answeredSlot(it.meeting, it.slotId, meId) ? 'answered' : ''} ${it.meeting.kind === 'sprint_review' ? 'is-review' : ''} ${isInvited(it.meeting, meId) ? '' : 'other'}`}
+              <button key={it.key} className={`cal-month-item ${it.option ? 'option' : ''} ${it.dim ? 'expired' : ''} ${it.option && answeredSlot(it.meeting, it.slotId, meId) ? 'answered' : ''} ${it.meeting.kind === 'sprint_review' ? 'is-review' : ''} ${isInvited(it.meeting, meId) ? '' : 'other'}`}
                 style={{ '--kind': !isInvited(it.meeting, meId) ? OTHER_COLOR : meetingColor(it.meeting) } as React.CSSProperties}
                 title={`${fmtTime(it.startsAt)} ${it.meeting.title}${it.option ? ` ${t('(poll option)')}` : ''}${isInvited(it.meeting, meId) ? '' : ` · ${t('not invited')}`}`}
                 onClick={(e) => { e.stopPropagation(); openMeeting(it.meeting.id); }}>
@@ -316,7 +332,7 @@ function CalendarCard({ item, users, meId }: { item: Item; users: { id: number; 
   const color = !mine ? OTHER_COLOR : meetingColor(m);
   const answered = item.option && answeredSlot(m, item.slotId, meId);
   return (
-    <button className={`cal-card ${item.option ? 'option' : ''} ${answered ? 'answered' : ''} ${m.kind === 'sprint_review' ? 'is-review' : ''} ${mine ? '' : 'other'}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
+    <button className={`cal-card ${item.option ? 'option' : ''} ${item.dim ? 'expired' : ''} ${answered ? 'answered' : ''} ${m.kind === 'sprint_review' ? 'is-review' : ''} ${mine ? '' : 'other'}`} style={{ '--kind': color } as React.CSSProperties} onClick={() => openMeeting(m.id)}>
       <div className="cal-card-time">{`${fmtTime(item.startsAt)} – ${fmtTime(item.endsAt)}`}{mine ? '' : ` · ${t('not invited')}`}</div>
       <div className="cal-card-title">{m.title}</div>
       {!item.option && (

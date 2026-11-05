@@ -2,7 +2,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { useModal } from './modal.ts';
 import { useMe, useMeta, useUpdateIssue, type IssuePatch } from './api.ts';
 import { Avatar, Icon } from './icons.tsx';
-import { enterToSubmit } from './keys.ts';
+import { enterToSubmit, keyHint } from './keys.ts';
 import { ident } from './project.ts';
 import { CurrentProjectBadge } from './ProjectSwitcher.tsx';
 import { t, tn } from './i18n.ts';
@@ -70,7 +70,7 @@ function AskModal({ ask }: { ask: Ask }) {
             ))}
           </div>
         )}
-        <textarea autoFocus placeholder={t('What do you need to know? (Enter to ask, Alt+Enter new line)')} value={q} onChange={(e) => setQ(e.target.value)}
+        <textarea autoFocus placeholder={`${t('What do you need to know?')} (${keyHint('ask')})`} value={q} onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') close(); enterToSubmit(e, send, setQ); }} />
         <div className="foot">
           <span className="spacer" />

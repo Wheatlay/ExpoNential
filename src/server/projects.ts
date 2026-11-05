@@ -1,7 +1,7 @@
 import { and, asc, eq, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { agentRepos, projectMembers, projects, statuses, users, type StatusType } from '../db/schema.ts';
-import { RuleError, isEmail, isProjectKey } from './rules.ts';
+import { RuleError, isEmail, isProjectKey, normGithubRepo } from './rules.ts';
 import { uploadPath } from './account.ts';
 
 export type Project = typeof projects.$inferSelect;
@@ -106,8 +106,9 @@ export async function updateProject(projectId: number, patch: ProjectPatch) {
   }
   if (patch.githubRepo !== undefined) {
     // Wklejony adres (https://github.com/owner/name.git) też przechodzi: zostawiamy samo owner/name.
-    patch.githubRepo = patch.githubRepo.trim().replace(/^(https?:\/\/)?(www\.)?github\.com\//i, '').replace(/\.git$|\/+$/g, '');
-    if (patch.githubRepo && !/^[\w.-]+\/[\w.-]+$/.test(patch.githubRepo)) throw new RuleError('GitHub repo must look like owner/name', 'invalid');
+    const repo = normGithubRepo(patch.githubRepo);
+    if (repo === null) throw new RuleError('Not a GitHub repo. Use owner/name or the repo URL.', 'invalid');
+    patch.githubRepo = repo;
   }
   // Inne repo = inne ścieżki na komputerach: zapisane mapowania tracą sens.
   if (patch.githubRepo !== undefined) {

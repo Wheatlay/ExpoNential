@@ -166,6 +166,37 @@ export function takeOpenRequests(userId: number): OpenRequest[] {
   return list.filter((q) => Date.now() - q.at < OPEN_REQUEST_TTL_MS).map(({ editor, repo, prompt }) => ({ editor, repo, prompt }));
 }
 
+/** Polecenia dla konkretnego PC (wybór folderu, klonowanie, ponowne skanowanie): w pamięci, per agent, jak openRequests. */
+export type RepoAction = { kind: 'clone' | 'pick' | 'rescan'; project: string };
+export const REPO_ACTION_KINDS = ['clone', 'pick', 'rescan'] as const;
+export const MIN_REPO_ACTION_AGENT = '0.4.17';
+const repoActions = new Map<string, (RepoAction & { at: number })[]>();
+export function queueRepoAction(agentId: string, a: RepoAction) {
+  const list = (repoActions.get(agentId) ?? []).filter((x) => !(x.kind === a.kind && x.project === a.project));
+  repoActions.set(agentId, [...list, { ...a, at: Date.now() }].slice(-10));
+}
+/** Zwraca i czyści kolejkę PC (starsze niż 5 minut przepadają). */
+export function takeRepoActions(agentId: string): RepoAction[] {
+  const list = repoActions.get(agentId) ?? [];
+  repoActions.delete(agentId);
+  return list.filter((q) => Date.now() - q.at < OPEN_REQUEST_TTL_MS).map(({ kind, project }) => ({ kind, project }));
+}
+
+/** Zlecenie dla PC z Ustawień: tylko właściciel komputera, projekt musi być jego; klonowanie wymaga repo w projekcie. */
+export async function requestRepoAction(user: User, agentId: string, a: RepoAction) {
+  const [ag] = await db.select({ userId: agents.userId }).from(agents).where(eq(agents.id, agentId));
+  if (!ag) throw new RuleError('Computer not found', 'not_found');
+  if (ag.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
+  if (a.kind === 'rescan') { queueRepoAction(agentId, { kind: 'rescan', project: '' }); return { ok: true }; }
+  const [pr] = await db.select({ key: projects.key, githubRepo: projects.githubRepo }).from(projects)
+    .innerJoin(projectMembers, and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, user.id)))
+    .where(eq(projects.key, a.project.toUpperCase()));
+  if (!pr) throw new RuleError('Project not found', 'not_found');
+  if (a.kind === 'clone' && !pr.githubRepo) throw new RuleError('The project has no GitHub repo', 'invalid');
+  queueRepoAction(agentId, { kind: a.kind, project: pr.key });
+  return { ok: true };
+}
+
 export type WaitReason = 'queue_off' | 'no_pc_online' | 'no_repo_pc' | 'awaiting_consent';
 type WaitRow = { analysisRequestedAt: Date | string | null; analysisClaimedAt: Date | string | null; analysisFailedAt: Date | string | null; analysisRequestedBy: number | null; analysisConsentPendingAt: Date | string | null };
 
@@ -228,7 +259,23 @@ const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && lastSeenAt.getTime
  */
 export type RepoReport = { path?: string; source?: string; status?: string; error?: string | null };
 /** ownOnly: agent z Codexem. Codex czyta cały dysk, więc nie dostaje zleceń innych osób z kolejki zespołu (prompt injection). */
-type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean; setup?: AgentSetup; skip?: number[] };
+type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean; setup?: AgentSetup; skip?: number[]; found?: string[] };
+
+/** Parametr found: JSON z tablicą owner/name (małe litery) repozytoriów znalezionych na PC. Zły JSON albo brak = undefined (stary agent, zostaje poprzednia lista). */
+export function parseFound(raw?: string): string[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const a = JSON.parse(raw);
+    if (!Array.isArray(a)) return undefined;
+    return [...new Set(a.filter((s): s is string => typeof s === 'string' && /^[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(s)))].slice(0, 100);
+  } catch { return undefined; }
+}
+
+/** Podpowiedzi repo: tylko z WŁASNYCH PC pytającego (bez ścieżek). Cudze PC odpadają: lista zdradzałaby nazwy ich prywatnych repo. */
+export async function repoSuggestions(userId: number): Promise<string[]> {
+  const rows = await db.select({ found: agents.foundRepos }).from(agents).where(eq(agents.userId, userId));
+  return [...new Set(rows.flatMap((r) => r.found))].sort();
+}
 
 /** Parametr skip=1,2,3 z odpytania agenta: tylko liczby całkowite dodatnie, bez powtórzeń, najwyżej 50. */
 export function parseSkip(raw?: string): number[] {
@@ -259,7 +306,7 @@ export async function heartbeat(user: User, deviceId: string, info: HeartbeatInf
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
   // Bez podanej wersji zostaje zapisana poprzednia.
-  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date(), ...(info.version !== undefined ? { version: info.version.slice(0, 40) } : {}), ...(info.setup ? { setup: info.setup } : {}) };
+  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date(), ...(info.version !== undefined ? { version: info.version.slice(0, 40) } : {}), ...(info.setup ? { setup: info.setup } : {}), ...(info.found ? { foundRepos: info.found } : {}) };
   // Pusty błąd nie kasuje poprzedniego: zostaje widoczny do kolejnego błędu albo 24 h.
   const err = (info.error ?? '').trim().slice(0, 300);
   const errValues = err ? { lastError: err, lastErrorAt: new Date() } : {};

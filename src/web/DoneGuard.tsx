@@ -2,7 +2,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { useModal } from './modal.ts';
 import { useMeta, useUpdateIssue, type IssuePatch, type Meta, type Status } from './api.ts';
 import { Icon } from './icons.tsx';
-import { enterToSubmit } from './keys.ts';
+import { enterToSubmit, keyHint } from './keys.ts';
 import { ident } from './project.ts';
 import { openInClaude, useEditorName } from './startWork.ts';
 import { t } from './i18n.ts';
@@ -80,7 +80,7 @@ function DoneGuardModal({ g }: { g: Guard }) {
               <Icon.sparkle size={13} /> {t('Close in Claude')}
             </button>
             <label className="guard-field"><span className="badge human">HUMAN</span>
-              <textarea placeholder={t('One change per line (Alt+Enter new line)')} value={human} onChange={(e) => setHuman(e.target.value)}
+              <textarea placeholder={keyHint('newline') ? `${t('One change per line')} (${keyHint('newline')})` : t('One change per line')} value={human} onChange={(e) => setHuman(e.target.value)}
                 onKeyDown={(e) => enterToSubmit(e, done, setHuman)} />
             </label>
             <label className="guard-field"><span className="badge tech">TECH</span>

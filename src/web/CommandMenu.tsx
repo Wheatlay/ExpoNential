@@ -7,6 +7,8 @@ import { openNewIssue } from './NewIssue.tsx';
 import { setTheme } from './theme.ts';
 import { isMenuOpen } from './menu.tsx';
 import { ident } from './project.ts';
+import { toast } from './toast.ts';
+import { openFeedback, useFeedbackOff } from './Feedback.tsx';
 import { t } from './i18n.ts';
 
 type Cmd = { key: string; group: string; label: string; icon?: ReactNode; kbd?: string[]; run: () => void };
@@ -18,6 +20,7 @@ export function CommandMenu() {
   const [hl, setHl] = useState(0);
   const issues = useIssues().data ?? [];
   const meta = useMeta().data;
+  const feedbackOff = useFeedbackOff();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -34,6 +37,7 @@ export function CommandMenu() {
   const cmds = useMemo<Cmd[]>(() => {
     const base: Cmd[] = [
       { key: 'new', group: t('Actions'), label: t('Create new issue'), icon: <Icon.plus size={14} />, kbd: ['C'], run: () => openNewIssue() },
+      { key: 'feedback', group: t('Actions'), label: t('Report a bug or idea'), icon: <Icon.flag size={14} />, run: () => (feedbackOff ? toast(feedbackOff, 'warn') : openFeedback()) },
       { key: 'board', group: t('Navigation'), label: t('Go to board'), icon: <Icon.board size={14} />, run: () => navigate('/') },
       { key: 'review', group: t('Navigation'), label: t('Go to sprint review'), icon: <Icon.sprint size={14} />, run: () => navigate('/review') },
       { key: 'calendar', group: t('Navigation'), label: t('Go to calendar'), icon: <Icon.calendar size={14} />, run: () => navigate('/calendar') },
@@ -58,7 +62,7 @@ export function CommandMenu() {
         };
       });
     return [...base.filter((c) => c.label.toLowerCase().includes(lq)), ...found];
-  }, [q, issues, meta]);
+  }, [q, issues, meta, feedbackOff]);
 
   const modalRef = useModal();
   if (!open) return null;

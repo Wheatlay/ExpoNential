@@ -7,6 +7,7 @@ import { openAsk } from './AskModal.tsx';
 import { isNeedInfo } from '../server/rules.ts';
 import { startWork } from './startWork.ts';
 import { waitReasonText } from './analysisWait.ts';
+import { openAgentRepos } from './settingsNav.ts';
 import { analysisToast } from './analysisToast.ts';
 import { guardDone } from './DoneGuard.tsx';
 import { sendPresence, usePresence, type Presence } from './presence.ts';
@@ -498,13 +499,13 @@ export function Board() {
         <button className="icon-btn round view-btn" data-display-btn title={t('Display options')} aria-label={t('Display options')} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setDisplayOpen(displayOpen ? null : { x: r.right, y: r.bottom + 6 }); }}>
           <Icon.display size={15} />
         </button>
-        {displayOpen && <DisplayPanel at={displayOpen} display={display} setDisplay={setDisplay} onClose={() => setDisplayOpen(null)} />}
+        {displayOpen && <DisplayPanel at={displayOpen} narrow={!!narrow} display={display} setDisplay={setDisplay} onClose={() => setDisplayOpen(null)} />}
       </div>
       {narrow ? (
         // Telefon: złożony = zakładki statusów, rozłożony (Fold) = lista + otwarte zgłoszenie.
         narrow === 'split'
-          ? <SplitBoard columns={columns} visible={visible} sorter={sorter} meta={meta} />
-          : <PhoneBoard columns={columns} visible={visible} sorter={sorter} meta={meta} />
+          ? <SplitBoard columns={columns} visible={visible} sorter={sorter} meta={meta} rows={rows} props={{ ...ALL_PROPS, ...display.props }} />
+          : <PhoneBoard columns={columns} visible={visible} sorter={sorter} meta={meta} rows={rows} props={{ ...ALL_PROPS, ...display.props }} />
       ) : (
       <CardPropsContext.Provider value={{ ...ALL_PROPS, ...display.props }}>
       <CardActionsContext.Provider value={cardAction}>
@@ -765,7 +766,7 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
             ? <span className="pill stalled" title={t('Analysis stalled: open the issue to analyze again or cancel')}><Icon.sparkle size={12} /> {t('Stalled')}</span>
             : <span className="pill ai" title={t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') })}><Icon.sparkle size={12} /> <span className="pill-text">{issue.analysisClaimedDeviceName ? t('Running on {name}', { name: issue.analysisClaimedDeviceName }) : t('Running')}</span></span>)
           : issue.analysisWaitReason
-            ? <span className="pill stalled" title={waitReasonText(issue.analysisWaitReason)}><Icon.sparkle size={12} /> <span className="pill-text">{t('Waiting for a PC with team queue on')}</span></span>
+            ? <span className="pill stalled" title={waitReasonText(issue.analysisWaitReason)} {...(issue.analysisWaitReason === 'no_repo_pc' ? { role: 'button', onClick: (e: React.MouseEvent) => { e.stopPropagation(); openAgentRepos(); } } : {})}><Icon.sparkle size={12} /> <span className="pill-text">{t('Waiting for a PC with team queue on')}</span></span>
             : <span className="pill ai" title={t('Waiting for AI analysis')}><Icon.sparkle size={12} /> {t('Waiting')}</span>)}
         {show.ai && !issue.analysisRequestedAt && issue.hasAnalysis && <span className="pill ai done" title={t('AI analysis available')}><Icon.sparkle size={12} /></span>}
         {notesMissing && <span className="pill notes-missing" title={t('Done without HUMAN / AI change notes')}>{t('Notes missing')}</span>}
@@ -801,14 +802,17 @@ function useNarrow(): 'phone' | 'split' | null {
   return narrow;
 }
 
+/** Właściwości, które wiersz listy na telefonie/tablecie umie pokazać. */
+const LIST_PROPS: (keyof CardProps)[] = ['id', 'assignee', 'priority'];
+
 const PROP_LABELS: [keyof CardProps, string][] = [
   ['id', 'ID'], ['assignee', t('Assignee')], ['priority', t('Priority')], ['labels', t('Labels')],
   ['subIssues', t('Sub-issues')], ['blocked', t('Waiting on')], ['ai', t('AI analysis')], ['notes', t('Notes missing')],
 ];
 
 /** Panel "Display" na wzór Lineara: wybory, przełączniki i właściwości karty. */
-function DisplayPanel({ at, display, setDisplay, onClose }: {
-  at: { x: number; y: number }; display: Display; setDisplay: (fn: (d: Display) => Display) => void; onClose: () => void;
+function DisplayPanel({ at, narrow, display, setDisplay, onClose }: {
+  at: { x: number; y: number }; narrow: boolean; display: Display; setDisplay: (fn: (d: Display) => Display) => void; onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -823,10 +827,14 @@ function DisplayPanel({ at, display, setDisplay, onClose }: {
   }, [onClose]);
   const set = <K extends keyof Display>(k: K, v: Display[K]) => setDisplay((d) => ({ ...d, [k]: v }));
   const props = { ...ALL_PROPS, ...display.props };
-  const toggle = (k: 'showSubIssues' | 'showEmptyRows' | 'showHidden' | 'livePresence', label: string) => (
-    <button className="row" onClick={() => set(k, !display[k])}>
-      <span>{label}</span><span className={`switch ${display[k] ? 'on' : ''}`} role="switch" aria-checked={display[k]} />
-    </button>
+  // Telefon/tablet pokazuje listę, nie tablicę: opcje tylko dla tablicy są wyszarzone z powodem (nie chowamy ich).
+  const boardOnly = narrow ? t('Only on the board') : null;
+  const toggle = (k: 'showSubIssues' | 'showEmptyRows' | 'showHidden' | 'livePresence', label: string, off: string | null = null) => (
+    <Tooltip text={off}>
+      <button className="row" disabled={!!off} onClick={() => set(k, !display[k])}>
+        <span>{label}</span><span className={`switch ${display[k] ? 'on' : ''}`} role="switch" aria-checked={display[k]} />
+      </button>
+    </Tooltip>
   );
   return (
     <div ref={ref} className="display-panel" style={{ left: Math.max(8, at.x - DISPLAY_PANEL_W), top: at.y }}>
@@ -857,12 +865,14 @@ function DisplayPanel({ at, display, setDisplay, onClose }: {
       <div className="sec">
         <span className="title">{t('Board options')}</span>
         {toggle('showHidden', t('Show Backlog / Canceled columns'))}
-        {toggle('showEmptyRows', t('Show empty rows'))}
-        {toggle('livePresence', t('Show others dragging cards'))}
+        {toggle('showEmptyRows', t('Show empty rows'), boardOnly)}
+        {toggle('livePresence', t('Show others dragging cards'), boardOnly)}
         <span>{t('Display properties')}</span>
         <div className="prop-chips">
           {PROP_LABELS.map(([k, label]) => (
-            <button key={k} className={`prop-chip ${props[k] ? 'on' : ''}`} onClick={() => set('props', { ...props, [k]: !props[k] })}>{label}</button>
+            <Tooltip key={k} text={narrow && !LIST_PROPS.includes(k) ? boardOnly : null}>
+              <button className={`prop-chip ${props[k] ? 'on' : ''}`} disabled={narrow && !LIST_PROPS.includes(k)} onClick={() => set('props', { ...props, [k]: !props[k] })}>{label}</button>
+            </Tooltip>
           ))}
         </div>
       </div>
@@ -870,7 +880,7 @@ function DisplayPanel({ at, display, setDisplay, onClose }: {
   );
 }
 
-type BoardRow = { key: string; label: string; icon: React.ReactNode; issues: IssueRow[] };
+export type BoardRow = { key: string; label: string; icon: React.ReactNode; issues: IssueRow[] };
 
 /** Klucze wierszy, w których pokazuje się karta (etykiet może być kilka). */
 function rowKeysOf(i: IssueRow, by: RowsBy): string[] {

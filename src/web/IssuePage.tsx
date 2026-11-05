@@ -9,6 +9,7 @@ import {
   api, useIssue, useMe, useMeta, useProjects, useSprints, useUpdateIssue, type IssueDetail, type IssuePatch, type Meta,
 } from './api.ts';
 import { waitReasonText } from './analysisWait.ts';
+import { openAgentRepos } from './settingsNav.ts';
 import { analysisToast } from './analysisToast.ts';
 import { collapseImages, expandImages } from './paste.ts';
 import { useProjectKey } from './project.ts';
@@ -25,7 +26,7 @@ import { isTouchDevice, issuePrompt, simulateAgent, startOnPc, startWork, useEdi
 import { AnalysisView } from './AnalysisView.tsx';
 import { Attachments, useAttachments } from './ImagePreviews.tsx';
 import { ImageBlock } from './ImageBlock.tsx';
-import { enterToSubmit, useAutoGrow } from './keys.ts';
+import { enterToSubmit, keyHint, useAutoGrow } from './keys.ts';
 import { useMentionAutocomplete } from './MentionInput.tsx';
 import { PersonLink, profileContextMenu } from './PersonCard.tsx';
 import { rememberIssue } from './SidebarExtras.tsx';
@@ -103,7 +104,7 @@ export function MarkdownField({ value, onSave, placeholder, size, flash }: {
       {mention.popup}
       <Attachments urls={att.urls} onRemove={att.remove} />
       <div className="edit-actions">
-        <span className="hint edit-hint">{t('Enter saves · Alt+Enter new line')}</span>
+        <span className="hint edit-hint">{keyHint('save')}</span>
         <button className="btn sm" onClick={() => { setDraft(value); setEditing(false); }}>{t('Cancel')}</button>
         <button className="btn sm primary" onClick={save}>{t('Save')}</button>
       </div>
@@ -301,7 +302,7 @@ export function IssuePage({ number }: { number: number }) {
                     onClick={(e) => { e.stopPropagation(); navigate('/settings#claude'); }}>{t('Update needed')}</span>
                 )}
                 {issue.analysisRequestedAt && <>
-                  <span className={`pill ${failed || stalled || waitingForPc || noRepoPc ? 'stalled' : 'ai'}`}
+                  <span className={`pill ${failed || stalled || waitingForPc || noRepoPc ? 'stalled' : 'ai'}`} {...(issue.analysisWaitReason === 'no_repo_pc' && !demo ? { role: 'button', tabIndex: 0, onClick: (e: React.MouseEvent) => { e.stopPropagation(); openAgentRepos(); }, onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter') { e.stopPropagation(); openAgentRepos(); } } } : {})}
                     title={failed ? t('The analysis failed on the PC: {error}. Analyze again or cancel.', { error: issue.analysisError || '?' })
                       : stalled ? t('No analysis after {min} minutes: the agent did not start or stopped. Analyze again or cancel.', { min: CLAIM_TTL_MIN })
                       : waitingForPc || noRepoPc ? waitReasonText(issue.analysisWaitReason) ?? (waitingForPc ? t('No PC with the agent is online for this request. It runs when one is on.') : t('No PC has this project\'s repo')) : undefined}>
@@ -575,7 +576,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
     <div className="composer">
       <textarea
         ref={grow}
-        placeholder={t('Leave a comment… (Enter to send, Alt+Enter new line)')}
+        placeholder={`${t('Leave a comment…')} (${keyHint('send')})`}
         value={body}
         onChange={(e) => setBody(e.target.value)}
         onPaste={att.onPaste}
@@ -796,7 +797,7 @@ function AnswerBox({ number }: { number: number }) {
   };
   return (
     <div className="answer-box">
-      <textarea ref={taRef} placeholder={t('Your answer… (Enter to send, Alt+Enter new line)')} value={v} onChange={(e) => setV(e.target.value)}
+      <textarea ref={taRef} placeholder={`${t('Your answer…')} (${keyHint('send')})`} value={v} onChange={(e) => setV(e.target.value)}
         onPaste={att.onPaste}
         onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; enterToSubmit(e, () => void send(), setV); }} />
       <button className="btn sm primary" disabled={!v.trim() && !att.urls.length} onClick={() => void send()}>{t('Answer')}</button>

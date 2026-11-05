@@ -44,14 +44,14 @@ export async function registerMeetings(app: FastifyInstance) {
         title: z.string().max(200), kind: z.enum(['poll', 'fixed']),
         slots: z.array(z.object({ startsAt: date, endsAt: date })).max(20).optional(),
         startsAt: date.optional(), endsAt: date.optional(),
-        locationUrl: z.string().max(500).optional(), reminders: reminders.optional(), attendeeIds: attendees,
+        locationUrl: z.string().max(500).optional(), agenda: z.string().max(10000).optional(), reminders: reminders.optional(), attendeeIds: attendees,
       }).parse(req.body);
       return mt.createMeeting(p, actor, b, req.log);
     });
     r.patch<{ Params: { id: string } }>('/api/meetings/:id', async (req) => {
       const { p, actor, isAdmin } = await scope(req);
       const b = z.object({
-        title: z.string().max(200).optional(), locationUrl: z.string().max(500).optional(), reminders: reminders.optional(),
+        title: z.string().max(200).optional(), locationUrl: z.string().max(500).optional(), agenda: z.string().max(10000).optional(), reminders: reminders.optional(),
         startsAt: date.optional(), endsAt: date.optional(), attendeeIds: attendees,
       }).parse(req.body);
       await mt.updateMeeting(p, actor, isAdmin, idParam(req.params.id), b);
@@ -70,7 +70,7 @@ export async function registerMeetings(app: FastifyInstance) {
     r.put<{ Params: { id: string } }>('/api/meeting-slots/:id/vote', async (req) => {
       const { p, actor } = await scope(req);
       const { vote, note } = z.object({ vote: z.enum(['yes', 'maybe', 'no']).nullable(), note: z.string().max(200).nullable().optional() }).parse(req.body);
-      await mt.vote(p, actor, idParam(req.params.id), vote, note);
+      await mt.vote(p, actor, idParam(req.params.id), vote, note, req.log);
       return { ok: true };
     });
     r.post<{ Params: { id: string } }>('/api/meetings/:id/pick', async (req) => {

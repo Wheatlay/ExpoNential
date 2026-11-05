@@ -246,6 +246,27 @@
       "when": 1794300000000,
       "tag": "0034_deploy_auto",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1794400000000,
+      "tag": "0035_agent_found_repos",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1794500000000,
+      "tag": "0036_meeting_agenda",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1794600000000,
+      "tag": "0037_polls_feedback",
+      "breakpoints": true
     }
   ]
 }

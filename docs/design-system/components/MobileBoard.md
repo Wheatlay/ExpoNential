@@ -8,3 +8,4 @@ Board na telefonie (`src/web/MobileBoard.tsx`). Zatwierdzone przez Krzysztofa (k
   Wybrany/wciśnięty `bg-active`.
 - Przytrzymanie wiersza otwiera `Menu` jako arkusz od dołu (`.popover.sheet`, `radius-xl` u góry, pozycje `control-lg`):
   statusy, „Assign to me”, „Open”.
+- Podnagłówek grupy w statusie listy telefonu/tabletu (`.m-sub`, zatwierdzone 05.11.2026): `control-md`, `text-sm`, `text-secondary` na `bg-secondary`, licznik `.n` w `text-tertiary`; dzieli wiersze jednego statusu na grupy.
