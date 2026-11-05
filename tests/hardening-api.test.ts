@@ -55,11 +55,9 @@ beforeAll(async () => {
 });
 afterAll(async () => { await app?.close(); await plain?.close(); await dbmod?.sql.end(); });
 
-async function newProject(key: string, deploySource: 'webhook' | 'coolify') {
+async function newProject(key: string) {
   const [u] = await dbmod.db.insert(schema.users).values({ login: `o-${key}`, name: key }).returning();
   const p = await projects.createProject(u.id, { key, name: key });
-  const { eq } = await import('drizzle-orm');
-  await dbmod.db.update(schema.projects).set({ deploySource }).where(eq(schema.projects.id, p.id));
   return (await projects.getProjectByKey(p.key))!;
 }
 
@@ -93,7 +91,7 @@ describe('uploads', () => {
 
 describe('deploy webhook secret', () => {
   it('is derived per project and the global one is rejected', async () => {
-    await newProject('HWA', 'webhook');
+    await newProject('HWA');
     expect(hooks.deployWebhookSecret('HWA')).not.toBe(hooks.deployWebhookSecret('HWB'));
     const call = (secret: string) => plain.inject({ method: 'POST', url: '/hooks/deploy', headers: { 'content-type': 'application/json', 'x-webhook-secret': secret }, payload: JSON.stringify({ project: 'HWA', sha: 'abc' }) });
     expect((await call('root-secret')).statusCode).toBe(401);
@@ -104,11 +102,12 @@ describe('deploy webhook secret', () => {
 
 describe('Coolify sourceRef', () => {
   it('must look like a uuid and be unique across projects', async () => {
-    const ca = await newProject('HCA', 'coolify');
-    const cb = await newProject('HCB', 'coolify');
-    await expect(deploys.saveDeployEnvs(ca, [{ name: 'Prod', sourceRef: '../x?y=1', isProduction: true }])).rejects.toThrow();
-    await deploys.saveDeployEnvs(ca, [{ name: 'Prod', sourceRef: 'xk0s8cw4kgwsg8kwcoso8ck4', isProduction: true }]);
-    await expect(deploys.saveDeployEnvs(cb, [{ name: 'Prod', sourceRef: 'XK0S8CW4KGWSG8KWCOSO8CK4', isProduction: true }])).rejects.toThrow();
+    const ca = await newProject('HCA');
+    const cb = await newProject('HCB');
+    const ea = (await deploys.ensureDeployEnv(ca, { source: 'coolify', ref: 'xk0s8cw4kgwsg8kwcoso8ck4', name: 'Prod' }))!;
+    const eb = (await deploys.ensureDeployEnv(cb, { source: 'coolify', ref: 'yk0s8cw4kgwsg8kwcoso8ck4', name: 'Prod' }))!;
+    await expect(deploys.saveDeployEnvs(ca, [{ id: ea.id, name: 'Prod', sourceRef: '../x?y=1', isProduction: true }])).rejects.toThrow();
+    await expect(deploys.saveDeployEnvs(cb, [{ id: eb.id, name: 'Prod', sourceRef: 'XK0S8CW4KGWSG8KWCOSO8CK4', isProduction: true }])).rejects.toThrow();
   });
 });
 

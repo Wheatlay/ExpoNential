@@ -451,9 +451,8 @@ describe('reportDeploy', () => {
     const { issueCommits } = await import('../src/db/schema.ts');
     const { eq } = await import('drizzle-orm');
     const web = await projects.createProject((await member('deployer', 'Deployer')).id, { key: 'DEP', name: 'Deploy' });
-    await projects.updateProject(web.id, { githubRepo: 'acme/dep', deploySource: 'webhook' });
+    await projects.updateProject(web.id, { githubRepo: 'acme/dep' });
     const p = (await projects.getProjectByKey('DEP'))!;
-    expect(p.deploySource).toBe('webhook');
     const [prod] = await deploys.saveDeployEnvs(p, [{ name: 'Prod', sourceRef: '', isProduction: true }]);
     const i = await svc.createIssue(p, null, { title: 'deployed' });
     const c = { id: 'dep0001', message: `fix DEP-${i.number}`, url: 'https://x', timestamp: new Date().toISOString(), author: { name: 'K' } };
@@ -471,7 +470,7 @@ describe('reportDeploy', () => {
     const { issueCommits, issueCommitDeploys } = await import('../src/db/schema.ts');
     const { eq } = await import('drizzle-orm');
     const web = await projects.createProject((await member('stager', 'Stager')).id, { key: 'DEPS', name: 'Deploy stage' });
-    await projects.updateProject(web.id, { githubRepo: 'acme/deps', deploySource: 'webhook' });
+    await projects.updateProject(web.id, { githubRepo: 'acme/deps' });
     const p = (await projects.getProjectByKey('DEPS'))!;
     const [prod, qa] = await deploys.saveDeployEnvs(p, [
       { name: 'Prod', sourceRef: '', isProduction: true }, { name: 'QA', sourceRef: '', isProduction: false },
@@ -493,8 +492,7 @@ describe('reportDeploy', () => {
     expect(acts).toContainEqual({ kind: 'deploy', sha: 'stg0001', env: 'QA' });
     expect(row.deployedAt).toBeNull();
 
-    // Nieznane środowisko to błąd, brak env to jedyna produkcja.
-    await expect(hooks.reportDeployHook({ ...hook, env: 'nope' })).rejects.toThrow('Unknown environment nope');
+    // Brak env to jedyna produkcja.
     expect((await hooks.reportDeployHook({ project: 'DEPS', sha: 'stg0001', status: 'finished' })).code).toBe(200);
     expect(deploys.deployStatusOf(p.id, prod.id)?.status).toBe('finished');
     [row] = await dbmod.db.select().from(issueCommits).where(eq(issueCommits.sha, 'stg0001'));
@@ -527,7 +525,7 @@ describe('reportDeploy', () => {
     const { issueCommits, issueCommitDeploys } = await import('../src/db/schema.ts');
     const { eq } = await import('drizzle-orm');
     await projects.createProject((await member('twoprod', 'Twoprod')).id, { key: 'DEPB', name: 'Two prod' });
-    await projects.updateProject((await projects.getProjectByKey('DEPB'))!.id, { githubRepo: 'acme/dep2', deploySource: 'webhook' });
+    await projects.updateProject((await projects.getProjectByKey('DEPB'))!.id, { githubRepo: 'acme/dep2' });
     const p = (await projects.getProjectByKey('DEPB'))!;
     const [eu, us] = await deploys.saveDeployEnvs(p, [{ name: 'EU', sourceRef: '', isProduction: true }, { name: 'US', sourceRef: '', isProduction: false }]);
     // saveDeployEnvs wymusza jedno środowisko produkcyjne; dwa ustawiamy w bazie (stare dane).

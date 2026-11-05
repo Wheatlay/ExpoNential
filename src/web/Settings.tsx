@@ -223,8 +223,7 @@ const SEARCH: SearchEntry[] = [
   { label: t('Statuses'), to: 'labels', target: 'statuses', keywords: ['columns', 'kolumny', 'status', 'board', 'tablica', 'workflow'] },
   // Projekt › Integracje
   { label: t('GitHub repo'), to: 'integrations', target: 'github-repo', keywords: ['commit', 'repo', 'github', 'repozytorium'] },
-  { label: t('Deploys'), to: 'integrations', target: 'deploys', keywords: ['wdrozenia', 'deploy', 'source', 'zrodlo', 'webhook', 'coolify', 'github deployments'] },
-  { label: t('Environments'), to: 'integrations', target: 'deploy-envs', keywords: ['prod', 'stage', 'production', 'produkcja', 'staging', 'qa', 'coolify', 'deploy', 'srodowisko', 'środowisko'] },
+  { label: t('Deploys'), to: 'integrations', target: 'deploys', keywords: ['wdrozenia', 'deploy', 'source', 'zrodlo', 'webhook', 'coolify', 'github deployments', 'prod', 'stage', 'production', 'produkcja', 'staging', 'qa', 'srodowisko', 'środowisko', 'ci'] },
   { label: 'Discord webhook', to: 'integrations', target: 'discord', keywords: ['channel', 'kanal', 'webhook', 'powiadomienia', 'notifications'] },
   { label: t('Meeting place'), to: 'integrations', target: 'meeting-place', keywords: ['teams', 'meet', 'link', 'spotkanie', 'meeting', 'miejsce'] },
   // Projekt › Agent AI
@@ -640,7 +639,7 @@ function ProjectGeneral() {
   );
 }
 
-type DeployEnvRow = { id?: number; name: string; sourceRef: string; isProduction: boolean };
+type DeployEnvRow = { id?: number; name: string; sourceRef: string; isProduction: boolean; source?: string };
 
 /** Środowiska deployu: każda zmiana wysyła całą listę (PUT), kolejność wierszy = kolejność w pasku bocznym. */
 function WebhookSecret({ projectKey }: { projectKey: string }) {
@@ -654,7 +653,10 @@ function WebhookSecret({ projectKey }: { projectKey: string }) {
   );
 }
 
-function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deploySource']; projectKey: string; ro: string | null }) {
+const SOURCE_LABEL: Record<string, () => string> = { github: () => 'GitHub', coolify: () => 'Coolify', webhook: () => t('CI'), '': () => t('Manual') };
+
+/** Wiersz "Deploys": środowiska wykrywane automatycznie z pierwszego zdarzenia; ręcznie można dodać własne. */
+function DeployEnvs({ projectKey, ro }: { projectKey: string; ro: string | null }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['deploy-envs', projectKey], queryFn: () => api<DeployEnvRow[]>('/api/deploy-envs') });
   const envs = q.data ?? [];
@@ -669,15 +671,11 @@ function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deployS
     // Pierwsze środowisko to produkcja; potem dokładnie jedno środowisko jest produkcyjne.
     return save([...envs, { name, sourceRef: '', isProduction: envs.length === 0 }]);
   };
-  const ph = source === 'coolify' ? t('Coolify app UUID') : t('GitHub environment');
   return (
     <>
-      {source === 'webhook' && !ro && <WebhookSecret projectKey={projectKey} />}
-      <div id="deploy-envs" className={`s-row ${envs.length ? 's-group-head' : ''}`}>
-        <Tooltip text={t('Each environment shows its own box in the sidebar and its own rocket on commits.')}><span className="s-label">{t('Environments')}</span></Tooltip>
-        {source === 'webhook'
-          ? <code className="hint grow">{`curl -X POST ${location.origin}/hooks/deploy -H "X-Webhook-Secret: …" -d '{"project":"${projectKey}","sha":"…","env":"${envs[0]?.name ?? 'Prod'}"}'`}</code>
-          : <span className="grow" />}
+      <div id="deploys" className={`s-row ${envs.length ? 's-group-head' : ''}`}>
+        <Tooltip text={t('Detected automatically: GitHub Deployments of this repo (repo webhook with Deployment statuses) and Coolify apps built from it.')}><span className="s-label">{t('Deploys')}</span></Tooltip>
+        {envs.length ? <span className="grow" /> : <span className="hint grow">{t('No deploys yet')}</span>}
         <Tooltip text={ro}><button className="btn sm" disabled={!!ro} onClick={() => void add()}><Icon.plus size={13} /> {t('Add environment')}</button></Tooltip>
       </div>
       {/* Środowiska wcięte pod nagłówkiem (kolumna pól), bez kresek między nimi: widać, że to jedna lista. */}
@@ -685,10 +683,7 @@ function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deployS
         <div key={e.id} className={`s-row s-sub ${i === envs.length - 1 ? 'last' : ''}`}>
           <input className="input env-name" key={`${e.name}-${rev}`} disabled={!!ro} maxLength={30} defaultValue={e.name} aria-label={t('Environment name')}
             onBlur={(ev) => ev.target.value.trim() && ev.target.value.trim() !== e.name && void edit(i, { name: ev.target.value.trim() })} />
-          {source !== 'webhook' ? (
-            <input className="input grow" key={`${e.sourceRef}-${rev}`} disabled={!!ro} placeholder={ph} defaultValue={e.sourceRef} aria-label={ph}
-              onBlur={(ev) => ev.target.value.trim() !== e.sourceRef && void edit(i, { sourceRef: ev.target.value.trim() })} />
-          ) : <span className="grow" />}
+          <span className="grow"><span className="pill" title={e.sourceRef || undefined}>{(SOURCE_LABEL[e.source ?? ''] ?? SOURCE_LABEL[''])()}</span></span>
           <Tooltip text={ro}>
             <span className="hint s-inline">
               <button className={`switch ${e.isProduction ? 'on' : ''}`} role="switch" aria-checked={e.isProduction} aria-label={t('Production')} disabled={!!ro}
@@ -697,10 +692,15 @@ function DeployEnvs({ source, projectKey, ro }: { source: ProjectDetail['deployS
             </span>
           </Tooltip>
           <Tooltip text={ro ?? t('Remove')}><button className="icon-btn" disabled={!!ro} aria-label={t('Remove')} onClick={() => void askConfirm({
-            title: t('Remove {name}?', { name: e.name }), body: t('Its deploy history stays, commits lose this marker.'), action: t('Remove'), danger: true,
+            title: t('Remove {name}?', { name: e.name }), body: e.source ? t('Its deploy history stays, commits lose this marker. Auto-detected environments will not come back.') : t('Its deploy history stays, commits lose this marker.'), action: t('Remove'), danger: true,
           }).then((ok) => { if (ok) void save(envs.filter((_, j) => j !== i)); })}><Icon.trash size={14} /></button></Tooltip>
         </div>
       ))}
+      <details className="s-row s-details">
+        <summary className="s-label"><Icon.chevronRight size={12} />{t('Other CI')}</summary>
+        {!ro && <WebhookSecret projectKey={projectKey} />}
+        <code className="hint">{`curl -X POST ${location.origin}/hooks/deploy -H "X-Webhook-Secret: …" -d '{"project":"${projectKey}","sha":"…","env":"${envs[0]?.name ?? 'Production'}"}'`}</code>
+      </details>
     </>
   );
 }
@@ -720,25 +720,7 @@ function ProjectIntegrations() {
             onBlur={(e) => e.target.value.trim() !== p.githubRepo && void patch({ githubRepo: e.target.value.trim() })} />
         </Tooltip>
       </div>
-      <div id="deploys" className="s-row">
-        <span className="s-label">{t('Deploys')}</span>
-        <Tooltip text={ro}>
-          <select className="input" value={p.deploySource} disabled={!!ro} aria-label={t('Deploy status source')}
-            onChange={(e) => void patch({ deploySource: e.target.value as ProjectDetail['deploySource'] })}>
-            <option value="">{t('None')}</option>
-            <option value="webhook">{t('Webhook')}</option>
-            <option value="github">{t('GitHub Deployments')}</option>
-            <option value="coolify">{t('Coolify')}</option>
-          </select>
-        </Tooltip>
-        <span className="hint s-hint">
-          {p.deploySource === 'github' ? t('GitHub deployment_status events (webhook /hooks/github) mark commits as deployed and show the status in the sidebar.')
-            : p.deploySource === 'coolify' ? t('Successful deploys of this Coolify app mark commits as deployed and show the status in the sidebar.')
-            : p.deploySource === 'webhook' ? t('After each deploy, send the deployed commit:')
-            : t('Pick where deploys are reported from. None: no deploy tracking.')}
-        </span>
-      </div>
-      {p.deploySource && <DeployEnvs source={p.deploySource} projectKey={p.key} ro={ro} />}
+      <DeployEnvs projectKey={p.key} ro={ro} />
       <div className="s-row" id="discord">
         <Tooltip text={t('Meeting polls, picked times and reminders are posted to this channel with @here.')}><span className="s-label">Discord webhook</span></Tooltip>
         <Tooltip text={ro}>

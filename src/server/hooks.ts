@@ -7,7 +7,7 @@ import { extractIssueRefs, identifier, RuleError } from './rules.ts';
 import { publish } from './service.ts';
 import { z } from 'zod';
 import { getProjectByKey, listAllProjects, type Project } from './projects.ts';
-import { reportDeploy, listDeployEnvs, findDeployEnv, type DeployEnvRow, type DeployStatus } from './deploys.ts';
+import { reportDeploy, listDeployEnvs, findDeployEnv, ensureDeployEnv, type DeployEnvRow, type DeployStatus } from './deploys.ts';
 
 type GhCommit = { id: string; message: string; url: string; timestamp: string; author: { name: string; username?: string } };
 
@@ -124,12 +124,13 @@ type Log = { warn: (o: unknown, m: string) => void };
 export async function reportDeployHook(body: z.infer<typeof deployHookBody>, log?: Log): Promise<{ code: number; body: Record<string, unknown> }> {
   const p = await getProjectByKey(body.project);
   if (!p) return { code: 404, body: { error: 'Project not found' } };
-  if (p.deploySource !== 'webhook') return { code: 409, body: { error: 'Project deploy source is not webhook' } };
-  const env = await findDeployEnv(p.id, body.env);
-  if (!env) {
-    if (body.env) throw new RuleError(`Unknown environment ${body.env}`, 'invalid');
-    return { code: 200, body: { ignored: true } };
+  let env: DeployEnvRow | undefined;
+  if (body.env) env = await ensureDeployEnv(p, { source: 'webhook', ref: body.env, name: body.env });
+  else {
+    env = await findDeployEnv(p.id);
+    if (!env && !(await listDeployEnvs(p.id)).length) env = await ensureDeployEnv(p, { source: 'webhook', ref: 'production', name: 'Production', production: true });
   }
+  if (!env) return { code: 200, body: { ignored: true } };
   const now = new Date().toISOString();
   const done = body.status === 'finished' || body.status === 'failed';
   await reportDeploy(p, { status: body.status, startedAt: now, finishedAt: done ? now : null, commit: body.sha, message: body.message ?? null, author: body.author ?? null }, log, env);
@@ -151,11 +152,9 @@ export async function reportGithubDeployment(
   if (!status || !sha || !repo) return [];
   const touched: string[] = [];
   for (const p of await listAllProjects()) {
-    if (p.deploySource !== 'github' || p.githubRepo.toLowerCase() !== repo) continue;
-    const environment = body.deployment?.environment;
-    const envs = await listDeployEnvs(p.id);
-    const env = envs.find((e) => e.sourceRef && environment && e.sourceRef.toLowerCase() === environment.toLowerCase())
-      ?? (envs.filter((e) => e.isProduction && !e.sourceRef).length === 1 ? envs.find((e) => e.isProduction && !e.sourceRef) : undefined);
+    if (!p.githubRepo || p.githubRepo.toLowerCase() !== repo) continue;
+    const environment = body.deployment?.environment || 'production';
+    const env = await ensureDeployEnv(p, { source: 'github', ref: environment, name: environment.charAt(0).toUpperCase() + environment.slice(1), production: /^prod/i.test(environment) });
     if (!env) continue;
     const now = new Date().toISOString();
     const done = status === 'finished' || status === 'failed';

@@ -1243,11 +1243,6 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .ai-hint-title { font-size: var(--text-md); font-weight: 600; }
 .ai-hint-actions { display: flex; gap: 8px; }
 .nav-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: auto; flex-shrink: 0; }
-.settings-legacy summary { cursor: pointer; color: var(--text-secondary); list-style: none; display: flex; align-items: center; gap: 8px; }
-.settings-legacy summary::-webkit-details-marker { display: none; }
-.settings-legacy summary > svg { transition: transform 0.12s; color: var(--text-tertiary); }
-.settings-legacy[open] summary > svg { transform: rotate(90deg); }
-.settings-legacy { margin-top: 12px; }
 @media (max-width: 760px) {
   .backdrop:has(.wiz) { padding-top: 0; }
   .modal.wiz { width: 100vw; max-width: 100vw; height: 100dvh; border-radius: 0; }
@@ -1430,10 +1425,11 @@ textarea.md-edit.md-md { min-height: 120px; }
 .my-pc-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .my-pc-pills { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .my-pc-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
-.my-ai-keys > summary { cursor: pointer; color: var(--text-secondary); list-style: none; display: flex; align-items: center; gap: 8px; }
-.my-ai-keys > summary::-webkit-details-marker { display: none; }
-.my-ai-keys > summary > svg { transition: transform 0.12s; color: var(--text-tertiary); }
-.my-ai-keys[open] > summary > svg { transform: rotate(90deg); }
+.s-details > summary { cursor: pointer; color: var(--text-secondary); list-style: none; display: flex; align-items: center; gap: 8px; }
+.s-details > summary::-webkit-details-marker { display: none; }
+.s-details > summary > svg { transition: transform 0.12s; color: var(--text-tertiary); }
+.s-details[open] > summary > svg { transform: rotate(90deg); }
+.s-row.s-details { display: block; }
 /* == end My AI layout == */
 
 /* ---------- zmiana z zewnątrz (SSE), kolejność aktywności, błąd analizy ---------- */

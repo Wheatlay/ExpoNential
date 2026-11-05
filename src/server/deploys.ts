@@ -5,11 +5,10 @@ import { recordDeploy } from './hooks.ts';
 import { and, asc, eq, ne, sql as dsql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/index.ts';
-import { deployEnvs } from '../db/schema.ts';
+import { deployEnvs, projects as projectsTable } from '../db/schema.ts';
 import { requireMember, canManage, type Project } from './projects.ts';
 import { RuleError } from './rules.ts';
 import { projectKeyOf } from './api.ts';
-import { coolifyConfigured } from './coolify.ts';
 import { sendDiscord } from './notify.ts';
 import { st } from './i18n.ts';
 
@@ -53,11 +52,13 @@ export async function findDeployEnv(projectId: number, name?: string) {
 /** Uuid aplikacji Coolify (cuid2 w nowszych wersjach: litery i cyfry, 8-40 znaków; starsze: UUID z myślnikami). */
 const COOLIFY_UUID = /^[a-z0-9][a-z0-9-]{7,39}$/i;
 
-export type DeployEnvInput = { id?: number; name: string; sourceRef: string; isProduction: boolean };
+export type DeployEnvInput = { id?: number; name: string; sourceRef: string; isProduction: boolean; source?: string };
 
 /** Zastępuje listę środowisk projektu (kolejność = position): zmienia istniejące, dodaje nowe, kasuje brakujące. */
 export async function saveDeployEnvs(p: Project, input: DeployEnvInput[]) {
-  const envs = input.map((e) => ({ ...e, name: e.name.trim(), sourceRef: e.sourceRef.trim() }));
+  const before = await listDeployEnvs(p.id);
+  // Źródło należy do istniejącego wiersza (klient go nie ustawia); nowe ręczne wiersze mają ''.
+  const envs = input.map((e) => ({ ...e, name: e.name.trim(), sourceRef: e.sourceRef.trim(), source: before.find((o) => o.id === e.id)?.source ?? '' }));
   if (envs.some((e) => !e.name || e.name.length > 30)) throw new RuleError('Environment name must be 1-30 characters', 'invalid');
   if (envs.length) {
     const prod = envs.filter((e) => e.isProduction).length;
@@ -65,14 +66,15 @@ export async function saveDeployEnvs(p: Project, input: DeployEnvInput[]) {
     else if (prod > 1) throw new RuleError('Exactly one environment must be production', 'invalid');
   }
   if (new Set(envs.map((e) => e.name.toLowerCase())).size !== envs.length) throw new RuleError('Environment names must be unique', 'invalid');
-  if (p.deploySource === 'coolify') {
+  {
     // sourceRef to uuid aplikacji Coolify: bez formatu i unikalności dałoby się podpiąć cudzą aplikację z tego samego serwera.
-    if (envs.some((e) => e.sourceRef && !COOLIFY_UUID.test(e.sourceRef))) throw new RuleError('Coolify application UUID expected', 'invalid');
-    const refs = envs.map((e) => e.sourceRef.toLowerCase()).filter(Boolean);
+    const cool = envs.filter((e) => e.source === 'coolify');
+    if (cool.some((e) => e.sourceRef && !COOLIFY_UUID.test(e.sourceRef))) throw new RuleError('Coolify application UUID expected', 'invalid');
+    const refs = cool.map((e) => e.sourceRef.toLowerCase()).filter(Boolean);
     if (new Set(refs).size !== refs.length) throw new RuleError('Coolify application is used twice', 'invalid');
     for (const ref of refs) {
       const [dup] = await db.select({ id: deployEnvs.id }).from(deployEnvs)
-        .where(and(ne(deployEnvs.projectId, p.id), dsql`lower(${deployEnvs.sourceRef}) = ${ref}`)).limit(1);
+        .where(and(ne(deployEnvs.projectId, p.id), dsql`lower(${deployEnvs.sourceRef}) = ${ref} and ${deployEnvs.source} = 'coolify'`)).limit(1);
       if (dup) throw new RuleError('This Coolify application is already used by another project', 'invalid');
     }
   }
@@ -81,11 +83,20 @@ export async function saveDeployEnvs(p: Project, input: DeployEnvInput[]) {
     const oldIds = new Set(old.map((e) => e.id));
     if (envs.some((e) => e.id != null && !oldIds.has(e.id))) throw new RuleError('Unknown environment', 'invalid');
     const keep = new Set(envs.flatMap((e) => (e.id != null ? [e.id] : [])));
-    for (const o of old) if (!keep.has(o.id)) await tx.delete(deployEnvs).where(eq(deployEnvs.id, o.id));
+    const ignored: string[] = [];
+    for (const o of old) if (!keep.has(o.id)) {
+      await tx.delete(deployEnvs).where(eq(deployEnvs.id, o.id));
+      // Usunięte środowisko z automatu nie wraca przy kolejnym zdarzeniu.
+      if (o.source) ignored.push(`${o.source}:${o.sourceRef}`.toLowerCase());
+    }
+    if (ignored.length) {
+      const [cur] = await tx.select({ ignored: projectsTable.deployIgnored }).from(projectsTable).where(eq(projectsTable.id, p.id));
+      await tx.update(projectsTable).set({ deployIgnored: [...new Set([...(cur?.ignored ?? []), ...ignored])] }).where(eq(projectsTable.id, p.id));
+    }
     // Najpierw nazwy tymczasowe, żeby zamiana nazw dwóch środowisk nie łamała unikalnego indeksu.
     for (const e of envs) if (e.id != null) await tx.update(deployEnvs).set({ name: `__${e.id}` }).where(eq(deployEnvs.id, e.id));
     for (const [position, e] of envs.entries()) {
-      const v = { name: e.name, sourceRef: e.sourceRef, position, isProduction: e.isProduction };
+      const v = { name: e.name, sourceRef: e.sourceRef, source: e.source, position, isProduction: e.isProduction };
       if (e.id != null) await tx.update(deployEnvs).set(v).where(and(eq(deployEnvs.id, e.id), eq(deployEnvs.projectId, p.id)));
       else await tx.insert(deployEnvs).values({ projectId: p.id, ...v });
     }
@@ -112,12 +123,48 @@ export async function reportDeploy(p: Project, next: NonNullable<DeployStatus>, 
   }
 }
 
+/**
+ * Środowisko z automatu (pierwsze zdarzenie ze źródła): znajduje po źródle i ref, albo po nazwie (ręczne dostaje źródło),
+ * albo tworzy nowe. Źródła usunięte przez admina (deployIgnored) nie wracają: undefined.
+ */
+export async function ensureDeployEnv(p: Project, o: { source: string; ref: string; name: string; production?: boolean }) {
+  const envs = await listDeployEnvs(p.id);
+  const ref = o.ref.trim();
+  const byRef = envs.find((e) => e.source === o.source && e.sourceRef.toLowerCase() === ref.toLowerCase());
+  if (byRef) return byRef;
+  // Środowisko sprzed 1.3.24 z tym źródłem, ale bez ref (dawniej "jedyne produkcyjne"): jedno takie przejmuje ref, zamiast dublować.
+  const blank = envs.filter((e) => e.source === o.source && !e.sourceRef);
+  const byName = envs.find((e) => e.name.toLowerCase() === o.name.trim().toLowerCase() && (e.source === '' || e.source === o.source))
+    ?? (blank.length === 1 ? blank[0] : undefined);
+  if (byName) {
+    const [row] = await db.update(deployEnvs).set({ source: o.source, sourceRef: ref }).where(eq(deployEnvs.id, byName.id)).returning();
+    await publish({ type: 'deploy', projectKey: p.key });
+    await publish({ type: 'projects' });
+    return row;
+  }
+  // Projekt z pamięci podręcznej może mieć stare deployIgnored, więc czytamy świeże.
+  const [fresh] = await db.select({ ignored: projectsTable.deployIgnored }).from(projectsTable).where(eq(projectsTable.id, p.id));
+  if ((fresh?.ignored ?? p.deployIgnored).includes(`${o.source}:${ref}`.toLowerCase())) return undefined;
+  if (envs.length >= 20) return undefined; // jak limit ręcznego zapisu: webhook z sekretem nie namnoży środowisk
+  const base = o.name.trim().slice(0, 26) || 'Env';
+  const taken = new Set(envs.map((e) => e.name.toLowerCase()));
+  let name = base.slice(0, 30);
+  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} ${n}`;
+  const [row] = await db.insert(deployEnvs).values({
+    projectId: p.id, name, source: o.source, sourceRef: ref, position: envs.reduce((m, e) => Math.max(m, e.position), -1) + 1,
+    isProduction: envs.length === 0 || (o.production === true && !envs.some((e) => e.isProduction)),
+  }).returning();
+  await publish({ type: 'deploy', projectKey: p.key });
+  await publish({ type: 'projects' });
+  return row;
+}
+
 export async function registerDeploys(app: FastifyInstance) {
   app.get('/api/deploy-status', { preHandler: requireUser }, async (req) => {
     const { project } = await requireMember(req.user!, projectKeyOf(req));
     const envs = await listDeployEnvs(project.id);
     return {
-      enabled: !!project.deploySource && (project.deploySource !== 'coolify' || coolifyConfigured()),
+      enabled: envs.length > 0,
       envs: envs.map((e) => ({ id: e.id, name: e.name, isProduction: e.isProduction, deploy: deployStatusOf(project.id, e.id) })),
     };
   });

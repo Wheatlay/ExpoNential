@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.24] - 05.11.2026
+
+- Deploys are detected automatically: Settings › Integrations no longer asks for a deploy source. GitHub Deployments events, Coolify apps built from the project repo and the CI webhook create their environments from the first event (shown with a source label); removed ones are not re-added, and a manually added environment can still be created.
+
 ## Server [1.3.23], Agent [0.4.16] - 05.11.2026
 
 - Analyze needs a project repo: without one the button explains it instead of starting an analysis that no PC can run.

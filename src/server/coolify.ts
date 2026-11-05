@@ -3,10 +3,10 @@ import { timingSafeEqual } from 'node:crypto';
 import type { projects } from '../db/schema.ts';
 import { github } from './hooks.ts';
 import { listAllProjects } from './projects.ts';
-import { reportDeploy, listDeployEnvs, type DeployEnvRow, type DeployStatus } from './deploys.ts';
+import { reportDeploy, listDeployEnvs, ensureDeployEnv, type DeployEnvRow, type DeployStatus } from './deploys.ts';
 
 /**
- * Opcjonalne źródło deployów: Coolify (projekt z deploySource = 'coolify', uuid aplikacji w sourceRef środowiska).
+ * Opcjonalne źródło deployów: Coolify (środowiska ze źródłem 'coolify', uuid aplikacji w sourceRef; aplikacje budowane z repo projektu wykrywamy same).
  * Coolify nie wysyła zdarzenia "deploy started", więc co kilkanaście sekund pytamy jego API. Token jest jeden na serwer.
  */
 const API = process.env.COOLIFY_API_URL;
@@ -58,8 +58,38 @@ async function pollProject(p: typeof projects.$inferSelect, env: DeployEnvRow, l
 
 async function poll(log: FastifyInstance['log']) {
   for (const p of await listAllProjects()) {
-    if (p.deploySource !== 'coolify') continue;
-    for (const env of await listDeployEnvs(p.id)) if (env.sourceRef) await pollProject(p, env, log);
+    for (const env of await listDeployEnvs(p.id)) if (env.source === 'coolify' && env.sourceRef) await pollProject(p, env, log);
+  }
+}
+
+/** "https://github.com/Owner/Name.git" / "git@github.com:Owner/Name" -> "owner/name". */
+export function normalizeRepo(r: string) {
+  return r.trim().replace(/^(https?:\/\/|git@|ssh:\/\/git@)github\.com[/:]/i, '').replace(/\.git$/i, '').replace(/^\/+|\/+$/g, '').toLowerCase();
+}
+
+/** Aplikacje Coolify zbudowane z repo projektu stają się jego środowiskami (uuid użyty już w innym projekcie pomijamy). */
+export async function discoverCoolifyApps(log: FastifyInstance['log']) {
+  if (!coolifyConfigured()) return;
+  try {
+    const res = await fetch(`${API}/api/v1/applications`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    if (!res.ok) throw new Error(`Coolify ${res.status}`);
+    const apps = (await res.json()) as { uuid?: string; name?: string; git_repository?: string; git_branch?: string }[];
+    const projects = await listAllProjects();
+    const owned = new Map<string, number>();
+    for (const x of projects) for (const e of await listDeployEnvs(x.id)) if (e.source === 'coolify') owned.set(e.sourceRef.toLowerCase(), x.id);
+    for (const a of apps) {
+      if (!a.uuid || !a.git_repository) continue;
+      const repo = normalizeRepo(a.git_repository);
+      for (const p of projects) {
+        if (!p.githubRepo || p.githubRepo.toLowerCase() !== repo) continue;
+        const other = owned.get(a.uuid.toLowerCase());
+        if (other != null && other !== p.id) continue;
+        const env = await ensureDeployEnv(p, { source: 'coolify', ref: a.uuid, name: a.name || 'Production', production: a.git_branch === 'main' || a.git_branch === 'master' });
+        if (env) owned.set(a.uuid.toLowerCase(), p.id);
+      }
+    }
+  } catch (e) {
+    log.warn({ err: (e as Error).message }, 'coolify app discovery failed');
   }
 }
 
@@ -81,8 +111,8 @@ export async function registerCoolify(app: FastifyInstance) {
       let p: Awaited<ReturnType<typeof listAllProjects>>[number] | undefined;
       let env: DeployEnvRow | undefined;
       for (const x of await listAllProjects()) {
-        if (x.deploySource !== 'coolify' || !x.githubRepo) continue;
-        env = (await listDeployEnvs(x.id)).find((e) => e.sourceRef && text.includes(e.sourceRef.toLowerCase()));
+        if (!x.githubRepo) continue;
+        env = (await listDeployEnvs(x.id)).find((e) => e.source === 'coolify' && e.sourceRef && text.includes(e.sourceRef.toLowerCase()));
         if (env) { p = x; break; }
       }
       if (!p || !env) return { ignored: true };
@@ -99,7 +129,9 @@ export async function registerCoolify(app: FastifyInstance) {
   });
 
   if (!coolifyConfigured()) return;
+  await discoverCoolifyApps(app.log);
   await poll(app.log);
   const t = setInterval(() => void poll(app.log), 15_000);
-  app.addHook('onClose', async () => clearInterval(t));
+  const d = setInterval(() => void discoverCoolifyApps(app.log), 10 * 60_000);
+  app.addHook('onClose', async () => { clearInterval(t); clearInterval(d); });
 }

@@ -52,8 +52,8 @@ describe('saveDeployEnvs', () => {
 describe('Coolify webhook without API configured', () => {
   it('answers 200 and does not call the Coolify API', async () => {
     const p = await newProject('DED');
-    await projects.updateProject(p.id, { githubRepo: 'acme/ded', deploySource: 'coolify' });
-    await deploys.saveDeployEnvs((await projects.getProjectByKey('DED'))!, [{ name: 'Prod', sourceRef: 'uuid-ded-1', isProduction: true }]);
+    await projects.updateProject(p.id, { githubRepo: 'acme/ded' });
+    await deploys.ensureDeployEnv((await projects.getProjectByKey('DED'))!, { source: 'coolify', ref: 'uuid-ded-1', name: 'Prod', production: true });
     const { registerCoolify } = await import('../src/server/coolify.ts');
     const app = Fastify();
     await registerCoolify(app);

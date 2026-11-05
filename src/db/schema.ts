@@ -74,6 +74,8 @@ export const projects = pgTable('projects', {
   githubRepo: text('github_repo').notNull().default(''),
   // Skąd bierzemy deploye (oznaczane w zadaniach). Pusty = projekt bez śledzenia deployów.
   deploySource: text('deploy_source').$type<'' | 'webhook' | 'github' | 'coolify'>().notNull().default(''),
+  // Źródła usunięte przez admina ("<źródło>:<ref>" małymi literami): automatyczne wykrywanie ich nie dodaje z powrotem.
+  deployIgnored: text('deploy_ignored').array().notNull().default(sql`'{}'`),
   // Domyślny widok boardu dla członków (Display + filtry), ustawia admin projektu. null = wartości z kodu.
   defaultView: jsonb('default_view').$type<Record<string, unknown>>(),
   // Ostatnio nadany numer zgłoszenia: numer usuniętego zgłoszenia nie wraca do obiegu.
@@ -284,6 +286,8 @@ export const deployEnvs = pgTable('deploy_envs', {
   name: text('name').notNull(),
   // Odnośnik źródła: github = środowisko, coolify = uuid aplikacji, webhook = nazwa w body (env).
   sourceRef: text('source_ref').notNull().default(''),
+  // Skąd środowisko: 'github' | 'coolify' | 'webhook' | '' (ręczne).
+  source: text('source').notNull().default(''),
   position: integer('position').notNull().default(0),
   isProduction: boolean('is_production').notNull().default(false),
 }, (t) => [uniqueIndex('deploy_envs_project_name_idx').on(t.projectId, sql`lower(${t.name})`)]);
