@@ -249,7 +249,7 @@ export type ActivityPayload =
   | { kind: 'worklog'; session: string; repo: string; files: string[]; commits: { sha: string; message: string }[]; prompts: string[]; updatedAt: string }
   | { kind: 'question'; to: string; question: string }
   | { kind: 'answered'; by: string; backTo: string | null }
-  | { kind: 'relation'; action: 'added' | 'removed'; relation: 'waits_on' | 'blocks' | 'related'; other: number };
+  | { kind: 'relation'; action: 'added' | 'removed'; relation: 'waits_on' | 'blocks' | 'related' | 'duplicate_of' | 'duplicated_by'; other: number };
 
 export const activity = pgTable('activity', {
   id: serial('id').primaryKey(),
@@ -382,11 +382,12 @@ export const settings = pgTable('settings', {
 /**
  * Relacje między zadaniami. Tylko dwa rodzaje:
  * - 'blocks': from blokuje to (czyli "to czeka na from"),
- * - 'related': symetryczne powiązanie (zapisane raz).
+ * - 'related': symetryczne powiązanie (zapisane raz),
+ * - 'duplicate': from jest duplikatem to (oryginału).
  */
 export const issueRelations = pgTable('issue_relations', {
   id: serial('id').primaryKey(),
-  kind: text('kind').$type<'blocks' | 'related'>().notNull(),
+  kind: text('kind').$type<'blocks' | 'related' | 'duplicate'>().notNull(),
   fromIssueId: integer('from_issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
   toIssueId: integer('to_issue_id').notNull().references(() => issues.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

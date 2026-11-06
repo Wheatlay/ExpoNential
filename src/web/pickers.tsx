@@ -4,7 +4,7 @@ import { openAsk } from './AskModal.tsx';
 import { guardDone } from './DoneGuard.tsx';
 import { isNeedInfo } from '../server/rules.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
-import { type MenuItem, type MenuSpec } from './menu.tsx';
+import { openMenu, type MenuItem, type MenuSpec } from './menu.tsx';
 import { getProjectKey, ident } from './project.ts';
 import { locale, t } from './i18n.ts';
 
@@ -34,9 +34,12 @@ export function statusMenu(meta: Meta, tg: PickTarget, update: Update): MenuSpec
       icon: <StatusIcon status={s} fraction={startedFraction(meta.statuses, s)} />,
       checked: s.id === tg.statusId,
       kbd: [String(i + 1)],
+      // Duplicate: lista zostaje otwarta i zamienia się w wybór oryginału.
+      keepOpen: tg.number > 0 && isDuplicate(s) && s.id !== tg.statusId,
       // Need Info na istniejącym zadaniu otwiera okno pytania (kogo i o co).
       onSelect: () => {
         if (tg.number > 0 && isNeedInfo(s) && s.id !== tg.statusId) return openAsk({ number: tg.number, statusId: s.id });
+        if (tg.number > 0 && isDuplicate(s) && s.id !== tg.statusId) return duplicateOfMenu(tg.number, meta.statuses, () => update({ statusId: s.id }));
         if (guardDone(meta, s, tg)) return;
         update({ statusId: s.id });
       },
@@ -161,9 +164,38 @@ export function issueContextMenu(opts: {
   return { searchable: false, items };
 }
 
-export const RELATION_LABELS: Record<RelationKind, string> = { waits_on: t('Waiting on…'), blocks: t('Blocks…'), related: t('Related to…') };
+export const RELATION_LABELS: Record<RelationKind, string> = { waits_on: t('Waiting on…'), blocks: t('Blocks…'), related: t('Related to…'), duplicate_of: t('Duplicate of…'), duplicated_by: t('Duplicated by…') };
 /** Zdanie po identyfikatorze: "ACME-3 waits on ACME-5". */
-const RELATION_VERB: Record<RelationKind, string> = { waits_on: t('waits on'), blocks: t('blocks'), related: t('is related to') };
+const RELATION_VERB: Record<RelationKind, string> = { waits_on: t('waits on'), blocks: t('blocks'), related: t('is related to'), duplicate_of: t('is a duplicate of'), duplicated_by: t('is duplicated by') };
+/** Rodzaje w menu "Add relation" (duplicated_by to tylko odwrotna strona duplicate_of). */
+const MENU_KINDS: RelationKind[] = ['waits_on', 'blocks', 'related', 'duplicate_of'];
+const relIcon = (k: RelationKind) => (k === 'waits_on' || k === 'blocks' ? <Icon.blocked size={14} /> : <Icon.relation size={14} />);
+
+/**
+ * Przeniesienie do statusu typu Duplicate: najpierw wybór oryginału (relacja duplicate_of), potem dopiero zmiana statusu.
+ * Zamknięcie listy bez wyboru nic nie zmienia (karta zostaje tam, gdzie była).
+ */
+export function duplicateOfMenu(number: number, statuses: Status[] | undefined, apply: () => void): MenuSpec {
+  const all = queryClient.getQueryData<IssueRow[]>(['issues']) ?? [];
+  return {
+    searchable: true,
+    placeholder: t('{id} is a duplicate of…', { id: ident(number) }),
+    items: all.filter((i) => i.number !== number).sort((a, b) => b.number - a.number).map((i) => ({
+      key: `d${i.number}`,
+      label: `${ident(i.number)} ${i.title}`,
+      icon: issueStatusIcon(statuses, i.statusId),
+      onSelect: () => {
+        void api(`/api/issues/${ident(number)}/relations`, { method: 'POST', body: { kind: 'duplicate_of', other: i.number } })
+          .then(() => { apply(); toast(`${ident(number)} ${RELATION_VERB.duplicate_of} ${ident(i.number)}`); })
+          .catch((e: Error) => toast(e.message, 'err'));
+      },
+    })),
+  };
+}
+export function askDuplicateOf(anchor: { x: number; y: number }, number: number, statuses: Status[] | undefined, apply: () => void) {
+  openMenu(anchor, duplicateOfMenu(number, statuses, apply));
+}
+export const isDuplicate = (s: Status) => s.type === 'duplicate';
 
 /** Ikona statusu zgłoszenia w listach wyboru zgłoszeń (rodzic, relacja), jak przy wzmiance. */
 export function issueStatusIcon(statuses: Status[] | undefined, statusId: number) {
@@ -189,9 +221,9 @@ export function relationMenu(all: IssueRow[], number: number, onDone?: () => voi
   });
   return {
     searchable: false,
-    items: (['waits_on', 'blocks', 'related'] as RelationKind[]).map((k) => ({
+    items: MENU_KINDS.map((k) => ({
       key: k, label: RELATION_LABELS[k],
-      icon: k === 'related' ? <Icon.relation size={14} /> : <Icon.blocked size={14} />,
+      icon: relIcon(k),
       submenu: () => pick(k),
     })),
   };
@@ -201,9 +233,9 @@ export function relationMenu(all: IssueRow[], number: number, onDone?: () => voi
 export function relationToMenu(number: number, other: number, onDone?: () => void): MenuSpec {
   return {
     searchable: false,
-    items: (['waits_on', 'blocks', 'related'] as RelationKind[]).map((k) => ({
+    items: MENU_KINDS.map((k) => ({
       key: k, label: `${ident(number)} ${RELATION_VERB[k]} ${ident(other)}`,
-      icon: k === 'related' ? <Icon.relation size={14} /> : <Icon.blocked size={14} />,
+      icon: relIcon(k),
       onSelect: () => {
         void api(`/api/issues/${ident(number)}/relations`, { method: 'POST', body: { kind: k, other } })
           .then(() => { toast(`${ident(number)} ${RELATION_VERB[k]} ${ident(other)}`); onDone?.(); })

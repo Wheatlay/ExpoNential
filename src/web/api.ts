@@ -66,7 +66,7 @@ export type ActivityPayload =
   | { kind: 'answered'; by: string; backTo: string | null }
   | { kind: 'relation'; action: 'added' | 'removed'; relation: RelationKind; other: number };
 
-export type RelationKind = 'waits_on' | 'blocks' | 'related';
+export type RelationKind = 'waits_on' | 'blocks' | 'related' | 'duplicate_of' | 'duplicated_by';
 export type RelatedIssue = { number: number; title: string; statusId: number; open: boolean };
 
 /** Jak AnalysisData w src/server/analysis.ts. */
@@ -93,7 +93,7 @@ export type IssueDetail = {
   comments: { id: number; authorId: number | null; body: string; createdAt: string; updatedAt: string; replyToId: number | null }[];
   infoCommentId: number | null;
   activity: { id: number; actorId: number | null; viaAi: boolean; payload: ActivityPayload; createdAt: string }[];
-  relations: { waitingOn: RelatedIssue[]; blocking: RelatedIssue[]; related: RelatedIssue[] };
+  relations: { waitingOn: RelatedIssue[]; blocking: RelatedIssue[]; related: RelatedIssue[]; duplicateOf: RelatedIssue[]; duplicates: RelatedIssue[] };
   lastSeenAt: string | null;
   commits: { sha: string; message: string; url: string; author: string; committedAt: string; deployedAt: string | null; envs: { name: string; at: string; isProduction: boolean }[] }[];
 };

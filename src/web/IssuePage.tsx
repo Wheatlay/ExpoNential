@@ -519,7 +519,7 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
     case 'question': return <>{t('asked')} <b>{p.to}</b>: {p.question}</>;
     case 'answered': return <>{t('answered the question')}{p.backTo ? <>, {t('back to')} <b>{p.backTo}</b></> : ''}</>;
     case 'relation': {
-      const verb = { waits_on: t('waits on'), blocks: t('blocks'), related: t('is related to') }[p.relation];
+      const verb = { waits_on: t('waits on'), blocks: t('blocks'), related: t('is related to'), duplicate_of: t('is a duplicate of'), duplicated_by: t('is duplicated by') }[p.relation];
       return <>{p.action === 'added' ? t('marked that this issue') : t('removed:')} {verb} <a {...linkProps(`/issue/${ident(p.other)}`)}><b>{ident(p.other)}</b></a></>;
     }
     case 'deploy': return <>{t('changes were')} {p.env ? <b style={{ color: p.prod ? 'var(--success-text)' : 'var(--progress-text)' }}>{t('deployed to {env}', { env: p.env })}</b> : <b style={{ color: 'var(--success-text)' }}>{t('deployed')}</b>} (<code>{p.sha.slice(0, 7)}</code>)</>;
@@ -683,6 +683,8 @@ function Relations({ issue, meta }: { issue: IssueDetail; meta: Meta }) {
     ['waits_on', t('Waiting on'), issue.relations.waitingOn],
     ['blocks', t('Blocks'), issue.relations.blocking],
     ['related', t('Related'), issue.relations.related],
+    ['duplicate_of', t('Duplicate of'), issue.relations.duplicateOf ?? []],
+    ['duplicated_by', t('Duplicates'), issue.relations.duplicates ?? []],
   ];
   const any = groups.some(([, , l]) => l.length);
   return (

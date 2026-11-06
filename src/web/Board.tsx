@@ -19,7 +19,7 @@ import { api, ApiError, isAskedTo, queryClient, useIssues, useMe, useMeta, useSp
 import { Avatar, avatarColor, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { profileContextMenu } from './PersonCard.tsx';
 import { openMenu, isMenuOpen, Tooltip, type MenuSpec } from './menu.tsx';
-import { assigneeMenu, doneWarning, issueContextMenu, labelMenu, priorityMenu, sprintMenu, statusMenu, type PickTarget } from './pickers.tsx';
+import { askDuplicateOf, isDuplicate, assigneeMenu, doneWarning, issueContextMenu, labelMenu, priorityMenu, sprintMenu, statusMenu, type PickTarget } from './pickers.tsx';
 import { navigate } from './router.ts';
 import { openNewIssue } from './NewIssue.tsx';
 import { toast } from './toast.ts';
@@ -35,7 +35,10 @@ type Display = {
   completed: 'day' | 'week' | 'month' | 'all';
   showSubIssues: boolean;
   showEmptyRows: boolean;
+  /** Stare ustawienie: wszystkie ukryte kolumny naraz. Zostaje jako wartość startowa dla hiddenShown. */
   showHidden: boolean;
+  /** Które ukryte kolumny (Backlog, Canceled, Duplicate…) są jednak pokazane; brak = według showHidden. */
+  hiddenShown?: number[];
   props: CardProps;
   livePresence: boolean;
 };
@@ -56,6 +59,11 @@ let assigneeRequested: number | null = null;
 export function requestAssigneeFilter(userId: number) { assigneeRequested = userId; window.dispatchEvent(new Event('board-assignee')); }
 function consumeAssigneeRequest() { const r = assigneeRequested; assigneeRequested = null; return r; }
 type Filters = { scope: 'all' | 'sprint' | 'questions' | 'unread'; labelIds: number[]; assigneeIds: (number | null)[]; priorities: number[] };
+
+/** Pokazane ukryte kolumny, z przejściem ze starego przełącznika "wszystkie naraz". */
+function shownHiddenIds(statuses: Status[], d: Display) {
+  return d.hiddenShown ?? (d.showHidden ? statuses.filter((s) => s.hiddenOnBoard).map((s) => s.id) : []);
+}
 
 const DEFAULT_DISPLAY: Display = { rows: 'assignee', ordering: 'priority', completed: 'week', showSubIssues: false, showEmptyRows: true, showHidden: false, props: ALL_PROPS, livePresence: true };
 
@@ -239,7 +247,10 @@ export function Board() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
   );
 
-  const columns = useMemo(() => (meta?.statuses ?? []).filter((s) => display.showHidden || !s.hiddenOnBoard), [meta, display.showHidden]);
+  const columns = useMemo(() => {
+    const shown = shownHiddenIds(meta?.statuses ?? [], display);
+    return (meta?.statuses ?? []).filter((s) => !s.hiddenOnBoard || shown.includes(s.id));
+  }, [meta, display]);
   const statusById = useMemo(() => new Map((meta?.statuses ?? []).map((s) => [s.id, s])), [meta]);
 
   const visible = useMemo(() => {
@@ -382,6 +393,10 @@ export function Board() {
       patch.sortOrder = sortBetween(before, after);
     }
     if (patch.statusId && guardDone(meta, st, issue, (({ statusId: _s, ...rest }) => rest)(patch))) return;
+    if (patch.statusId && isDuplicate(st)) {
+      const r = e.over.rect;
+      return askDuplicateOf({ x: r.left + 8, y: r.top + 40 }, issue.number, meta.statuses, () => update.mutate({ number: issue.number, patch }));
+    }
     if (patch.statusId && isNeedInfo(st)) {
       const { statusId: _s, ...extra } = patch;
       return openAsk({ number: issue.number, statusId: st.id, extra });
@@ -864,7 +879,7 @@ function DisplayPanel({ at, narrow, display, setDisplay, onClose }: {
       </div>
       <div className="sec">
         <span className="title">{t('Board options')}</span>
-        {toggle('showHidden', t('Show Backlog / Canceled columns'))}
+        <HiddenColumns display={display} set={(ids) => set('hiddenShown', ids)} />
         {toggle('showEmptyRows', t('Show empty rows'), boardOnly)}
         {toggle('livePresence', t('Show others dragging cards'), boardOnly)}
         <span>{t('Display properties')}</span>
@@ -955,6 +970,36 @@ function RemoteDrags({ presence, issues, meta }: { presence: Presence[]; issues:
             <span className="remote-cursor"><Icon.cursor size={14} /> {p.name}</span>
             <div style={{ width }}><CardView issue={issue} meta={meta} overlay /></div>
           </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Ukryte kolumny w opcjach tablicy: zwinięte do jednego wiersza z licznikiem, po rozwinięciu przełącznik na kolumnę. */
+function HiddenColumns({ display, set }: { display: Display; set: (ids: number[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const statuses = useMeta().data?.statuses ?? [];
+  const hidden = statuses.filter((s) => s.hiddenOnBoard);
+  if (!hidden.length) return null;
+  const shown = shownHiddenIds(statuses, display);
+  const count = hidden.filter((s) => shown.includes(s.id)).length;
+  return (
+    <>
+      <button className="row" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <span>{t('Hidden columns')}</span>
+        <span className="hint" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {t('{n} of {total} shown', { n: count, total: hidden.length })}
+          {open ? <Icon.chevron size={12} /> : <Icon.chevronRight size={12} />}
+        </span>
+      </button>
+      {open && hidden.map((s) => {
+        const on = shown.includes(s.id);
+        return (
+          <button key={s.id} className="row" style={{ paddingLeft: 24 }} onClick={() => set(on ? shown.filter((x) => x !== s.id) : [...shown, s.id])}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}><StatusIcon status={s} fraction={startedFraction(statuses, s)} size={12} />{s.name}</span>
+            <span className={`switch ${on ? 'on' : ''}`} role="switch" aria-checked={on} />
+          </button>
         );
       })}
     </>

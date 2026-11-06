@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.27] - 06.11.2026
+
+- Duplicates: new relation "duplicate of" (issue page, Add relation menu, MCP `set_relation` with `duplicate_of` / `duplicated_by`, `get_issue` returns duplicateOf / duplicatedBy). Marking an issue as a duplicate moves it to the project's Duplicate status. Dragging a card to the Duplicate column or picking that status first asks for the original; closing the list changes nothing. Stored in issue_relations with kind `duplicate` (no migration).
+- Board options: the "Show Backlog / Canceled columns" switch is replaced by a collapsed "Hidden columns" row (n of total shown) that expands to one switch per hidden column (Backlog, Canceled, Duplicate). The old switch carries over as all shown.
+
 ## Agent [0.4.18] - 05.11.2026
 
 - Agent in the tray no longer keeps ~160 MB: the settings window and the card window (consents, updates, notifications) are closed for real a minute after they are hidden, instead of staying alive until the agent exits. Idle: 1 process, ~57 MB (was 7 processes, ~215 MB after the first card).

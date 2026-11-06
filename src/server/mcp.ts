@@ -99,6 +99,8 @@ async function presentIssue(p: Project, number: number) {
     waitingOn: d.relations.waitingOn.map((x) => ({ id: identifier(x.number), title: x.title, open: x.open })),
     blocking: d.relations.blocking.map((x) => ({ id: identifier(x.number), title: x.title, open: x.open })),
     relatedTo: d.relations.related.map((x) => ({ id: identifier(x.number), title: x.title })),
+    duplicateOf: d.relations.duplicateOf.map((x) => ({ id: identifier(x.number), title: x.title })),
+    duplicatedBy: d.relations.duplicates.map((x) => ({ id: identifier(x.number), title: x.title })),
     subIssues: d.children.map((c) => ({ id: identifier(c.number), title: c.title, status: r.meta.statuses.find((s) => s.id === c.statusId)?.name })),
     // Pytanie do osoby, do #tagu (wszyscy z tagiem) albo do kogokolwiek.
     question: d.infoQuestion ? {
@@ -286,13 +288,13 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       return `Change notes saved on ${id}`;
     });
 
-  tool('set_relation', 'Add or remove a relation. waits_on: this issue waits on other (other blocks it). blocks: this issue blocks other. related: plain link.',
-    { id: z.string(), kind: z.enum(['waits_on', 'blocks', 'related']), otherId: z.string(), remove: z.boolean().optional() },
+  tool('set_relation', 'Add or remove a relation. waits_on: this issue waits on other (other blocks it). blocks: this issue blocks other. related: plain link. duplicate_of: this issue is a duplicate of other (the original); duplicated_by: the reverse.',
+    { id: z.string(), kind: z.enum(['waits_on', 'blocks', 'related', 'duplicate_of', 'duplicated_by']), otherId: z.string(), remove: z.boolean().optional() },
     async ({ id, kind, otherId, remove }) => {
       const { p, n } = await ref(me, id);
       if (remove) await removeRelation(p, me, n, kind, numIn(p, otherId));
       else await addRelation(p, me, n, kind, numIn(p, otherId));
-      return `${remove ? 'Removed' : 'Added'}: ${id} ${kind.replace('_', ' ')} ${otherId}`;
+      return `${remove ? 'Removed' : 'Added'}: ${id} ${kind.replaceAll('_', ' ')} ${otherId}`;
     });
 
   tool('list_comments', 'List comments of an issue.', { id: z.string() }, async ({ id }) => {

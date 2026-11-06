@@ -612,7 +612,7 @@ export async function registerApi(app: FastifyInstance) {
       await svc.publish({ type: 'presence', projectKey: project.key, userId: req.user!.id, name: req.user!.name, ...b });
       return { ok: true };
     });
-    const relationBody = z.object({ kind: z.enum(['waits_on', 'blocks', 'related']), other: z.union([z.string(), z.number()]) });
+    const relationBody = z.object({ kind: z.enum(['waits_on', 'blocks', 'related', 'duplicate_of', 'duplicated_by']), other: z.union([z.string(), z.number()]) });
     r.post<{ Params: { id: string } }>('/api/issues/:id/relations', async (req) => {
       const b = relationBody.parse(req.body);
       const { p, number } = await issueRef(req, req.params.id);
