@@ -74,6 +74,7 @@ export async function listIssues(p: Project, filter: {
     hasAnalysis: dsql<boolean>`${issues.analysis} <> ''`,
     hasChangeNotes: dsql<boolean>`${issues.changeHuman} <> '' and ${issues.changeAi} <> ''`,
     changeNotesStale: notesStale(),
+    deployedEnv: deployedEnv(),
     createdAt: issues.createdAt, updatedAt: issues.updatedAt, completedAt: issues.completedAt,
     labelIds: dsql<number[]>`coalesce((select array_agg(label_id) from issue_labels where issue_id = "issues"."id"), '{}')`,
     subTotal: dsql<number>`(select count(*)::int from issues c where c.parent_id = "issues"."id")`,
@@ -116,6 +117,9 @@ export async function requireIssue(p: Project, number: number, tx: Tx | typeof d
 
 /** Opis zmian nieaktualny: po jego zapisaniu doszedl commit zgloszenia (pole liczone, zrodlo prawdy to commity). */
 export const notesStale = () => dsql<boolean>`${issues.changeNotesAt} is not null and (${issues.changeHuman} <> '' or ${issues.changeAi} <> '') and exists (select 1 from issue_commits c where c.issue_id = "issues"."id" and c.committed_at > ${issues.changeNotesAt})`;
+
+/** Najdalsze srodowisko (Prod przed reszta, potem pozycja), na ktorym sa wszystkie commity zgloszenia; null = brak commitow albo zadne. */
+export const deployedEnv = () => dsql<string | null>`(select e.name from deploy_envs e where e.project_id = "issues"."project_id" and exists (select 1 from issue_commits c where c.issue_id = "issues"."id") and not exists (select 1 from issue_commits c where c.issue_id = "issues"."id" and not exists (select 1 from issue_commit_deploys d where d.issue_id = c.issue_id and d.sha = c.sha and d.env_id = e.id)) order by e.is_production desc, e.position desc limit 1)`;
 
 export async function getIssueDetail(p: Project, number: number) {
   const issue = await requireIssue(p, number);

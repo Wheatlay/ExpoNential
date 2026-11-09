@@ -784,6 +784,7 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
             ? <span className="pill stalled" title={waitReasonText(issue.analysisWaitReason)} {...(issue.analysisWaitReason === 'no_repo_pc' ? { role: 'button', onClick: (e: React.MouseEvent) => { e.stopPropagation(); openAgentRepos(); } } : {})}><Icon.sparkle size={12} /> <span className="pill-text">{t('Waiting for a PC with team queue on')}</span></span>
             : <span className="pill ai" title={t('Waiting for AI analysis')}><Icon.sparkle size={12} /> {t('Waiting')}</span>)}
         {show.ai && !issue.analysisRequestedAt && issue.hasAnalysis && <span className="pill ai done" title={t('AI analysis available')}><Icon.sparkle size={12} /></span>}
+        {issue.deployedEnv && (st?.role === 'testing' || st?.type === 'completed') && <span className="pill ok" title={t('All commits are on {env}', { env: issue.deployedEnv })}><Icon.rocket size={12} /> {issue.deployedEnv}</span>}
         {notesMissing && <span className="pill notes-missing" title={t('Done without HUMAN / AI change notes')}>{t('Notes missing')}</span>}
       </div>
     </div>

@@ -732,6 +732,7 @@ export const pl: Record<string, string> = {
   'On board': 'Na tablicy',
   'Open in Claude Code': 'Otwórz w Claude Code',
   'Outdated': 'Nieaktualne',
+  'All commits are on {env}': 'Wszystkie commity są na {env}',
   'New commits since these notes were written': 'Nowe commity od zapisania opisu',
   'Change notes are outdated.': 'Opis zmian jest nieaktualny.',
   'Runs in the background on the PC of whoever clicks it (local runner), read-only.': 'Działa w tle na PC osoby, która kliknie (lokalny runner), tylko odczyt.',

@@ -387,6 +387,10 @@ textarea.md-edit {
 .event .ev-icon { width: 18px; display: grid; place-items: center; }
 .event a { color: var(--text-secondary); }
 .event a:hover { text-decoration: underline; }
+.event.minor b, .event.minor a { color: var(--text-tertiary); }
+/* Edycje pól (Show N edits): wcięte pod treść wpisu, jak dalsza część serii. */
+.event.edit { padding-left: 38px; }
+.event.cont { padding-top: 0; }
 .comment { border: 1px solid var(--border-secondary); background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 12px 14px; margin: 8px 0; }
 .comment-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .comment-head .when { color: var(--text-tertiary); }

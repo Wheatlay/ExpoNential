@@ -151,6 +151,8 @@ export function IssuePage({ number }: { number: number }) {
   const save = (patch: IssuePatch) => update.mutate({ number, patch });
 
   const testingNames = (meta?.statuses ?? []).filter((s) => s.role === 'testing').map((s) => s.name);
+  const curStatus = meta?.statuses.find((s) => s.id === issue?.statusId);
+  const envNow = issue && (curStatus?.role === 'testing' || curStatus?.type === 'completed') ? deployedEnvOf(issue.commits) : null;
   const target: PickTarget | null = issue ? {
     number, statusId: issue.statusId, priority: issue.priority, assigneeId: issue.assigneeId, labelIds: issue.labelIds,
     sprintId: issue.sprintId, hasChangeNotes: !!issue.changeHuman.trim() && !!issue.changeAi.trim(), changeNotesStale: issue.changeNotesStale,
@@ -256,6 +258,7 @@ export function IssuePage({ number }: { number: number }) {
                 <Icon.play size={12} /> {t('Open in Claude Code')}
               </button>
             )}
+            {envNow && <span className="pill ok" title={t('All commits are on {env}', { env: envNow })}><Icon.rocket size={12} /> {envNow}</span>}
           </div>
           {startOpen && <DemoStartModal number={number} onClose={() => setStartOpen(false)} />}
           {/* Pytanie pokazuje jego komentarz (QuestionFooter); baner tylko dla starych pytań bez komentarza. */}
@@ -499,7 +502,7 @@ function SubIssues({ issue, meta, done }: { issue: IssueDetail; meta: Meta; done
   );
 }
 
-function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
+function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, commitUrl?: (sha: string) => string | undefined) {
   switch (p.kind) {
     case 'created': return <>{t('created the issue')}</>;
     case 'status': return <>{t('changed status from')} <b>{p.from ?? '—'}</b> {t('to')} <b>{p.to}</b></>;
@@ -526,19 +529,29 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
     case 'worklog': return (
       <details className="worklog">
         <summary>{t('worked in Claude Code')}{p.repo ? <> {t('on')} <b>{p.repo}</b></> : ''}: {tn(p.files.length, '{n} file', '{n} files')}, {tn(p.commits.length, '{n} commit', '{n} commits')}</summary>
-        {p.commits.length > 0 && <><h5>{t('Commits')}</h5><ul>{p.commits.map((c) => <li key={c.sha}><code>{c.sha.slice(0, 7)}</code> {c.message}</li>)}</ul></>}
+        {p.commits.length > 0 && <><h5>{t('Commits')}</h5><ul>{p.commits.map((c) => { const url = commitUrl?.(c.sha); return <li key={c.sha}>{url ? <a href={url} target="_blank" rel="noreferrer"><code>{c.sha.slice(0, 7)}</code> {c.message}</a> : <><code>{c.sha.slice(0, 7)}</code> {c.message}</>}</li>; })}</ul></>}
         {p.files.length > 0 && <><h5>{t('Files')}</h5><ul>{p.files.map((f) => <li key={f}><code>{f}</code></li>)}</ul></>}
       </details>
     );
   }
 }
 
+/** Najdalsze środowisko, na którym są wszystkie commity zgłoszenia (Prod przed resztą, potem kolejność z ustawień). */
+function deployedEnvOf(commits: IssueDetail['commits']): string | null {
+  if (!commits.length) return null;
+  const common = commits[0].envs.filter((e) => commits.every((c) => c.envs.some((x) => x.name === e.name)));
+  return (common.find((e) => e.isProduction) ?? common[common.length - 1])?.name ?? null;
+}
+
+/** Drobne zmiany pól: przygaszone, żeby wyróżniały się komentarze, praca Claude, commity i deploye. */
+const MINOR_EVENTS = new Set(['created', 'status', 'assignee', 'priority', 'labels', 'sprint', 'parent', 'relation', 'decision', 'answered']);
+
 function eventIcon(p: IssueDetail['activity'][number]['payload']) {
   if (p.kind === 'commit') return <Icon.commit size={14} />;
   if (p.kind === 'deploy') return <span style={{ color: p.env && !p.prod ? 'var(--progress-text)' : 'var(--success-text)' }}><Icon.rocket size={14} /></span>;
   if (p.kind === 'analysis_failed') return <span style={{ color: 'var(--danger-text)' }}><Icon.sparkle size={14} /></span>;
   if (p.kind === 'analysis_requested' || p.kind === 'analysis_claimed') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
-  if (p.kind === 'worklog') return <span style={{ color: 'var(--ai-text)' }}><Icon.cursor size={14} /></span>;
+  if (p.kind === 'worklog') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
   return null;
 }
 
@@ -554,10 +567,17 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
   const qc = useQueryClient();
   const refresh = () => void qc.invalidateQueries({ queryKey: ['issue', issue.number] });
 
+  // Commit z sesji Claude jest już we wpisie worklog (z linkiem): osobna linia z webhooka GitHuba tylko by go dublowała.
+  const worklogShas = issue.activity.flatMap((e) => (e.payload.kind === 'worklog' ? e.payload.commits.map((c) => c.sha) : []));
+  const sameSha = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
+  const inWorklog = (sha: string) => worklogShas.some((w) => sameSha(w, sha));
+  const emptyWorklog = (p: IssueDetail['activity'][number]['payload']) => p.kind === 'worklog' && !p.files.length && !p.commits.length;
+  const commitUrl = (sha: string) => issue.commits.find((c) => sameSha(c.sha, sha))?.url;
+
   type Entry = { at: string; kind: 'event'; e: IssueDetail['activity'][number] } | { at: string; kind: 'comment'; c: IssueDetail['comments'][number] };
   const entries: Entry[] = [
     // Pytanie widać w komentarzu, więc wpis "asked X: …" w historii tylko by je dublował.
-    ...issue.activity.filter((e) => (e.payload.kind !== 'field' || showAll) && e.payload.kind !== 'question').map((e) => ({ at: e.createdAt, kind: 'event' as const, e })),
+    ...issue.activity.filter((e) => (e.payload.kind !== 'field' || showAll) && e.payload.kind !== 'question' && !emptyWorklog(e.payload) && !(e.payload.kind === 'commit' && inWorklog(e.payload.sha))).map((e) => ({ at: e.createdAt, kind: 'event' as const, e })),
     ...issue.comments.filter((c) => !c.replyToId).map((c) => ({ at: c.createdAt, kind: 'comment' as const, c })),
   ].sort((a, b) => (newestFirst ? b.at.localeCompare(a.at) : a.at.localeCompare(b.at)));
   const hiddenEdits = issue.activity.filter((e) => e.payload.kind === 'field').length;
@@ -602,13 +622,19 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
         </span>
       </h3>
       {newestFirst && composer}
-      {entries.map((en) => {
+      {entries.map((en, i) => {
         if (en.kind === 'event') {
           const actor = meta.users.find((u) => u.id === en.e.actorId);
+          const k = en.e.payload.kind;
+          const anon = k === 'commit' || k === 'deploy';
+          // Seria wpisów tej samej osoby: awatar i imię tylko przy pierwszym.
+          const prev = entries[i - 1];
+          const cont = !anon && en.e.actorId != null && prev?.kind === 'event' && prev.e.actorId === en.e.actorId && prev.e.viaAi === en.e.viaAi && !['commit', 'deploy'].includes(prev.e.payload.kind);
+          const tone = k === 'field' ? 'minor edit' : MINOR_EVENTS.has(k) ? 'minor' : '';
           return (
-            <div key={`e${en.e.id}`} className="event">
-              <span className="ev-icon">{eventIcon(en.e.payload) ?? <Avatar user={actor} size={16} />}</span>
-              <span>{en.e.payload.kind !== 'commit' && en.e.payload.kind !== 'deploy' && <b>{actor ? <PersonLink userId={actor.id}>{actor.name}</PersonLink> : t('System')} </b>}{en.e.viaAi && <><span className="badge ai">AI</span> </>}{eventText(en.e.payload, meta)} · <span title={fullDate(en.at)}>{timeAgo(en.at)}</span></span>
+            <div key={`e${en.e.id}`} className={`event ${tone} ${cont ? 'cont' : ''}`}>
+              <span className="ev-icon">{cont ? null : eventIcon(en.e.payload) ?? <Avatar user={actor} size={16} />}</span>
+              <span>{!anon && !cont && <b>{actor ? <PersonLink userId={actor.id}>{actor.name}</PersonLink> : t('System')} </b>}{en.e.viaAi && !cont && <><span className="badge ai">AI</span> </>}{eventText(en.e.payload, meta, commitUrl)} · <span title={fullDate(en.at)}>{timeAgo(en.at)}</span></span>
             </div>
           );
         }
