@@ -127,6 +127,10 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 
 - **Moved repo folders are found again:** a mapping made by discovery (`source: auto`) whose folder no longer exists counts as missing, so the next discovery pass maps the project to the folder's new place. Manual and cloned mappings are never replaced.
 
+## 0.4.23
+
+- **Check for updates only checks:** a newer version shows the update card with the Update button, also with auto-update on (the daily check still installs silently), and also when that version was dismissed before.
+
 ## 0.4.22
 
 - **Change notes kept current:** when a session pinned to an issue commits after the issue's HUMAN/AI change notes were written, the Stop hook keeps the turn going once per new commit and asks Claude to update the notes with expo:close-ticket (update mode). No notes yet = no prompt.

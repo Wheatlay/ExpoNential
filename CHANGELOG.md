@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.23] - 09.11.2026
+
+- Check for updates no longer installs by itself: it shows the update card, the install starts from its Update button.
+
 ## Server [1.3.32], Agent [0.4.22] - 09.11.2026
 
 - Change notes (HUMAN/AI) are marked Outdated when a commit lands after they were written: badge on the issue, Done asks about it, MCP get_issue returns changeNotesStale.

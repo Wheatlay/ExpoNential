@@ -366,8 +366,8 @@ func showUpdatedCard() {
 	cardsChanged()
 }
 
-// checkNow: "Check for updates" in the window. Returns "current", "error" or the new version (which then
-// installs by itself when auto-update is on, otherwise the window shows the update button).
+// checkNow: "Check for updates" in the window. Returns "current", "error" or the new version (offered on
+// the update card, never installed without a click).
 func checkNow() string {
 	u, err := checkUpdate()
 	if err != nil {
@@ -385,8 +385,10 @@ func checkNow() string {
 	if u == nil {
 		return "current"
 	}
-	if autoUpdateOn() && !devMode() && !updating.Load() {
-		autoInstall(u)
+	// A manual check only checks: the card with the Update button decides, even with auto-update on
+	// (the 24 h loop still installs silently). An explicit check shows a version dismissed earlier too.
+	if !updating.Load() && promptSupported() && showPromptWindow() && updCard.Available(u.Version) {
+		cardsChanged()
 	}
 	return u.Version
 }
