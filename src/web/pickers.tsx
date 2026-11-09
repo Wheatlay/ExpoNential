@@ -12,6 +12,8 @@ import { locale, t } from './i18n.ts';
 export type PickTarget = {
   number: number; statusId: number; priority: number; assigneeId: number | null; labelIds: number[];
   sprintId: number | null; hasChangeNotes: boolean;
+  /** Po zapisaniu opisu zmian doszly commity. */
+  changeNotesStale?: boolean;
   /** Czy zadanie było kiedyś w Testing (brak = nie wiadomo, nie ostrzegamy). */
   wasTested?: boolean;
 };
@@ -150,7 +152,7 @@ export function issueContextMenu(opts: {
     { key: 'sprint', label: t('Sprint'), icon: <Icon.sprint size={14} />, kbd: ['C'], submenu: () => sprintMenu(sprints, tg, update) },
     { key: 'sep1', separator: true },
     ...(opts.onMarkRead ? [{ key: 'read', label: t('Mark as read'), icon: <Icon.check size={14} />, onSelect: opts.onMarkRead }] : []),
-    ...(opts.onStart ? [{ key: 'start', label: t('Start work'), icon: <Icon.play size={14} />, onSelect: opts.onStart }] : []),
+    ...(opts.onStart ? [{ key: 'start', label: t('Open in Claude Code'), icon: <Icon.play size={14} />, onSelect: opts.onStart }] : []),
     { key: 'analyze', label: t('Request AI analysis'), icon: <Icon.sparkle size={14} />, onSelect: opts.onAnalyze },
     { key: 'sub', label: t('Add sub-issue'), icon: <Icon.sub size={14} />, onSelect: opts.onSubIssue },
     ...(opts.allIssues ? [{ key: 'relation', label: t('Add relation'), icon: <Icon.relation size={14} />, kbd: ['R'], submenu: () => relationMenu(opts.allIssues!, tg.number, undefined, meta.statuses) }] : []),

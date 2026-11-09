@@ -17,6 +17,7 @@ export const DEFAULT_PROMPTS_PL: Record<PromptKind, string> = {
   start: [
     'Pracujemy nad {id}: {title}',
     [
+      'Zacznij od EnterPlanMode (tryb planu), zanim cokolwiek przeczytasz.',
       'Najpierw pobierz zgłoszenie: get_issue {id} i list_comments {id} (opis, analiza, decyzje, komentarze).',
       'Jeśli analiza ma „Powiązane”, przeczytaj ich pole AI (sekcje Gdzie i Decyzje): tam są miejsca w kodzie i rzeczy, których nie cofać.',
       'Decyzje oznaczone „Ustalono” są już podjęte, trzymaj się ich. O pozostałe zapytaj mnie narzędziem AskUserQuestion (opcje z analizy, polecana pierwsza).',
@@ -26,7 +27,7 @@ export const DEFAULT_PROMPTS_PL: Record<PromptKind, string> = {
       '- jak to wpasowuje się w architekturę: które istniejące wzorce i podobne funkcje w repo wykorzystasz, a gdzie odchodzisz od nich i dlaczego,',
       '- co może się zepsuć: inne ekrany, kanały i dane, które korzystają z tego samego,',
       '- kroki w kolejności commitów i jak sprawdzisz każdy.',
-      'Plan pisz w trybie planu: wywołaj EnterPlanMode, a gotowy plan oddaj przez ExitPlanMode (nie jako tekst w czacie).',
+      'Gotowy plan oddaj przez ExitPlanMode (nie jako tekst w czacie).',
       'Czekaj na moje OK, zanim zaczniesz kodować.',
     ].join('\n'),
     'Commity z "{id}" w temacie. Po skończeniu: skill expo:close-ticket.',
@@ -40,6 +41,7 @@ export const DEFAULT_PROMPTS_EN: Record<PromptKind, string> = {
   start: [
     'We are working on {id}: {title}',
     [
+      'Start with EnterPlanMode (plan mode) before you read anything.',
       'First fetch the issue: get_issue {id} and list_comments {id} (description, analysis, decisions, comments).',
       'If the analysis has "Related" issues, read their AI change notes: they list places in the code and things not to undo.',
       'Decisions marked "Decided" are already made, stick to them. Ask me about the rest with the AskUserQuestion tool (options from the analysis, recommended first).',
@@ -49,7 +51,7 @@ export const DEFAULT_PROMPTS_EN: Record<PromptKind, string> = {
       '- how it fits the architecture: which existing patterns and similar functions in the repo you will reuse, and where you depart from them and why,',
       '- what could break: other screens, channels and data that use the same thing,',
       '- steps in commit order and how you will check each one.',
-      'Write the plan in plan mode: call EnterPlanMode and hand in the finished plan with ExitPlanMode (not as chat text).',
+      'Hand in the finished plan with ExitPlanMode (not as chat text).',
       'Wait for my OK before you start coding.',
     ].join('\n'),
     'Commits with "{id}" in the subject. When done: skill expo:close-ticket.',

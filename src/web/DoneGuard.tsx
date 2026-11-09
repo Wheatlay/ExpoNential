@@ -11,13 +11,13 @@ import { t } from './i18n.ts';
  * Przejście do Done z brakami (bez notatek HUMAN/AI albo z pominięciem Testing): zamiast samego
  * powiadomienia okno, które mówi, co jest nie tak, i pozwala to poprawić od razu albo świadomie zaakceptować.
  */
-type Guard = { number: number; statusId: number; extra?: IssuePatch; missingNotes: boolean; skippedTesting: boolean };
+type Guard = { number: number; statusId: number; extra?: IssuePatch; missingNotes: boolean; staleNotes: boolean; skippedTesting: boolean };
 let current: Guard | null = null;
 let subs: (() => void)[] = [];
 const emit = () => subs.forEach((s) => s());
 function close() { current = null; emit(); }
 
-export type GuardTarget = { number: number; statusId: number; hasChangeNotes: boolean; wasTested?: boolean };
+export type GuardTarget = { number: number; statusId: number; hasChangeNotes: boolean; changeNotesStale?: boolean; wasTested?: boolean };
 
 /** Zwraca true, gdy okno zostało otwarte (wtedy wywołujący nie zmienia statusu sam). */
 export function guardDone(meta: Meta, to: Status, t: GuardTarget, extra?: IssuePatch): boolean {
@@ -25,8 +25,9 @@ export function guardDone(meta: Meta, to: Status, t: GuardTarget, extra?: IssueP
   const from = meta.statuses.find((s) => s.id === t.statusId);
   const missingNotes = !t.hasChangeNotes;
   const skippedTesting = t.wasTested === false && from?.role !== 'testing';
-  if (!missingNotes && !skippedTesting) return false;
-  current = { number: t.number, statusId: to.id, extra, missingNotes, skippedTesting };
+  const staleNotes = !missingNotes && !!t.changeNotesStale;
+  if (!missingNotes && !staleNotes && !skippedTesting) return false;
+  current = { number: t.number, statusId: to.id, extra, missingNotes, staleNotes, skippedTesting };
   emit();
   return true;
 }
@@ -69,6 +70,16 @@ function DoneGuardModal({ g }: { g: Guard }) {
           <div className="guard-item">
             <b>{t('It never went through Testing.')}</b>
             <span className="hint">{t('Nobody checked it on the test server yet.')}</span>
+          </div>
+        )}
+        {g.staleNotes && (
+          <div className="guard-item">
+            <b>{t('Change notes are outdated.')}</b>
+            <span className="hint">{t('New commits since these notes were written')}</span>
+            <button className="btn sm ai-btn" style={{ alignSelf: 'flex-start' }} onClick={() => { void openInClaude(g.number, 'close'); close(); }}
+              title={t('Opens Claude Code in {editor} with the close prompt; move it to Done once the notes are in', { editor: editorName })}>
+              <Icon.sparkle size={13} /> {t('Close in Claude')}
+            </button>
           </div>
         )}
         {g.missingNotes && (

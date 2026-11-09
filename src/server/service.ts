@@ -73,6 +73,7 @@ export async function listIssues(p: Project, filter: {
     analysisClaimedDeviceName: dsql<string | null>`(select coalesce(nullif(a.label, ''), nullif(a.name, '')) from agents a where a.id = "issues"."analysis_claimed_device")`,
     hasAnalysis: dsql<boolean>`${issues.analysis} <> ''`,
     hasChangeNotes: dsql<boolean>`${issues.changeHuman} <> '' and ${issues.changeAi} <> ''`,
+    changeNotesStale: notesStale(),
     createdAt: issues.createdAt, updatedAt: issues.updatedAt, completedAt: issues.completedAt,
     labelIds: dsql<number[]>`coalesce((select array_agg(label_id) from issue_labels where issue_id = "issues"."id"), '{}')`,
     subTotal: dsql<number>`(select count(*)::int from issues c where c.parent_id = "issues"."id")`,
@@ -113,11 +114,14 @@ export async function requireIssue(p: Project, number: number, tx: Tx | typeof d
   return row;
 }
 
+/** Opis zmian nieaktualny: po jego zapisaniu doszedl commit zgloszenia (pole liczone, zrodlo prawdy to commity). */
+export const notesStale = () => dsql<boolean>`${issues.changeNotesAt} is not null and (${issues.changeHuman} <> '' or ${issues.changeAi} <> '') and exists (select 1 from issue_commits c where c.issue_id = "issues"."id" and c.committed_at > ${issues.changeNotesAt})`;
+
 export async function getIssueDetail(p: Project, number: number) {
   const issue = await requireIssue(p, number);
   const [lbl, children, cmts, act, commits, parent] = await Promise.all([
     db.select({ id: labels.id }).from(issueLabels).innerJoin(labels, eq(labels.id, issueLabels.labelId)).where(eq(issueLabels.issueId, issue.id)),
-    db.select({ number: issues.number, title: issues.title, statusId: issues.statusId, assigneeId: issues.assigneeId, priority: issues.priority, hasChangeNotes: dsql<boolean>`${issues.changeHuman} <> '' and ${issues.changeAi} <> ''` })
+    db.select({ number: issues.number, title: issues.title, statusId: issues.statusId, assigneeId: issues.assigneeId, priority: issues.priority, hasChangeNotes: dsql<boolean>`${issues.changeHuman} <> '' and ${issues.changeAi} <> ''`, changeNotesStale: notesStale() })
       .from(issues).where(eq(issues.parentId, issue.id)).orderBy(asc(issues.number)),
     db.select().from(comments).where(eq(comments.issueId, issue.id)).orderBy(asc(comments.createdAt)),
     db.select().from(activity).where(eq(activity.issueId, issue.id)).orderBy(asc(activity.createdAt)),
@@ -143,6 +147,7 @@ export async function getIssueDetail(p: Project, number: number) {
     comments: cmts,
     activity: act,
     commits: commits.map((c) => ({ ...c, envs: envsByCommit.get(c.sha) ?? [] })),
+    changeNotesStale: !!issue.changeNotesAt && !!(issue.changeHuman.trim() || issue.changeAi.trim()) && commits.some((c) => c.committedAt > issue.changeNotesAt!),
   };
 }
 
@@ -239,6 +244,7 @@ export async function createIssue(p: Project, actor: Actor, input: IssueInput & 
       analysis: input.analysis ?? '',
       changeHuman: input.changeHuman ?? '',
       changeAi: input.changeAi ?? '',
+      changeNotesAt: input.changeHuman?.trim() || input.changeAi?.trim() ? new Date() : null,
       completedAt: st.type === 'completed' ? new Date() : null,
     }).returning();
     if (input.labelIds?.length) {
@@ -279,6 +285,7 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
       if (v !== undefined && v !== cur[key]) {
         set[key] = v;
         if (key === 'description') after.prevDescription = cur.description;
+        if (key === 'changeHuman' || key === 'changeAi') set.changeNotesAt = new Date();
         await log(tx, cur.id, actor, { kind: 'field', field });
       }
     }

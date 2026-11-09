@@ -120,6 +120,24 @@ describe('github commits', () => {
     expect(await hooks.recordCommits([c], 'acme/web')).toEqual([]);
     expect((await svc.getIssueDetail(P, 4)).commits).toHaveLength(1);
   });
+
+  it('change notes go stale when a commit lands after them', async () => {
+    const i = await svc.createIssue(P, null, { title: 'notes stale' });
+    const at = (ms: number) => new Date(Date.now() + ms).toISOString();
+    const commit = (id: string, ms: number) => ({ id, message: `ACME-${i.number} work`, url: 'https://x', timestamp: at(ms), author: { name: 'K' } });
+    await hooks.recordCommits([commit('st0001', -60_000)], 'acme/web');
+    await svc.updateIssue(P, null, i.number, { changeHuman: 'Dodano X.', changeAi: '## Stan\nok' });
+    let d = await svc.getIssueDetail(P, i.number);
+    expect(d.changeNotesStale).toBe(false);
+    await new Promise((r) => setTimeout(r, 20));
+    await hooks.recordCommits([commit('st0002', 0)], 'acme/web');
+    await new Promise((r) => setTimeout(r, 20));
+    d = await svc.getIssueDetail(P, i.number);
+    expect(d.changeNotesStale).toBe(true);
+    expect((await svc.listIssues(P, {})).find((r) => r.number === i.number)?.changeNotesStale).toBe(true);
+    await svc.updateIssue(P, null, i.number, { changeHuman: 'Dodano X.\nDodano Y.' });
+    expect((await svc.getIssueDetail(P, i.number)).changeNotesStale).toBe(false);
+  });
 });
 
 describe('sprints', () => {

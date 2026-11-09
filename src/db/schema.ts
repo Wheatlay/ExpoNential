@@ -161,6 +161,8 @@ export const issues = pgTable('issues', {
   analysisError: text('analysis_error').notNull().default(''),
   changeHuman: text('change_human').notNull().default(''),
   changeAi: text('change_ai').notNull().default(''),
+  // Kiedy ostatnio zapisano opis zmian (HUMAN/AI): commit z pozniejsza data = opis nieaktualny.
+  changeNotesAt: timestamp('change_notes_at', { withTimezone: true }),
   // Need Info: kogo pytamy i o co. Czyszczone, gdy zadanie wychodzi z Need Info.
   infoFromId: integer('info_from_id').references(() => users.id, { onDelete: 'set null' }),
   // Pytanie do #tagu zamiast osoby: odpowiada każdy członek taga. Po usunięciu taga adresat znika (pytanie wisi jak "do każdego").

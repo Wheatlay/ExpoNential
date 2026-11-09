@@ -153,7 +153,7 @@ export function IssuePage({ number }: { number: number }) {
   const testingNames = (meta?.statuses ?? []).filter((s) => s.role === 'testing').map((s) => s.name);
   const target: PickTarget | null = issue ? {
     number, statusId: issue.statusId, priority: issue.priority, assigneeId: issue.assigneeId, labelIds: issue.labelIds,
-    sprintId: issue.sprintId, hasChangeNotes: !!issue.changeHuman.trim() && !!issue.changeAi.trim(),
+    sprintId: issue.sprintId, hasChangeNotes: !!issue.changeHuman.trim() && !!issue.changeAi.trim(), changeNotesStale: issue.changeNotesStale,
     wasTested: issue.activity.some((a) => a.payload.kind === 'status' && testingNames.includes(a.payload.to)),
   } : null;
 
@@ -248,12 +248,12 @@ export function IssuePage({ number }: { number: number }) {
               <Tooltip text={outdated ? outdatedReason : me?.agentOnline ? null : t('Your PC is offline')}>
                 <button className="btn sm start-btn" data-tour="start-work" disabled={outdated || !me?.agentOnline}
                   onClick={() => void startOnPc(number).catch((e: Error) => toast(e.message, 'err'))}>
-                  <Icon.play size={12} /> {t('Start work')}
+                  <Icon.play size={12} /> {t('Open in Claude Code')}
                 </button>
               </Tooltip>
             ) : (
               <button className="btn sm start-btn" data-tour="start-work" onClick={(e) => (demo ? setStartOpen(true) : local || ai?.client ? void startWork(number) : openAiHint(e.currentTarget, 'start', 3))} title={t('Opens Claude Code in {editor} with this issue, assigns you and moves it to In Progress', { editor: editorName })}>
-                <Icon.play size={12} /> {t('Start work')}
+                <Icon.play size={12} /> {t('Open in Claude Code')}
               </button>
             )}
           </div>
@@ -332,7 +332,7 @@ export function IssuePage({ number }: { number: number }) {
             </FoldBar>
             <FoldBar id="human" badge={<span className="badge human">HUMAN</span>} name={t('Summary')}
               preview={firstLine(issue.changeHuman) || t('Short summary for people, one change per line')}
-              meta={lineCount(issue.changeHuman)} required={!issue.changeHuman.trim()}>
+              meta={lineCount(issue.changeHuman)} required={!issue.changeHuman.trim()} stale={issue.changeNotesStale}>
               <div className="panel human">
                 <MarkdownField value={issue.changeHuman} onSave={(changeHuman) => save({ changeHuman })}
                   placeholder={t('One change per line')} size="sm" />
@@ -340,7 +340,7 @@ export function IssuePage({ number }: { number: number }) {
             </FoldBar>
             <FoldBar id="tech" badge={<span className="badge tech">TECH</span>} name={t('Change log')}
               preview={techSummary(issue.changeAi) || t('Commits, files, reasons, verification')}
-              meta="" required={!issue.changeAi.trim()}>
+              meta="" required={!issue.changeAi.trim()} stale={issue.changeNotesStale}>
               <div className="panel tech">
                 <MarkdownField value={issue.changeAi} onSave={(changeAi) => save({ changeAi })}
                   placeholder={t('Commits, files, reasons, verification')} />
@@ -472,7 +472,7 @@ function SubIssues({ issue, meta, done }: { issue: IssueDetail; meta: Meta; done
       </div>
       {issue.children.map((c) => {
         const st = meta.statuses.find((s) => s.id === c.statusId)!;
-        const tg: PickTarget = { number: c.number, statusId: c.statusId, priority: c.priority, assigneeId: c.assigneeId, labelIds: [], sprintId: null, hasChangeNotes: c.hasChangeNotes };
+        const tg: PickTarget = { number: c.number, statusId: c.statusId, priority: c.priority, assigneeId: c.assigneeId, labelIds: [], sprintId: null, hasChangeNotes: c.hasChangeNotes, changeNotesStale: c.changeNotesStale };
         return (
           <a key={c.number} className="sub-row" {...linkProps(`/issue/${ident(c.number)}`)}
             onContextMenu={(e) => { e.preventDefault(); openMenu({ x: e.clientX, y: e.clientY }, subMenu(c, tg)); }}>
@@ -742,8 +742,8 @@ function techSummary(md: string) {
 }
 
 /** Zwijany pasek: jedna linia podglądu, rozwinięcie zapamiętane w przeglądarce. */
-function FoldBar({ id, tour, badge, name, preview, meta, required, tools, children }: {
-  id: string; tour?: string; badge: React.ReactNode; name: string; preview: string; meta: string; required?: boolean; tools?: React.ReactNode; children: React.ReactNode;
+function FoldBar({ id, tour, badge, name, preview, meta, required, stale, tools, children }: {
+  id: string; tour?: string; badge: React.ReactNode; name: string; preview: string; meta: string; required?: boolean; stale?: boolean; tools?: React.ReactNode; children: React.ReactNode;
 }) {
   const key = `fold.${id}`;
   // Demo: analiza otwarta od początku (tam dzieje się pokaz), o ile nikt jej nie zwinął.
@@ -758,6 +758,7 @@ function FoldBar({ id, tour, badge, name, preview, meta, required, tools, childr
         <span className="fold-name">{name}</span>
         <span className="fold-preview">{open ? '' : preview}</span>
         {required && <span className="badge req" title={t('Expected before Done (not enforced)')}>{t('Missing')}</span>}
+        {!required && stale && <span className="badge req" title={t('New commits since these notes were written')}>{t('Outdated')}</span>}
         {meta && <span className="hint fold-meta">{meta}</span>}
         {tools}
       </div>

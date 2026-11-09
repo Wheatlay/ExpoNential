@@ -111,6 +111,9 @@ async function presentIssue(p: Project, number: number) {
     analysisRequested: !!d.analysisRequestedAt,
     changeHuman: d.changeHuman,
     changeAi: d.changeAi,
+    // Po zapisaniu opisu doszly commity: trzeba go uzupelnic (procedura close, tryb aktualizacji).
+    changeNotesStale: d.changeNotesStale,
+    changeNotesAt: d.changeNotesAt,
     commits: d.commits.map((c) => ({ sha: c.sha.slice(0, 9), message: c.message.split('\n')[0], deployedAt: c.deployedAt, envs: c.envs.map((e) => ({ name: e.name, at: e.at })) })),
     // Ślad z sesji Claude Code (hooki): od tego zaczyna się zamykanie zadania, zamiast przekopywać rozmowę.
     worklog: d.activity.flatMap((a) => a.payload.kind === 'worklog'
@@ -133,7 +136,7 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       'Team issue tracker (Linear-like) with projects. Issues are identified as <PROJECT KEY>-<number>, e.g. ACME-12 or WEB-3; always use the full identifier. ' +
       'Tools that create or list project settings take a project key (required when you belong to more than one project); list_projects shows your projects. ' +
       'list_issues without project lists issues of all your projects. ' +
-      'Before moving an issue to a "completed" status (Done), fill in changeHuman and changeAi with set_change_notes (the team expects them; it is not enforced). ' +
+      'Before moving an issue to a "completed" status (Done), fill in changeHuman and changeAi with set_change_notes (the team expects them; it is not enforced). changeNotesStale=true means commits landed after the notes were written: update them with the close procedure. ' +
       'Issues with analysisRequested=true are waiting for an AI analysis: list them with list_issues({analysisRequested:true}) (all your projects) and write the result with set_analysis. ' +
       'Before analyzing an issue or closing one (moving to Done), call get_procedure with name analyze or close and follow it.',
   });

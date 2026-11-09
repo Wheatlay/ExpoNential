@@ -20,6 +20,16 @@ hooki) i `commits`. Jeśli `get_issue` nie pokazuje worklogu, zbierz zmienione p
 sam z `git log` i `git diff`. Nie rekonstruuj pracy z pamięci. Czego nie ma ani w rozmowie, ani w worklogu
 czy gicie, nie wpisuj.
 
+## Aktualizacja: opis już jest
+
+Jeśli `get_issue` zwraca niepuste `changeHuman`/`changeAi` (zwłaszcza z `changeNotesStale: true`, czyli po
+zapisaniu opisu doszły commity), **nie pisz od nowa, tylko uzupełnij**:
+
+- HUMAN: zostaw dotychczasowe linie słowo w słowo (ktoś je zatwierdził), dopisz linie o nowych zmianach,
+  popraw albo usuń tylko linię, którą nowa praca unieważniła. Pokaż użytkownikowi całość z zaznaczeniem, co nowe.
+- AI: scal z istniejącym tekstem: nowe pliki w "Gdzie", nowe commity w "Commity", zaktualizuj "Stan" i "Jak sprawdzić".
+- Nowe commity to te z `commits`/`worklog` późniejsze niż `changeNotesAt`.
+
 ## Zakres: tylko to zadanie
 
 Oba teksty opisują **wyłącznie pracę z tego zgłoszenia**, nie wszystko z sesji. Inne,

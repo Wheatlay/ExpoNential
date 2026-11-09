@@ -2,6 +2,13 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.32], Agent [0.4.22] - 09.11.2026
+
+- Change notes (HUMAN/AI) are marked Outdated when a commit lands after they were written: badge on the issue, Done asks about it, MCP get_issue returns changeNotesStale.
+- close-ticket updates existing notes instead of rewriting them (approved HUMAN lines stay).
+- Agent: when a Claude Code session commits after the notes were written, it asks Claude to update them before the turn ends.
+- Start work button renamed to Open in Claude Code; the default prompt enters plan mode first.
+
 ## Server [1.3.31] - 09.11.2026
 
 - Default Start work prompt asks Claude Code to write the plan in plan mode (EnterPlanMode, then ExitPlanMode), so it opens as an editable, commentable plan instead of chat text. Projects with their own Start work template need the line added by hand.

@@ -39,7 +39,7 @@ export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; 
 export type IssueRow = {
   id: number; number: number; title: string; statusId: number; assigneeId: number | null; creatorId: number | null; priority: number;
   parentId: number | null; sprintId: number | null; sortOrder: number; analysisRequestedAt: string | null; analysisClaimedAt: string | null; analysisClaimedDeviceName?: string | null;
-  hasAnalysis: boolean; hasChangeNotes: boolean; createdAt: string; updatedAt: string; completedAt: string | null;
+  hasAnalysis: boolean; hasChangeNotes: boolean; changeNotesStale?: boolean; createdAt: string; updatedAt: string; completedAt: string | null;
   labelIds: number[]; subTotal: number; subDone: number; waitingOn: number[];
   infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null;
   unreadComments: number; wasTested: boolean;
@@ -85,11 +85,11 @@ export type AnalysisWaitReason = 'queue_off' | 'no_pc_online' | 'no_repo_pc' | '
 export type IssueDetail = {
   id: number; number: number; identifier: string; title: string; description: string; statusId: number;
   assigneeId: number | null; creatorId: number | null; priority: number; parentId: number | null; sprintId: number | null;
-  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; analysisResultDeep: boolean; analysisClaimedAt: string | null; analysisClaimedDeviceName: string | null; analysisCanRun: boolean; analysisNoCapablePc: boolean; analysisFailedAt: string | null; analysisError: string; teamQueue: boolean; projectHasRepo: boolean; analysisWaitReason: AnalysisWaitReason | null; changeHuman: string; changeAi: string;
+  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; analysisResultDeep: boolean; analysisClaimedAt: string | null; analysisClaimedDeviceName: string | null; analysisCanRun: boolean; analysisNoCapablePc: boolean; analysisFailedAt: string | null; analysisError: string; teamQueue: boolean; projectHasRepo: boolean; analysisWaitReason: AnalysisWaitReason | null; changeHuman: string; changeAi: string; changeNotesStale?: boolean;
   infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null;
   createdAt: string; updatedAt: string; completedAt: string | null; labelIds: number[];
   parent: { number: number; title: string } | null;
-  children: { number: number; title: string; statusId: number; assigneeId: number | null; priority: number; hasChangeNotes: boolean }[];
+  children: { number: number; title: string; statusId: number; assigneeId: number | null; priority: number; hasChangeNotes: boolean; changeNotesStale?: boolean }[];
   comments: { id: number; authorId: number | null; body: string; createdAt: string; updatedAt: string; replyToId: number | null }[];
   infoCommentId: number | null;
   activity: { id: number; actorId: number | null; viaAi: boolean; payload: ActivityPayload; createdAt: string }[];

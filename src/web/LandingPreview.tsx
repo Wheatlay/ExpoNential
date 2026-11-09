@@ -19,7 +19,7 @@ export function LandingPreview() {
               <div className="hint">ACME-12</div>
               <div className="issue-title">{t('Checkout fails for EU VAT numbers')}</div>
               <div className="issue-actions">
-                <span className="btn sm start-btn"><Icon.play size={12} /> {t('Start work')}</span>
+                <span className="btn sm start-btn"><Icon.play size={12} /> {t('Open in Claude Code')}</span>
               </div>
               <div className="section fold-group">
                 <div className="fold open">
