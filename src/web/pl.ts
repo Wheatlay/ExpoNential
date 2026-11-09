@@ -1124,6 +1124,7 @@ export const pl: Record<string, string> = {
   'No projects': 'Brak projektów',
   'Claude Code extension in {editor}': 'Rozszerzenie Claude Code w {editor}',
   'Prompt copied. Paste it into {editor}.': 'Skopiowano polecenie. Wklej je w {editor}.',
+  'This PC has no folder for the project repo. Set it in Settings › My AI.': 'Ten komputer nie ma folderu z repo projektu. Ustaw go w Ustawieniach › Moje AI.',
   'Could not copy the prompt. Open it from the issue in {editor}.': 'Nie udało się skopiować polecenia. Otwórz je ze zgłoszenia w {editor}.',
   'Opening in {editor}': 'Otwieram w {editor}',
   'Opening in {editor}. The prompt is also in your clipboard.': 'Otwieram w {editor}. Polecenie jest też w schowku.',

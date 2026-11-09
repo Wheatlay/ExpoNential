@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { and, asc, desc, eq, inArray, isNull, notInArray, sql as dsql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/index.ts';
-import { TAG_COLORS, apiTokens, inboxItems, issues, labels, meetings, projectMembers, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
+import { TAG_COLORS, agentRepos, apiTokens, inboxItems, issues, labels, meetings, projectMembers, projects, userTagMembers, userTags, userViews, users } from '../db/schema.ts';
 import { clearSessionCookie, createApiToken, requireAdmin, requireUser } from './auth.ts';
 import * as inv from './invites.ts';
 import { hashPassword, loginLimiter, passwordProblem, verifyPassword } from './password.ts';
@@ -203,9 +203,16 @@ export async function registerApi(app: FastifyInstance) {
       const prompt = await renderPrompt(p, number, 'start');
       const mine = await ag.agentsLite(req.user!);
       // Kolejka jest per osoba, nie per PC: przy dwóch PC online edytor mógłby się otworzyć na złym, więc wtedy link w przeglądarce.
-      if (mine.filter((a) => a.online && a.opensEditor).length !== 1) return { viaAgent: false, prompt };
+      const online = mine.filter((a) => a.online && a.opensEditor);
+      if (online.length !== 1) return { viaAgent: false, prompt };
+      // Agent bez działającego folderu tego repo pominąłby prośbę po cichu: wtedy link w przeglądarce i informacja o repo.
+      const [repo] = await db.select({ status: agentRepos.status }).from(agentRepos)
+        .where(and(eq(agentRepos.agentId, online[0].id), eq(agentRepos.projectId, p.id)));
+      if (repo?.status !== 'ok') return { viaAgent: false, prompt, noRepo: true };
       const [u] = await db.select({ editor: users.editor }).from(users).where(eq(users.id, req.user!.id));
-      ag.queueOpenRequest(req.user!.id, { editor: u?.editor ?? 'vscode', repo: p.githubRepo, prompt });
+      // Windows obcina linki do aplikacji powyżej ~2000 znaków (jak MAX_LINK w przeglądarce): wtedy wersja ze skróconymi polami.
+      const agentPrompt = encodeURIComponent(prompt).length > 1850 ? await renderPrompt(p, number, 'start', true) : prompt;
+      ag.queueOpenRequest(req.user!.id, { editor: u?.editor ?? 'vscode', repo: p.githubRepo, prompt: agentPrompt });
       return { viaAgent: true };
     });
     // Telefon zleca otwarcie Claude Code na moim komputerze (agent odbierze w kilka sekund).

@@ -236,7 +236,7 @@ func discoverRepos(a *Auth) int {
 	have := loadConfig().Repos
 	var todo []Project
 	for _, p := range list {
-		if _, ok := have[p.Key]; !ok && p.repo() != "" && projKeyRe.MatchString(p.Key) {
+		if e, ok := have[p.Key]; (!ok || staleAuto(e)) && p.repo() != "" && projKeyRe.MatchString(p.Key) {
 			todo = append(todo, p)
 		}
 	}
@@ -265,7 +265,7 @@ func discoverRepos(a *Auth) int {
 	n := 0
 	updateConfig(func(c *Config) {
 		for k, p := range found {
-			if _, ok := c.Repos[k]; !ok {
+			if e, ok := c.Repos[k]; !ok || staleAuto(e) {
 				c.Repos[k] = RepoEntry{Path: p, Source: "auto"}
 				logf("repo discovery: %s -> %s", k, p)
 				n++
@@ -276,6 +276,16 @@ func discoverRepos(a *Auth) int {
 }
 
 var lastDiscoverSig string
+
+// staleAuto: a mapping discovery made itself whose folder is gone (moved or deleted); discovery may replace it.
+// Manual and cloned mappings are never replaced.
+func staleAuto(e RepoEntry) bool {
+	if e.Source != "auto" {
+		return false
+	}
+	st, err := os.Stat(e.Path)
+	return err != nil || !st.IsDir()
+}
 
 // codexConfigPath: Codex keeps folders the user trusted as [projects."<path>"] tables in $CODEX_HOME/config.toml.
 func codexConfigPath() string {

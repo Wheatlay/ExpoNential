@@ -74,7 +74,7 @@ export const isTouchDevice = () => matchMedia('(pointer: coarse)').matches;
 
 /** "Start work": agent na moim komputerze otwiera edytor z poleceniem (albo przeglądarka otwiera link), przypisuje do mnie i przesuwa do In Progress (gdy jeszcze nie zaczęte). */
 export async function startWork(number: number) {
-  const res = api<{ viaAgent: true } | { viaAgent: false; prompt: string }>('/api/start-work', { method: 'POST', body: { issueId: ident(number) } });
+  const res = api<{ viaAgent: true } | { viaAgent: false; prompt: string; noRepo?: boolean }>('/api/start-work', { method: 'POST', body: { issueId: ident(number) } });
   // Schowek musi dostać zapis jeszcze w geście kliknięcia; gdy poleceniem zajmuje się agent, obietnica odrzuca i schowek zostaje nietknięty.
   const copied = copyLater(res.then((r) => { if (r.viaAgent) throw new Error('agent'); return r.prompt; }));
   const [r, d, meta, me] = await Promise.all([
@@ -89,7 +89,8 @@ export async function startWork(number: number) {
   else {
     const opened = await openPrompt(number, 'start', editor, r.prompt);
     clip = await copied;
-    if (!opened) toast(t(clip ? 'Prompt copied. Paste it into {editor}.' : 'Could not copy the prompt. Open it from the issue in {editor}.', { editor: EDITOR_NAMES[editor] }));
+    if (r.noRepo) toast(t('This PC has no folder for the project repo. Set it in Settings › My AI.'), 'warn');
+    else if (!opened) toast(t(clip ? 'Prompt copied. Paste it into {editor}.' : 'Could not copy the prompt. Open it from the issue in {editor}.', { editor: EDITOR_NAMES[editor] }));
     else toast(t(clip ? 'Opening in {editor}. The prompt is also in your clipboard.' : 'Opening in {editor}', { editor: EDITOR_NAMES[editor] }));
   }
   const cur = meta.statuses.find((s) => s.id === d.statusId);

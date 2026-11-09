@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.28], Agent [0.4.19] - 09.11.2026
+
+- Start work no longer does nothing when your PC has no working folder for the project repo: the agent used to skip the request silently while the browser said "Opening in VS Code". Now the browser opens the editor link itself, copies the prompt and warns that the repo folder needs to be set in Settings › My AI.
+- Start work through the agent shortens long prompts the same way as the browser link (Windows cuts app links over ~2000 characters).
+- Agent: a repo folder found automatically and later moved (e.g. into another folder on the Desktop) is found again at its new place on the next scan, instead of staying broken.
+
 ## Server [1.3.27] - 06.11.2026
 
 - Duplicates: new relation "duplicate of" (issue page, Add relation menu, MCP `set_relation` with `duplicate_of` / `duplicated_by`, `get_issue` returns duplicateOf / duplicatedBy). Marking an issue as a duplicate moves it to the project's Duplicate status. Dragging a card to the Duplicate column or picking that status first asks for the original; closing the list changes nothing. Stored in issue_relations with kind `duplicate` (no migration).
