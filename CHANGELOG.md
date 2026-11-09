@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.31] - 09.11.2026
+
+- Default Start work prompt asks Claude Code to write the plan in plan mode (EnterPlanMode, then ExitPlanMode), so it opens as an editable, commentable plan instead of chat text. Projects with their own Start work template need the line added by hand.
+
 ## Server [1.3.30], Agent [0.4.21] - 09.11.2026
 
 - Start work through the agent keeps at most one waiting request per person: clicking several times before the PC picks it up opens one Claude Code tab (the last click), not one per click.
