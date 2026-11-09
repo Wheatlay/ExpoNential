@@ -127,6 +127,10 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 
 - **Moved repo folders are found again:** a mapping made by discovery (`source: auto`) whose folder no longer exists counts as missing, so the next discovery pass maps the project to the folder's new place. Manual and cloned mappings are never replaced.
 
+## 0.4.21
+
+- **Gone folders are replaced whatever their source:** a manual or cloned mapping whose folder no longer exists counts as missing too, so discovery maps the project to a found clone (`source: auto`). Mappings to existing folders are never replaced.
+
 ## 0.4.20
 
 - **Discovery on events:** the server queues a `rescan` repo action when Start work or an analysis finds this PC without a working folder for the project; with agent start and the Rescan button that covers moved folders. The timed pass runs every 60 minutes as a safety net (was 5).

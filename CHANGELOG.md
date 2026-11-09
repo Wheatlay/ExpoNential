@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.30], Agent [0.4.21] - 09.11.2026
+
+- Start work through the agent keeps at most one waiting request per person: clicking several times before the PC picks it up opens one Claude Code tab (the last click), not one per click.
+- Agent: rescan also replaces a repo folder set by hand (Choose folder) or cloned when that folder no longer exists; a folder that exists is never replaced.
+
 ## Server [1.3.29], Agent [0.4.20] - 09.11.2026
 
 - Start work when your PC has no folder for the project repo no longer opens Claude Code in whatever editor window was active (often another repo): it only copies the prompt, shows the warning, opens Settings › My AI at the PC's Repos and asks the agent to rescan right away.

@@ -156,8 +156,9 @@ export async function setConsentPending(user: User, issueId: number, pending: bo
 export type OpenRequest = { editor: string; repo: string; prompt: string };
 const OPEN_REQUEST_TTL_MS = 5 * 60_000;
 const openRequests = new Map<number, (OpenRequest & { at: number })[]>();
+/** Czeka najwyżej jedna prośba na osobę: kolejne kliknięcia (np. gdy agent jeszcze nie odebrał) zastępują ją, zamiast otworzyć kilka kart naraz. */
 export function queueOpenRequest(userId: number, req: OpenRequest) {
-  openRequests.set(userId, [...(openRequests.get(userId) ?? []), { ...req, at: Date.now() }].slice(-10));
+  openRequests.set(userId, [{ ...req, at: Date.now() }]);
 }
 /** Zwraca i czyści kolejkę osoby (starsze niż 5 minut przepadają). */
 export function takeOpenRequests(userId: number): OpenRequest[] {

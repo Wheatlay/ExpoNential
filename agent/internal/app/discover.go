@@ -277,10 +277,10 @@ func discoverRepos(a *Auth) int {
 
 var lastDiscoverSig string
 
-// staleAuto: a mapping discovery made itself whose folder is gone (moved or deleted); discovery may replace it.
-// Manual and cloned mappings are never replaced.
+// staleAuto: a mapping whose folder is gone (moved or deleted), whatever made it (discovery, the user, a clone).
+// It points nowhere, so discovery may replace it. A mapping to an existing folder is never replaced.
 func staleAuto(e RepoEntry) bool {
-	if e.Source != "auto" {
+	if e.Path == "" {
 		return false
 	}
 	st, err := os.Stat(e.Path)
