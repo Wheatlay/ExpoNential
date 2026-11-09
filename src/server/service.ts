@@ -95,6 +95,8 @@ export async function listIssues(p: Project, filter: {
           where ii.issue_id = "issues"."id" and ii.user_id = ${filter.viewerId}))
       and c.created_at > coalesce((select v.seen_at from issue_views v where v.user_id = ${filter.viewerId} and v.issue_id = "issues"."id"),
         (select u.created_at from users u where u.id = ${filter.viewerId}))) else 0 end)` : dsql<number>`0`,
+    // Druga strona relacji: otwarte zadania, na które to (otwarte) zadanie czeka po drugiej stronie.
+    blocking: dsql<number[]>`coalesce((select array_agg(w.number order by w.number) from issue_relations r join issues w on w.id = r.to_issue_id join statuses ws on ws.id = w.status_id join statuses ms on ms.id = "issues"."status_id" where r.kind = 'blocks' and r.from_issue_id = "issues"."id" and ws.type in ('backlog','unstarted','started') and ms.type in ('backlog','unstarted','started')), '{}')`,
     waitingOn: dsql<number[]>`coalesce((select array_agg(b.number order by b.number) from issue_relations r join issues b on b.id = r.from_issue_id join statuses bs on bs.id = b.status_id where r.kind = 'blocks' and r.to_issue_id = "issues"."id" and bs.type in ('backlog','unstarted','started')), '{}')`,
     subDone: dsql<number>`(select count(*)::int from issues c join statuses s on s.id = c.status_id where c.parent_id = "issues"."id" and s.type in ('completed','canceled','duplicate'))`,
   }).from(issues)

@@ -235,6 +235,7 @@ export const pl: Record<string, string> = {
   'No issues match the current filters.': 'Żadne zgłoszenie nie pasuje do filtrów.',
   '{name} is moving': '{name} przesuwa',
   'Waiting on {ids}': 'Czeka na {ids}',
+  'Blocks {id}': 'Blokuje {id}',
   '{n} new': '{n} nowe',
   'Asked you': 'Pytanie do ciebie',
   'Asked everyone': 'Pytanie do wszystkich',

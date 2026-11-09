@@ -720,6 +720,23 @@ function DraggableCard({ issue, meta, statusId, rowKey, onHover, onContext, move
   );
 }
 
+/** Relacja na karcie (czeka na / blokuje) z ✕ jak na etykiecie: usuwa od razu, łatwo dodać z powrotem. */
+function RelationPill({ number, other, kind }: { number: number; other: number; kind: 'waits_on' | 'blocks' }) {
+  const label = kind === 'waits_on' ? t('Waiting on {ids}', { ids: ident(other) }) : t('Blocks {id}', { id: ident(other) });
+  const remove = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    void api(`/api/issues/${ident(number)}/relations`, { method: 'DELETE', body: { kind, other } })
+      .then(() => { void queryClient.invalidateQueries({ queryKey: ['issues'] }); void queryClient.invalidateQueries({ queryKey: ['issue'] }); })
+      .catch((err: Error) => toast(err.message, 'err'));
+  };
+  return (
+    <span className={`pill rel ${kind === 'waits_on' ? 'blocked' : ''}`} title={label}>
+      <Icon.blocked size={12} /> {label}
+      <button className="rel-x" aria-label={t('Remove relation')} title={t('Remove relation')} onPointerDown={(e) => e.stopPropagation()} onClick={remove}><Icon.close size={11} /></button>
+    </span>
+  );
+}
+
 export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; meta: Meta; dragging?: boolean; overlay?: boolean }) {
   const assignee = meta.users.find((u) => u.id === issue.assigneeId);
   const labels = issue.labelIds.map((id) => meta.labels.find((l) => l.id === id)).filter((l) => !!l);
@@ -750,11 +767,8 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
       </div>
       <div className="card-title" title={issue.title}><InlineCode text={issue.title} /></div>
       <div className="card-meta">
-        {show.blocked && issue.waitingOn.length > 0 && (
-          <span className="pill blocked" title={t('Waiting on {ids}', { ids: issue.waitingOn.map((n) => ident(n)).join(', ') })}>
-            <Icon.blocked size={12} /> {t('Waiting on {ids}', { ids: issue.waitingOn.map((n) => ident(n)).join(', ') })}
-          </span>
-        )}
+        {show.blocked && issue.waitingOn.map((n) => <RelationPill key={`w${n}`} number={issue.number} other={n} kind="waits_on" />)}
+        {show.blocked && (issue.blocking ?? []).map((n) => <RelationPill key={`b${n}`} number={issue.number} other={n} kind="blocks" />)}
         {issue.unreadComments > 0 && (
           <span className="pill unread" title={tn(issue.unreadComments, '{n} new comment since you last opened it', '{n} new comments since you last opened it')}>
             <Icon.comment size={12} /> {t('{n} new', { n: issue.unreadComments })}
