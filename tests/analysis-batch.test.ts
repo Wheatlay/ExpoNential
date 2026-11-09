@@ -203,6 +203,10 @@ describe('me editor and start-work', () => {
     expect(off.viaAgent).toBe(false);
     expect(off.prompt).toContain(`BAT-${issue.number}`);
     await dbmod.db.insert(schema.agents).values({ id: '22222222-2222-4222-8222-222222222222', userId: ids.mia, version: '9.9.9', lastSeenAt: new Date() });
+    // PC online but without a folder for the repo: the agent would skip it, so the browser link with a warning.
+    const noRepo = (await call('mia', 'POST', '/api/start-work', { issueId: `BAT-${issue.number}` })).json();
+    expect(noRepo).toMatchObject({ viaAgent: false, noRepo: true });
+    await dbmod.db.insert(schema.agentRepos).values({ agentId: '22222222-2222-4222-8222-222222222222', projectId: P.id, path: 'C:/r', status: 'ok' });
     const on = (await call('mia', 'POST', '/api/start-work', { issueId: `BAT-${issue.number}` })).json();
     expect(on).toEqual({ viaAgent: true });
     const q = (await call('mia', 'GET', '/api/agent/open-requests')).json();
