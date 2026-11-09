@@ -22,7 +22,7 @@ const (
 	maxCandidates = 300
 	maxChildren   = 50
 	maxPathLen    = 260
-	discoverEvery = 5 * time.Minute
+	discoverEvery = 60 * time.Minute // safety net; rescans come on events (agent start, Rescan, Start work or analysis without the repo)
 	foundEvery    = 5 * time.Minute
 	maxFound      = 100
 )

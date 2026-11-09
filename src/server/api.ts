@@ -208,7 +208,11 @@ export async function registerApi(app: FastifyInstance) {
       // Agent bez działającego folderu tego repo pominąłby prośbę po cichu: wtedy link w przeglądarce i informacja o repo.
       const [repo] = await db.select({ status: agentRepos.status }).from(agentRepos)
         .where(and(eq(agentRepos.agentId, online[0].id), eq(agentRepos.projectId, p.id)));
-      if (repo?.status !== 'ok') return { viaAgent: false, prompt, noRepo: true };
+      if (repo?.status !== 'ok') {
+        // Folder mógł się przenieść: agent od razu skanuje, zamiast czekać na swoje 5 minut.
+        ag.queueRepoAction(online[0].id, { kind: 'rescan', project: '' });
+        return { viaAgent: false, prompt, noRepo: true };
+      }
       const [u] = await db.select({ editor: users.editor }).from(users).where(eq(users.id, req.user!.id));
       // Windows obcina linki do aplikacji powyżej ~2000 znaków (jak MAX_LINK w przeglądarce): wtedy wersja ze skróconymi polami.
       const agentPrompt = encodeURIComponent(prompt).length > 1850 ? await renderPrompt(p, number, 'start', true) : prompt;
@@ -562,6 +566,7 @@ export async function registerApi(app: FastifyInstance) {
       // Analiza czyta kod repo, więc projekt bez repo nie ma czego analizować.
       if (!p.githubRepo) return reply.code(400).send({ error: 'no_repo' });
       await svc.requestAnalysis(p, req.user, number, b.deep, b.local);
+      void ag.rescanWhereRepoMissing(p.id).catch(() => {});
       return { ok: true };
     });
     // Agent na PC przejmuje zlecenie przed uruchomieniem (409, gdy zajęte albo nieaktualne) i oddaje je po błędzie.

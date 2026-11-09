@@ -2,6 +2,7 @@ import { api, queryClient, useMe, type Editor, type IssueDetail, type Me, type M
 import { toast } from './toast.ts';
 import { ident } from './project.ts';
 import { t } from './i18n.ts';
+import { openAgentRepos } from './settingsNav.ts';
 
 type PromptKind = 'start' | 'analyze' | 'close';
 
@@ -87,9 +88,10 @@ export async function startWork(number: number) {
   let clip = false;
   if (r.viaAgent) toast(t('Opening in {editor}', { editor: EDITOR_NAMES[editor] }));
   else {
-    const opened = await openPrompt(number, 'start', editor, r.prompt);
+    // Bez folderu repo na PC link trafiłby do ostatnio aktywnego okna edytora (zwykle inne repo): tylko schowek i ostrzeżenie.
+    const opened = r.noRepo ? false : await openPrompt(number, 'start', editor, r.prompt);
     clip = await copied;
-    if (r.noRepo) toast(t('This PC has no folder for the project repo. Set it in Settings › My AI.'), 'warn');
+    if (r.noRepo) { toast(t('This PC has no folder for the project repo. Set it in Settings › My AI.'), 'warn'); openAgentRepos(); }
     else if (!opened) toast(t(clip ? 'Prompt copied. Paste it into {editor}.' : 'Could not copy the prompt. Open it from the issue in {editor}.', { editor: EDITOR_NAMES[editor] }));
     else toast(t(clip ? 'Opening in {editor}. The prompt is also in your clipboard.' : 'Opening in {editor}', { editor: EDITOR_NAMES[editor] }));
   }

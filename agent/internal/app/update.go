@@ -287,6 +287,8 @@ func swapExe(exe, newFile string) error {
 	return nil
 }
 
+var errAlreadyUpdating = errors.New("already updating")
+
 // doUpdate downloads, verifies, swaps and restarts. On success it does not return (the process quits).
 // onProgress and onInstalling may be nil.
 func doUpdate(onProgress func(pct int), onInstalling func()) error {
@@ -295,7 +297,7 @@ func doUpdate(onProgress func(pct int), onInstalling func()) error {
 		return errors.New("no update")
 	}
 	if !updating.CompareAndSwap(false, true) {
-		return errors.New("already updating")
+		return errAlreadyUpdating
 	}
 	defer updating.Store(false)
 	exe, err := os.Executable()
@@ -394,7 +396,7 @@ func autoInstall(u *updateInfo) {
 	logf("auto-update to %s", u.Version)
 	go func() {
 		if err := doUpdate(func(int) {}, func() {}); err != nil {
-			if err.Error() == "already updating" {
+			if errors.Is(err, errAlreadyUpdating) {
 				return // another path started it already
 			}
 			logf("auto-update failed: %s", err)
@@ -426,6 +428,14 @@ func startUpdate() {
 				cardsChanged()
 			}
 		})
+		if errors.Is(err, errAlreadyUpdating) {
+			// The silent auto-update (started by "Check for updates") is already installing: it ends in a restart,
+			// so the card shows "installing" instead of a false failure.
+			if updCard.Installing() {
+				cardsChanged()
+			}
+			return
+		}
 		if err != nil {
 			logf("update failed: %s", err)
 			updCard.Fail()

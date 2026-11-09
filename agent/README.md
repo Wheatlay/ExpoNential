@@ -127,6 +127,11 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 
 - **Moved repo folders are found again:** a mapping made by discovery (`source: auto`) whose folder no longer exists counts as missing, so the next discovery pass maps the project to the folder's new place. Manual and cloned mappings are never replaced.
 
+## 0.4.20
+
+- **Discovery on events:** the server queues a `rescan` repo action when Start work or an analysis finds this PC without a working folder for the project; with agent start and the Rescan button that covers moved folders. The timed pass runs every 60 minutes as a safety net (was 5).
+- **Update card:** clicking Update while the auto-update started by "Check for updates" is already installing shows the install in progress instead of "update failed".
+
 
 - **Found repos:** every poll sends `found` (JSON array of lowercase `owner/name` GitHub slugs from the git configs of the folders opened in Claude Code, VS Code, Cursor and Codex; max 100). The list is cached and refreshed in the background at most every 5 minutes.
 - **Discovery** runs every 5 minutes (was 60); the unchanged-history shortcut still keeps it cheap.

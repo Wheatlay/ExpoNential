@@ -197,6 +197,15 @@ export async function requestRepoAction(user: User, agentId: string, a: RepoActi
   return { ok: true };
 }
 
+/** Zlecenie analizy: komputery członków online bez działającego repo projektu skanują od razu (folder mógł się przenieść). */
+export async function rescanWhereRepoMissing(projectId: number) {
+  const rows = await db.execute<{ id: string }>(dsql`
+    select a.id from agents a join project_members m on m.user_id = a.user_id and m.project_id = ${projectId}
+    where a.last_seen_at > now() - make_interval(secs => ${ONLINE_MS / 1000})
+      and not exists (select 1 from agent_repos r where r.agent_id = a.id and r.project_id = ${projectId} and r.status = 'ok')`);
+  for (const r of rows) queueRepoAction(r.id, { kind: 'rescan', project: '' });
+}
+
 export type WaitReason = 'queue_off' | 'no_pc_online' | 'no_repo_pc' | 'awaiting_consent';
 type WaitRow = { analysisRequestedAt: Date | string | null; analysisClaimedAt: Date | string | null; analysisFailedAt: Date | string | null; analysisRequestedBy: number | null; analysisConsentPendingAt: Date | string | null };
 

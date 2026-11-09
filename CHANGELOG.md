@@ -2,6 +2,13 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.29], Agent [0.4.20] - 09.11.2026
+
+- Start work when your PC has no folder for the project repo no longer opens Claude Code in whatever editor window was active (often another repo): it only copies the prompt, shows the warning, opens Settings › My AI at the PC's Repos and asks the agent to rescan right away.
+- Requesting an analysis asks the online PCs of project members that lack the repo to rescan right away.
+- Agent: repo discovery is event-driven (agent start, Rescan, Start work or analysis without the repo); the timed pass runs every 60 minutes as a safety net (was 5).
+- Agent: clicking Update while the automatic update started by "Check for updates" is already installing showed "update failed" before the restart; the card now shows the install in progress.
+
 ## Server [1.3.28], Agent [0.4.19] - 09.11.2026
 
 - Start work no longer does nothing when your PC has no working folder for the project repo: the agent used to skip the request silently while the browser said "Opening in VS Code". Now the browser opens the editor link itself, copies the prompt and warns that the repo folder needs to be set in Settings › My AI.
