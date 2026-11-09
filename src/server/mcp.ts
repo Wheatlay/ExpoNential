@@ -117,7 +117,7 @@ async function presentIssue(p: Project, number: number) {
     commits: d.commits.map((c) => ({ sha: c.sha.slice(0, 9), message: c.message.split('\n')[0], deployedAt: c.deployedAt, envs: c.envs.map((e) => ({ name: e.name, at: e.at })) })),
     // Ślad z sesji Claude Code (hooki): od tego zaczyna się zamykanie zadania, zamiast przekopywać rozmowę.
     worklog: d.activity.flatMap((a) => a.payload.kind === 'worklog'
-      ? [{ by: userName(a.actorId), repo: a.payload.repo, startedAt: a.createdAt, updatedAt: a.payload.updatedAt, files: a.payload.files, commits: a.payload.commits, prompts: a.payload.prompts }]
+      ? [{ by: userName(a.actorId), repo: a.payload.repo, startedAt: a.createdAt, updatedAt: a.payload.updatedAt, files: a.payload.files, commits: a.payload.commits }]
       : []),
     createdAt: d.createdAt,
     updatedAt: d.updatedAt,
@@ -168,7 +168,7 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
   server.registerPrompt('analyze_issue', { description: procedures.analyze.title, argsSchema: { id: z.string().describe('Issue identifier, e.g. ACME-12') } }, ({ id }) => promptFor('analyze', id));
   server.registerPrompt('close_issue', { description: procedures.close.title, argsSchema: { id: z.string().describe('Issue identifier, e.g. ACME-12') } }, ({ id }) => promptFor('close', id));
 
-  tool('get_issue', 'Get an issue by identifier (e.g. ACME-12) with description, AI analysis, HUMAN/AI change notes, sub-issues, commits and the Claude Code worklog (files, commits, prompts per session).',
+  tool('get_issue', 'Get an issue by identifier (e.g. ACME-12) with description, AI analysis, HUMAN/AI change notes, sub-issues, commits and the Claude Code worklog (files and commits per session).',
     { id: z.string() }, async ({ id }) => { const { p, n } = await ref(me, id); return presentIssue(p, n); });
 
   tool('list_projects', 'List projects you are a member of (key, name, your role).', {}, async () =>

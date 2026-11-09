@@ -15,7 +15,7 @@ wielokrotne "ten task"), użyj go bez dopytywania. Dopytaj tylko, gdy naprawdę 
 
 **Skąd fakty.** Podstawą jest ta rozmowa. Gdy nie obejmuje całej pracy (zamykasz w nowej sesji,
 rozmowa była kompaktowana, pracowano w kilku sesjach albo robił to ktoś inny), weź z
-`get_issue` pole `worklog` (pliki, commity, polecenia z każdej sesji, zbierane przez
+`get_issue` pole `worklog` (pliki i commity z każdej sesji, zbierane przez
 hooki) i `commits`. Jeśli `get_issue` nie pokazuje worklogu, zbierz zmienione pliki i commity
 sam z `git log` i `git diff`. Nie rekonstruuj pracy z pamięci. Czego nie ma ani w rozmowie, ani w worklogu
 czy gicie, nie wpisuj.
@@ -129,7 +129,7 @@ Zasady:
 - **Źródło faktów:** rozmowa, a gdy jej nie ma albo nie obejmuje całej pracy: `worklog` i
   `commits` z `get_issue` oraz `git show --stat <sha>` dla tych commitów (gdy nie ma worklogu:
   `git log` i `git diff`). Worklog ma pliki,
-  commity i polecenia, ale **nie ma powodów decyzji ani wyników testów**: czego nie wiesz, napisz
+  i commity, ale **nie ma powodów decyzji ani wyników testów**: czego nie wiesz, napisz
   wprost ("Weryfikacja: nie zapisano w sesji"), nie zgaduj.
 - Hashe tylko prawdziwe, z gita albo z `commits` zgłoszenia. Tylko commity tego zgłoszenia.
 - **Ścieżki tylko pełne, od katalogu głównego repo**, skopiowane z `git show --stat` albo z

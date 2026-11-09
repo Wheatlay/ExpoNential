@@ -426,7 +426,6 @@ export const pl: Record<string, string> = {
   'deployed': 'wdrożone',
   'worked in Claude Code': 'pracował(a) w Claude Code',
   'on': 'w',
-  'Asked': 'Polecenia',
   'Files': 'Pliki',
   '{n} file|{n} files': '{n} plik|{n} pliki|{n} plików',
   '{n} commit|{n} commits': '{n} commit|{n} commity|{n} commitów',

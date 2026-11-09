@@ -526,7 +526,6 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta) {
     case 'worklog': return (
       <details className="worklog">
         <summary>{t('worked in Claude Code')}{p.repo ? <> {t('on')} <b>{p.repo}</b></> : ''}: {tn(p.files.length, '{n} file', '{n} files')}, {tn(p.commits.length, '{n} commit', '{n} commits')}</summary>
-        {p.prompts.length > 0 && <><h5>{t('Asked')}</h5><ul>{p.prompts.map((x, i) => <li key={i}>{x}</li>)}</ul></>}
         {p.commits.length > 0 && <><h5>{t('Commits')}</h5><ul>{p.commits.map((c) => <li key={c.sha}><code>{c.sha.slice(0, 7)}</code> {c.message}</li>)}</ul></>}
         {p.files.length > 0 && <><h5>{t('Files')}</h5><ul>{p.files.map((f) => <li key={f}><code>{f}</code></li>)}</ul></>}
       </details>

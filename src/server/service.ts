@@ -517,7 +517,8 @@ export async function upsertWorklog(p: Project, actor: Actor, number: number, w:
     kind: 'worklog', session: w.session, repo: w.repo || prev?.repo || '',
     files: [...new Set([...(prev?.files ?? []), ...w.files])].slice(0, 200),
     commits: commits.slice(-50),
-    prompts: [...(prev?.prompts ?? []), ...w.prompts.filter((x) => !prev?.prompts.includes(x))].slice(-10),
+    // Treści rozmowy nie zapisujemy (prywatność): stare agenty dalej je wysyłają, serwer je odrzuca.
+    prompts: [],
     updatedAt: new Date().toISOString(),
   };
   if (row) await db.update(activity).set({ payload }).where(eq(activity.id, row.id));

@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.33], Agent [0.4.24] - 09.11.2026
+
+- The Claude Code worklog no longer keeps the conversation: the "Asked" list is gone from the issue history and MCP, the server drops prompts sent by older agents and a migration erases the stored ones; the agent stops collecting them.
+
 ## Agent [0.4.23] - 09.11.2026
 
 - Check for updates no longer installs by itself: it shows the update card, the install starts from its Update button.

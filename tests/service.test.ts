@@ -108,7 +108,7 @@ describe('claude code worklog', () => {
     await send('s2', ['c.ts']);
     const logs = (await svc.getIssueDetail(P, i.number)).activity.flatMap((a) => (a.payload.kind === 'worklog' ? [a.payload] : []));
     expect(logs).toHaveLength(2);
-    expect(logs[0]).toMatchObject({ session: 's1', files: ['a.ts', 'b.ts'], commits: [{ sha: 'abc' }], prompts: ['zażółć'] });
+    expect(logs[0]).toMatchObject({ session: 's1', files: ['a.ts', 'b.ts'], commits: [{ sha: 'abc' }], prompts: [] }); // treści rozmowy serwer nie zapisuje
     expect(logs[1]).toMatchObject({ session: 's2', files: ['c.ts'] });
   });
 });

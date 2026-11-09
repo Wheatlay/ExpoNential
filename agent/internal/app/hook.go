@@ -232,24 +232,7 @@ func hookMain(event string) {
 			st.Dirty = len(st.Files) > 0
 			context = issueContext(next)
 		}
-		if st.Issue != "" {
-			p := cut(wsRe.ReplaceAllString(prompt, " "), 300)
-			if p != "" {
-				dup := false
-				for _, x := range st.Prompts {
-					if x == p {
-						dup = true
-					}
-				}
-				if !dup {
-					st.Prompts = append(st.Prompts, p)
-					if len(st.Prompts) > 10 {
-						st.Prompts = st.Prompts[len(st.Prompts)-10:]
-					}
-					st.Dirty = true
-				}
-			}
-		}
+		// The conversation itself is never collected (privacy): the worklog carries only files and commits.
 		save()
 		if context != "" {
 			var buf bytes.Buffer
@@ -579,7 +562,7 @@ func syncWorklog(st *hookState, session string) {
 		files = append(files, cut(f, 300))
 	}
 	// Server limits (200 files, 50 commits): an oversized batch would be rejected whole.
-	body, _ := json.Marshal(map[string]any{"session": session, "repo": cut(st.Repo, 100), "files": files, "commits": lastN(st.Commits, 50), "prompts": st.Prompts})
+	body, _ := json.Marshal(map[string]any{"session": session, "repo": cut(st.Repo, 100), "files": files, "commits": lastN(st.Commits, 50), "prompts": []string{}})
 	_, ok, err := hookCall("POST", "/api/issues/"+st.Issue+"/worklog", body)
 	if err != nil {
 		hlog(fmt.Sprintf("sync %s: %s", st.Issue, err))

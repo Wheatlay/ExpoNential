@@ -30,7 +30,7 @@ No sign-up: the landing page starts a guided 5-step tour on issue ACME-12 (Analy
 Three optional layers (see [docs/agent.md](docs/agent.md) for what each installs and how to remove it; release notes in [CHANGELOG.md](CHANGELOG.md)):
 
 - **MCP server** at `/mcp` over Streamable HTTP, signed in with OAuth in the browser (API tokens still work). Tools list, read and save issues, comments, relations, analyses and change notes; the analyze and close procedures are served as `get_procedure` and MCP prompts.
-- **Claude Code plugin served by the tracker itself** (`plugin/`): thin skills that fetch the procedure from the server, plus a worklog hook that reports prompts, files and commits. Every machine gets the same version from the server.
+- **Claude Code plugin served by the tracker itself** (`plugin/`): thin skills that fetch the procedure from the server, plus a worklog hook that reports files and commits (never the conversation). Every machine gets the same version from the server.
 - **Structured analysis** via the `set_analysis` tool: sections and decisions with options and a recommendation, rendered in the UI as buttons.
 - **Start work** puts a ready prompt (editable per project) into Claude Code.
 - **Commits** are linked to issues by ID (`ACME-12`) from a GitHub push webhook, only for the repository configured in the project.
