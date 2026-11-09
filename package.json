@@ -2,7 +2,7 @@
   "name": "exponential",
   "description": "Because your progress should be exponential, not linear.",
   "license": "MIT",
-  "version": "1.3.33",
+  "version": "1.3.34",
   "private": true,
   "type": "module",
   "scripts": {

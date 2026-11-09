@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.34] - 09.11.2026
+
+- Activity reads easier: no empty "worked in Claude Code" entries, no separate commit line when the commit is already in a Claude Code entry (linked there), one avatar per series of one person, minor changes dimmed, field edits indented, sparkle icon for Claude work.
+- Testing and Done cards (and the issue header) show the environment all the issue's commits reached (Stage, Prod).
+- Board cards show both sides of a blocking relation (Blocks X) and remove a relation with the x on its pill.
+
 ## Server [1.3.33], Agent [0.4.24] - 09.11.2026
 
 - The Claude Code worklog no longer keeps the conversation: the "Asked" list is gone from the issue history and MCP, the server drops prompts sent by older agents and a migration erases the stored ones; the agent stops collecting them.
