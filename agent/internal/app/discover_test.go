@@ -12,7 +12,7 @@ import (
 func TestNormPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		cases := map[string]string{
-			"c:/Users/krzys/Desktop/Exponential":            `C:\Users\krzys\Desktop\Exponential`,
+			"c:/Users/krzys/Desktop/2-Wydane/Exponential":   `C:\Users\krzys\Desktop\2-Wydane\Exponential`,
 			`C:\Users\krzys\x\`:                             `C:\Users\krzys\x`,
 			"file:///c%3A/Users/krzys/My%20Proj":            `C:\Users\krzys\My Proj`,
 			"file:///d:/work/app":                           `D:\work\app`,
@@ -41,7 +41,7 @@ func TestNormPath(t *testing.T) {
 }
 
 func TestClaudeProjectPaths(t *testing.T) {
-	data := []byte(`{"numStartups":3,"projects":{"C:/Users/krzys/Desktop/Exponential":{"allowedTools":[]},"c:/users/krzys/desktop/exponential":{},"/home/u/app":{}}}`)
+	data := []byte(`{"numStartups":3,"projects":{"C:/Users/krzys/Desktop/2-Wydane/Exponential":{"allowedTools":[]},"c:/users/krzys/desktop/2-Wydane/exponential":{},"/home/u/app":{}}}`)
 	got := claudeProjectPaths(data)
 	if runtime.GOOS == "windows" {
 		if len(got) != 2 || len(uniquePaths(got)) != 1 {
