@@ -552,9 +552,9 @@ function PollVotes({ m }: { m: Meeting }) {
 
 /**
  * Obecność na spotkaniu o stałym terminie (np. ustalonym przez kogoś spoza zespołu): termin się nie zmienia,
- * zaproszeni mówią, czy będą. Te same chipy i kolory co głos w ankiecie, lista jak w ankiecie na telefonie.
+ * zaproszeni mówią, czy będą. Wiersze w .meeting-grid jak Where / Reminders / Who; kolory odpowiedzi jak głos w ankiecie.
  */
-function Attendance({ m }: { m: Meeting }) {
+function AttendanceRows({ m }: { m: Meeting }) {
   const qc = useQueryClient();
   const me = useMe().data;
   const meta = useMeta().data;
@@ -568,38 +568,38 @@ function Attendance({ m }: { m: Meeting }) {
   const refresh = () => qc.invalidateQueries({ queryKey: ['meetings'] });
   const send = (body: { answer: Vote | null; note?: string }) => void api(`/api/meetings/${m.id}/attendance`, { method: 'PUT', body }).then(refresh);
   return (
-    <div className="poll-votes mt-16">
-      <div className="hint mb-8">{t('Attendance')} · {t('{a} of {b} answered', { a: answered.length, b: people.length })}</div>
-      <div className="row-8 mb-8">
-        <span>{t('Are you coming?')}</span>
-        <Tooltip text={off}>
-          <div className="vote-chips">
-            {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
-              <button key={v} className={`chip ${mine?.answer === v ? 'on' : ''}`} style={mine?.answer === v ? { borderColor: VOTE_COLOR[v], color: VOTE_COLOR[v] } : undefined}
-                disabled={!!off} onClick={() => send({ answer: mine?.answer === v ? null : v })}>{VOTE_LABEL[v]}</button>
-            ))}
-          </div>
-        </Tooltip>
-      </div>
-      {mine?.answer === 'maybe' && !off && (
-        <textarea className="input vote-note mb-8" rows={1} placeholder={t('Why? (optional)')} aria-label={t('Why maybe')} autoFocus={!mine.note} defaultValue={mine.note ?? ''}
-          onBlur={(e) => { if (e.target.value.trim() !== (mine.note ?? '')) send({ answer: 'maybe', note: e.target.value }); }} />
-      )}
-      {answered.length > 0 && (
-        <div className="poll-list-slot">
-          {answered.map((u) => {
-            const a = answer(u.id)!;
-            return (
-              <div key={u.id} className="poll-list-vote">
-                <PersonLink userId={u.id} className="grow"><Avatar user={u} size={18} />{u.name}</PersonLink>
-                <span style={{ color: VOTE_COLOR[a.answer], fontWeight: 600 }}>{a.answer === 'maybe' && a.note ? a.note : VOTE_LABEL[a.answer]}</span>
-              </div>
-            );
-          })}
+    <>
+      <span className="hint">{t('Coming?')}</span>
+      <Tooltip text={off}>
+        <div className="prop-chips">
+          {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
+            <button key={v} className={`prop-chip ${mine?.answer === v ? 'on' : ''}`} style={mine?.answer === v ? { color: VOTE_COLOR[v] } : undefined}
+              disabled={!!off} onClick={() => send({ answer: mine?.answer === v ? null : v })}>{VOTE_LABEL[v]}</button>
+          ))}
         </div>
+      </Tooltip>
+      {mine?.answer === 'maybe' && !off && (
+        <>
+          <span />
+          <textarea className="input vote-note" rows={1} placeholder={t('Why? (optional)')} aria-label={t('Why maybe')} autoFocus={!mine.note} defaultValue={mine.note ?? ''}
+            onBlur={(e) => { if (e.target.value.trim() !== (mine.note ?? '')) send({ answer: 'maybe', note: e.target.value }); }} />
+        </>
       )}
-      {silent.length > 0 && <div className="hint mt-8">{t('No answer: {names}', { names: silent.map((u) => u.name).join(', ') })}</div>}
-    </div>
+      <span className="hint">{t('Answers')}</span>
+      <div className="row-10 row-wrap">
+        {answered.map((u) => {
+          const a = answer(u.id)!;
+          return (
+            <span key={u.id} className="row-6" title={a.note ?? undefined}>
+              <PersonLink userId={u.id}><Avatar user={u} size={18} />{u.name}</PersonLink>
+              <span style={{ color: VOTE_COLOR[a.answer], fontWeight: 600 }}>{VOTE_LABEL[a.answer]}{a.note ? ` · ${a.note}` : ''}</span>
+            </span>
+          );
+        })}
+        {!answered.length ? <span className="hint">{t('{a} of {b} answered', { a: 0, b: people.length })}</span>
+          : silent.length > 0 && <span className="hint">{t('No answer: {names}', { names: silent.map((u) => u.name).join(', ') })}</span>}
+      </div>
+    </>
   );
 }
 
@@ -681,9 +681,9 @@ function ScheduledDialog({ m }: { m: Meeting }) {
           </Tooltip>
         </div>
         <MeetingDetails m={m} ro={ro} roInvite={roInvite} patch={patch} />
+        {m.kind === 'fixed' && <AttendanceRows m={m} />}
       </div>
       {m.kind === 'poll' && m.slots.length > 0 && <PollVotes m={m} />}
-      {m.kind === 'fixed' && <Attendance m={m} />}
 
       <div className="foot mt-16">
         <Tooltip text={ro}>
