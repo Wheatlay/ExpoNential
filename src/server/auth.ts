@@ -118,7 +118,7 @@ const TOKEN_ROUTES: Array<[RegExp, RegExp]> = [
   [/^GET$/, /^\/api\/agent\/open-requests$/],
   [/^GET$/, /^\/api\/agent\/repo-actions$/],
   [/^POST$/, /^\/api\/agent\/mcp-key$/], // klucz MCP dla instalatora agenta (pairing.ts sprawdza klienta grantu)
-  [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/(claim|result)$/],
+  [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
   [/^(DELETE|PATCH)$/, /^\/api\/agents\/[^/]+$/], // PATCH: tylko teamMode (api.ts)
 ];
 /** Trasy z listy wyżej, które token może wołać tylko jako agent (grant exponential-agent albo klucz trk_ z agentId). */
@@ -129,7 +129,7 @@ const AGENT_ONLY: Array<[RegExp, RegExp]> = [
   [/^GET$/, /^\/api\/agent\/open-requests$/],
   [/^GET$/, /^\/api\/agent\/repo-actions$/],
   [/^(POST|DELETE)$/, /^\/api\/issues\/[^/]+\/analyze\/claim$/],
-  [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/(claim|result)$/],
+  [/^POST$/, /^\/api\/agent\/start-jobs\/[^/]+\/claim$/],
   [/^(DELETE|PATCH)$/, /^\/api\/agents\/[^/]+$/],
 ];
 const matches = (list: Array<[RegExp, RegExp]>, method: string, url: string) => {

@@ -3,7 +3,6 @@ import { toast } from './toast.ts';
 import { ident } from './project.ts';
 import { t } from './i18n.ts';
 import { openAgentRepos } from './settingsNav.ts';
-import { inProgressStatus } from '../server/rules.ts';
 
 type PromptKind = 'start' | 'analyze' | 'close';
 
@@ -97,7 +96,7 @@ export async function startWork(number: number) {
     else toast(t(clip ? 'Opening in {editor}. The prompt is also in your clipboard.' : 'Opening in {editor}', { editor: EDITOR_NAMES[editor] }));
   }
   const cur = meta.statuses.find((s) => s.id === d.statusId);
-  const inProgress = inProgressStatus(meta.statuses);
+  const inProgress = meta.statuses.find((s) => s.type === 'started' && /progress/i.test(s.name)) ?? meta.statuses.find((s) => s.type === 'started');
   const patch: Record<string, unknown> = {};
   if (inProgress && cur && (cur.type === 'backlog' || cur.type === 'unstarted')) patch.statusId = inProgress.id;
   if (d.assigneeId == null) patch.assigneeId = me.id;
@@ -113,7 +112,7 @@ export async function startOnPc(number: number) {
   await api(`/api/issues/${ident(number)}/start-on-pc`, { method: 'POST' });
   void queryClient.invalidateQueries({ queryKey: ['issues'] });
   void queryClient.invalidateQueries({ queryKey: ['issue', number] });
-  toast(t('Sent to your PC'));
+  toast(t('Sent to your PC. Claude Code opens there in a few seconds if the PC is on and up to date.'));
 }
 
 /** Demo: zamiast prawdziwego agenta serwer odgrywa nagraną sesję; zmiany wracają zwykłym SSE. */

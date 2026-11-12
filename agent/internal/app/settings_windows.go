@@ -32,29 +32,25 @@ var (
 )
 
 type settingsState struct {
-	Theme         string            `json:"theme"`
-	ThemeSetting  string            `json:"themeSetting"`
-	L             map[string]string `json:"L"`
-	Who           string            `json:"who"`
-	State         string            `json:"state"`
-	Kind          string            `json:"kind"`
-	Version       string            `json:"version"`
-	UpdateTo      string            `json:"updateTo"`
-	Dev           bool              `json:"dev"`
-	Limit         int64             `json:"limit"` // -1 = no limit
-	TeamMode      string            `json:"teamMode"`
-	Notify        bool              `json:"notify"`
-	NotifyOwn     bool              `json:"notifyOwn"`
-	AutoUpdate    bool              `json:"autoUpdate"`
-	Autostart     bool              `json:"autostart"`
-	Muted         bool              `json:"muted"`
-	MuteLabel     string            `json:"muteLabel"`
-	Runs          []runRecord       `json:"runs"`
-	Consents      []consentRow      `json:"consents"`
-	PhoneAccounts []phoneAccountRow `json:"phoneAccounts"`
-	PhoneAccount  string            `json:"phoneAccount"`
-	PhoneProjects []phoneProject    `json:"phoneProjects"`
-	PhoneCodex    bool              `json:"phoneCodex"`
+	Theme        string            `json:"theme"`
+	ThemeSetting string            `json:"themeSetting"`
+	L            map[string]string `json:"L"`
+	Who          string            `json:"who"`
+	State        string            `json:"state"`
+	Kind         string            `json:"kind"`
+	Version      string            `json:"version"`
+	UpdateTo     string            `json:"updateTo"`
+	Dev          bool              `json:"dev"`
+	Limit        int64             `json:"limit"` // -1 = no limit
+	TeamMode     string            `json:"teamMode"`
+	Notify       bool              `json:"notify"`
+	NotifyOwn    bool              `json:"notifyOwn"`
+	AutoUpdate   bool              `json:"autoUpdate"`
+	Autostart    bool              `json:"autostart"`
+	Muted        bool              `json:"muted"`
+	MuteLabel    string            `json:"muteLabel"`
+	Runs         []runRecord       `json:"runs"`
+	Consents     []consentRow      `json:"consents"`
 }
 
 func settingsLabels(lang string) map[string]string {
@@ -69,8 +65,7 @@ func settingsLabels(lang string) map[string]string {
 			"ok": "ok", "pick": "Wybierz folder", "remove": "Usuń", "srcAuto": "auto", "srcManual": "ręcznie", "srcClone": "klon", "srcHook": "hook",
 			"nofolder": "brak folderu", "notclone": "to nie klon repo", "norepo": "brak repo w projekcie", "noRuns": "Brak analiz",
 			"resOk": "ok", "resFail": "błąd", "resLimit": "limit Claude", "resDeclined": "odmowa", "resMuted": "wyciszone",
-			"consents": "Zgody na 24 h", "until": "do %D", "revoke": "Cofnij", "pairAgain": "Połącz ponownie", "pairHint": "Kod z Ustawienia > Moje AI", "pairGo": "Połącz", "pairing": "Łączę…", "pairOk": "Połączono ponownie", "rescan": "Skanuj ponownie", "rescanning": "Skanuję…",
-			"phone": "Start z telefonu", "phoneReady": "Gotowe", "phoneSetup": "Wymaga przygotowania", "phonePrep": "Przygotuj", "phoneNone": "—", "phoneCodex": "Silnik Codex nie obsługuje startu z telefonu", "phoneOnboarding": "konto nie ukończyło pierwszego uruchomienia", "phoneTrust": "folder nie jest zaufany", "phoneFolder": "brak folderu"}
+			"consents": "Zgody na 24 h", "until": "do %D", "revoke": "Cofnij", "pairAgain": "Połącz ponownie", "pairHint": "Kod z Ustawienia > Moje AI", "pairGo": "Połącz", "pairing": "Łączę…", "pairOk": "Połączono ponownie", "rescan": "Skanuj ponownie", "rescanning": "Skanuję…"}
 	}
 	return map[string]string{"team": "Team jobs", "ask": "Ask", "auto": "Don't ask", "off": "Don't take",
 		"tipAsk": "Ask before running someone else's analysis", "tipAuto": "Run others' analyses without asking", "tipOff": "Never take others' analyses",
@@ -82,8 +77,7 @@ func settingsLabels(lang string) map[string]string {
 		"ok": "ok", "pick": "Choose folder", "remove": "Remove", "srcAuto": "auto", "srcManual": "manual", "srcClone": "clone", "srcHook": "hook",
 		"nofolder": "folder missing", "notclone": "not a clone of the repo", "norepo": "no repo in the project", "noRuns": "No analyses yet",
 		"resOk": "ok", "resFail": "error", "resLimit": "Claude limit", "resDeclined": "declined", "resMuted": "muted",
-		"consents": "24 h consents", "until": "until %D", "revoke": "Revoke", "pairAgain": "Pair again", "pairHint": "Code from Settings > My AI", "pairGo": "Pair", "pairing": "Pairing…", "pairOk": "Paired again", "rescan": "Rescan", "rescanning": "Scanning…",
-		"phone": "Start from phone", "phoneReady": "Ready", "phoneSetup": "Needs setup", "phonePrep": "Prepare", "phoneNone": "—", "phoneCodex": "The Codex engine does not support starting from the phone", "phoneOnboarding": "account has not finished first-run setup", "phoneTrust": "folder not trusted", "phoneFolder": "folder missing"}
+		"consents": "24 h consents", "until": "until %D", "revoke": "Revoke", "pairAgain": "Pair again", "pairHint": "Code from Settings > My AI", "pairGo": "Pair", "pairing": "Pairing…", "pairOk": "Paired again", "rescan": "Rescan", "rescanning": "Scanning…"}
 }
 
 func buildSettingsState() (st settingsState) {
@@ -95,7 +89,6 @@ func buildSettingsState() (st settingsState) {
 	}()
 	lang := agentLang()
 	cfg := loadConfig()
-	ph := buildPhoneView(cfg)
 	text, kind := statusParts(lang)
 	until, muted := mutedUntilOf(cfg, time.Now())
 	trayMu.Lock()
@@ -111,7 +104,6 @@ func buildSettingsState() (st settingsState) {
 		State: text, Kind: kind, Version: Version, UpdateTo: upd, Dev: devMode(), Limit: othersLimit.Load(),
 		TeamMode: teamModeOf(cfg), Notify: notifyOthersOn(), NotifyOwn: notifyOwnOn(), AutoUpdate: autoUpdateOn(), Autostart: strings.HasPrefix(autostartState(), "on"),
 		Muted: muted, MuteLabel: muteItemTitle(lang, until, muted), Runs: loadRuns(), Consents: activeConsents(cfg, time.Now()),
-		PhoneAccounts: ph.Accounts, PhoneAccount: ph.Account, PhoneProjects: ph.Projects, PhoneCodex: ph.Codex,
 	}
 }
 
@@ -274,7 +266,6 @@ func openSettings() {
 		reshow := func() {
 			show()
 			w.Dispatch(func() { w.Eval("window.onShown && window.onShown()") })
-			phoneScrollEval(w) // TEMP phone-announce: remove after agent 0.5
 		}
 		settingsShow.Store(&reshow)
 		// Click outside: when another program's window comes to the foreground, hide this one (not in dev mode,
@@ -331,7 +322,6 @@ func openSettings() {
 			if shown.CompareAndSwap(false, true) {
 				show()
 			}
-			phoneScrollEval(w) // TEMP phone-announce: remove after agent 0.5
 		})
 		// Fallback: show after 3 s even if the page never reported (so a broken page is still visible and closable).
 		go func() {
@@ -359,15 +349,6 @@ func openSettings() {
 		})
 		_ = w.Bind("setAutostart", func(on bool) {
 			bg("setAutostart", func() { setAutostart(on) })
-		})
-		_ = w.Bind("setPhoneAccount", func(dir string) {
-			bg("setPhoneAccount", func() { updateConfig(func(c *Config) { c.PhoneAccount = dir }) })
-		})
-		_ = w.Bind("setPhoneProject", func(key string, on bool) {
-			bg("setPhoneProject", func() { setPhoneProject(key, on) })
-		})
-		_ = w.Bind("preparePhone", func() {
-			bg("preparePhone", func() { preparePhone() })
 		})
 		_ = w.Bind("toggleMute", func() {
 			bg("toggleMute", func() { toggleMute() })
@@ -496,18 +477,4 @@ func openSettings() {
 func mustJSON(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
-}
-
-// TEMP phone-announce: remove after agent 0.5
-var phoneScrollPending atomic.Bool
-
-func init() {
-	phoneSettingsOpener = func() { phoneScrollPending.Store(true); openSettings() }
-}
-
-// phoneScrollEval scrolls the settings page to the phone section when the card asked for it.
-func phoneScrollEval(w webview2.WebView) {
-	if phoneScrollPending.CompareAndSwap(true, false) {
-		w.Dispatch(func() { w.Eval("window.gotoPhone && window.gotoPhone()") })
-	}
 }

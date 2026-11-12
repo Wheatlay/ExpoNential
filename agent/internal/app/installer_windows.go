@@ -163,11 +163,6 @@ func runInstallerWindow(mode string) (shown bool) {
 			openURL(u + "/settings")
 		}
 	})
-	_ = w.Bind("phoneAsked", func() { markPhoneAsked() }) // TEMP phone-announce: remove after agent 0.5
-	_ = w.Bind("phoneState", func() phoneView { return buildPhoneView(loadConfig()) })
-	_ = w.Bind("setPhoneAccount", func(dir string) { updateConfig(func(c *Config) { c.PhoneAccount = dir }) })
-	_ = w.Bind("setPhoneProject", func(key string, on bool) { setPhoneProject(key, on) })
-	_ = w.Bind("preparePhone", func() { go preparePhone() })
 	_ = w.Bind("close", func() { w.Destroy() }) // WM_CLOSE handled by the live loop (Terminate first left a dead, unresponsive window) })
 
 	w.SetHtml(applyUI(installerHTML, currentTheme()))

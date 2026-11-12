@@ -3,7 +3,7 @@ import { and, asc, eq, gt, inArray, isNull, notInArray, sql as dsql } from 'driz
 import { db } from '../db/index.ts';
 import { type AgentSetup, activity, agentJobs, agentRepos, agentRuns, agentTombstones, agents, apiTokens, issues, oauthClients, oauthGrants, projectMembers, projects, statuses, users } from '../db/schema.ts';
 import { NOT_AGENT_CLIENT } from './oauth.ts';
-import { RuleError, identifier, parseIdentifier, inProgressStatus } from './rules.ts';
+import { RuleError, identifier, parseIdentifier } from './rules.ts';
 import { sql } from '../db/index.ts';
 import { analysisModel } from './prompts.ts';
 import { log, markAnalysisFailed, publish, requireIssue, updateIssue, type Actor, type Project } from './service.ts';
@@ -207,17 +207,7 @@ export async function rescanWhereRepoMissing(projectId: number) {
   for (const r of rows) queueRepoAction(r.id, { kind: 'rescan', project: '' });
 }
 
-/** Ile sekund własny PC zlecającego ma pierwszeństwo, zanim zlecenie trafi do kolejki zespołu (inaczej koledzy dostają kartę zgody na pracę, którą i tak bierze PC zlecającego). */
-export const OWN_PC_GRACE_S = 60;
-/** Warunek SQL: zlecenie świeże, a zlecający ma własny wolny komputer online z repo projektu (albo projekt pozwala klonować). */
-function ownPcFirst() {
-  return dsql`(${issues.analysisRequestedAt} > now() - make_interval(secs => ${OWN_PC_GRACE_S}) and exists (
-    select 1 from agents oa where oa.user_id = ${issues.analysisRequestedBy} and not oa.busy
-      and oa.last_seen_at > now() - make_interval(secs => ${ONLINE_MS / 1000})
-      and (${projects.agentsMayClone} or exists (select 1 from agent_repos orr where orr.agent_id = oa.id and orr.project_id = ${issues.projectId} and orr.status = 'ok'))))`;
-}
-
-export type WaitReason ='queue_off' | 'no_pc_online' | 'no_repo_pc' | 'awaiting_consent';
+export type WaitReason = 'queue_off' | 'no_pc_online' | 'no_repo_pc' | 'awaiting_consent';
 type WaitRow = { analysisRequestedAt: Date | string | null; analysisClaimedAt: Date | string | null; analysisFailedAt: Date | string | null; analysisRequestedBy: number | null; analysisConsentPendingAt: Date | string | null };
 
 /** Dlaczego zlecona analiza jeszcze nie ruszyła (tylko zlecona, nieprzejęta i niepadnięta; inaczej null). Jedno zapytanie o komputery na całą listę. */
@@ -279,7 +269,7 @@ const isOnline = (lastSeenAt: Date | null) => !!lastSeenAt && lastSeenAt.getTime
  */
 export type RepoReport = { path?: string; source?: string; status?: string; error?: string | null };
 /** ownOnly: agent z Codexem. Codex czyta cały dysk, więc nie dostaje zleceń innych osób z kolejki zespołu (prompt injection). */
-type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean; setup?: AgentSetup; skip?: number[]; found?: string[]; phone?: string[] };
+type HeartbeatInfo = { name: string; busy: boolean; repoKeys: string[]; repos?: Record<string, RepoReport | string>; version?: string; error?: string; ownOnly?: boolean; setup?: AgentSetup; skip?: number[]; found?: string[] };
 
 /** Parametr found: JSON z tablicą owner/name (małe litery) repozytoriów znalezionych na PC. Zły JSON albo brak = undefined (stary agent, zostaje poprzednia lista). */
 export function parseFound(raw?: string): string[] | undefined {
@@ -295,12 +285,6 @@ export function parseFound(raw?: string): string[] | undefined {
 export async function repoSuggestions(userId: number): Promise<string[]> {
   const rows = await db.select({ found: agents.foundRepos }).from(agents).where(eq(agents.userId, userId));
   return [...new Set(rows.flatMap((r) => r.found))].sort();
-}
-
-/** Parametr phone=KEY,KEY: klucze projektów, dla których PC jest gotowy na Start z telefonu. Brak parametru = stary agent (zostaje poprzednia lista). */
-export function parsePhone(raw?: string): string[] | undefined {
-  if (raw === undefined) return undefined;
-  return [...new Set(raw.split(',').map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
 }
 
 /** Parametr skip=1,2,3 z odpytania agenta: tylko liczby całkowite dodatnie, bez powtórzeń, najwyżej 50. */
@@ -332,7 +316,7 @@ export async function heartbeat(user: User, deviceId: string, info: HeartbeatInf
   if (existing && existing.userId !== user.id) throw new RuleError('Device belongs to someone else', 'forbidden');
   const repoKeys = [...new Set(info.repoKeys.map((k) => k.trim().toUpperCase()).filter((k) => /^[A-Z]{2,10}$/.test(k)))].slice(0, 50);
   // Bez podanej wersji zostaje zapisana poprzednia.
-  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date(), ...(info.version !== undefined ? { version: info.version.slice(0, 40) } : {}), ...(info.setup ? { setup: info.setup } : {}), ...(info.found ? { foundRepos: info.found } : {}), ...(info.phone ? { phoneReadyKeys: parsePhone(info.phone.join(','))! } : {}) };
+  const values = { name: info.name.trim().slice(0, 100), busy: info.busy, repoKeys, lastSeenAt: new Date(), ...(info.version !== undefined ? { version: info.version.slice(0, 40) } : {}), ...(info.setup ? { setup: info.setup } : {}), ...(info.found ? { foundRepos: info.found } : {}) };
   // Pusty błąd nie kasuje poprzedniego: zostaje widoczny do kolejnego błędu albo 24 h.
   const err = (info.error ?? '').trim().slice(0, 300);
   const errValues = err ? { lastError: err, lastErrorAt: new Date() } : {};
@@ -428,7 +412,7 @@ export async function pendingWork(user: User, agent: { id?: string; busy: boolea
         skip.length ? notInArray(issues.id, skip) : undefined,
         dsql`(${issues.analysisClaimedAt} is null or ${issues.analysisClaimedAt} < now() - make_interval(mins => ${CLAIM_TTL_MIN}))`,
         dsql`(${projects.agentsMayClone} or exists (select 1 from agent_repos r where r.agent_id = ${agent.id ?? ''} and r.project_id = ${projects.id} and r.status = 'ok'))`,
-        dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and ${!agent.ownOnly && !limited}::boolean and exists (select 1 from agents ta where ta.id = ${agent.id ?? ''} and ta.team_mode <> 'off') and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now()) and not ${ownPcFirst()}))`,
+        dsql`(${issues.analysisRequestedBy} = ${user.id} or (${projects.agentTeamQueue} and ${!agent.ownOnly && !limited}::boolean and exists (select 1 from agents ta where ta.id = ${agent.id ?? ''} and ta.team_mode <> 'off') and (${issues.analysisLocalUntil} is null or ${issues.analysisLocalUntil} < now())))`,
       ))
       .orderBy(dsql`(${issues.analysisRequestedBy} = ${user.id}) desc nulls last`, asc(issues.analysisRequestedAt)).limit(5);
     for (const r of rows) jobs.push({ kind: 'analyze', id: r.id, key: identifier(r.key, r.number), deep: r.deep,
@@ -436,9 +420,7 @@ export async function pendingWork(user: User, agent: { id?: string; busy: boolea
   }
   const starts = await db.select({ id: agentJobs.id, key: projects.key, number: issues.number })
     .from(agentJobs).innerJoin(issues, eq(issues.id, agentJobs.issueId)).innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(and(eq(agentJobs.userId, user.id), eq(agentJobs.kind, 'start'), isNull(agentJobs.claimedAt), gt(agentJobs.createdAt, ago(START_JOB_TTL_MIN * 60_000)),
-      // Start z telefonu dostaje tylko PC, który zgłosił gotowość dla projektu zgłoszenia.
-      dsql`exists (select 1 from agents pa where pa.id = ${agent.id ?? ''} and ${projects.key} = any(pa.phone_ready_keys))`))
+    .where(and(eq(agentJobs.userId, user.id), eq(agentJobs.kind, 'start'), isNull(agentJobs.claimedAt), gt(agentJobs.createdAt, ago(START_JOB_TTL_MIN * 60_000))))
     .orderBy(asc(agentJobs.createdAt));
   for (const s of starts) jobs.push({ kind: 'start', id: s.id, key: identifier(s.key, s.number) });
   return jobs;
@@ -487,35 +469,10 @@ export async function claimStartJob(user: User, jobId: number, deviceId: string)
     .where(and(eq(agentJobs.id, jobId), eq(agentJobs.userId, user.id), isNull(agentJobs.claimedAt), gt(agentJobs.createdAt, ago(START_JOB_TTL_MIN * 60_000))))
     .returning({ issueId: agentJobs.issueId });
   if (!job) throw new RuleError('Already taken or expired', 'conflict');
-  const [r] = await db.select({ key: projects.key, number: issues.number, title: issues.title }).from(issues).innerJoin(projects, eq(projects.id, issues.projectId)).where(eq(issues.id, job.issueId));
+  const [r] = await db.select({ key: projects.key, number: issues.number }).from(issues).innerJoin(projects, eq(projects.id, issues.projectId)).where(eq(issues.id, job.issueId));
   await db.update(agents).set({ currentRequesterId: user.id }).where(eq(agents.id, deviceId));
   const [u] = await db.select({ name: users.name }).from(users).where(eq(users.id, user.id));
-  return { key: identifier(r.key, r.number), title: r.title, requester: { id: user.id, name: u?.name ?? '' } };
-}
-
-/** Wynik uruchomienia Start z telefonu od agenta, który zlecenie przejął: ok = sesja działa, inaczej błąd widoczny na telefonie i w aktywności. */
-export async function finishStartJob(user: User, jobId: number, deviceId: string, ok: boolean, error?: string) {
-  const agent = await requireOwnAgent(user, deviceId);
-  const [job] = await db.select().from(agentJobs).where(and(eq(agentJobs.id, jobId), eq(agentJobs.userId, user.id), eq(agentJobs.claimedDevice, deviceId)));
-  if (!job) throw new RuleError('Start job not found for this PC', 'not_found');
-  await db.update(agentJobs).set(ok ? { startedAt: new Date(), error: null } : { error: (error ?? '').slice(0, 300) || 'Failed' }).where(eq(agentJobs.id, jobId));
-  const device = agent.label || agent.name || 'PC';
-  const err = (error ?? '').slice(0, 300);
-  await db.transaction((tx) => log(tx, job.issueId, { ...user, ai: true } as Actor, ok ? { kind: 'started_on_pc', device } : { kind: 'start_on_pc_failed', device, error: err }));
-  const [r] = await db.select({ key: projects.key, number: issues.number }).from(issues).innerJoin(projects, eq(projects.id, issues.projectId)).where(eq(issues.id, job.issueId));
-  if (r) await publish({ type: 'issue', projectKey: r.key, number: r.number });
-  return { ok: true };
-}
-
-/** Stan ostatniego Start z telefonu tej osoby na zgłoszeniu (null = brak świeżego zlecenia). */
-export async function startJobState(user: User, issueId: number) {
-  const [j] = await db.select({ claimedAt: agentJobs.claimedAt, startedAt: agentJobs.startedAt, error: agentJobs.error, name: agents.name, label: agents.label })
-    .from(agentJobs).leftJoin(agents, eq(agents.id, agentJobs.claimedDevice))
-    .where(and(eq(agentJobs.userId, user.id), eq(agentJobs.issueId, issueId), eq(agentJobs.kind, 'start'), gt(agentJobs.createdAt, ago(START_JOB_TTL_MIN * 60_000))))
-    .orderBy(dsql`${agentJobs.id} desc`).limit(1);
-  if (!j) return null;
-  const state = j.error ? 'failed' : j.startedAt ? 'running' : j.claimedAt ? 'starting' : 'waiting';
-  return { state: state as 'waiting' | 'starting' | 'running' | 'failed', device: (j.label || j.name || null) as string | null, error: j.error ?? null };
+  return { key: identifier(r.key, r.number), requester: { id: user.id, name: u?.name ?? '' } };
 }
 
 export type Usage = { runs: number; forOthers: number; costUsd: number; tokens: number; byRequester: { name: string; runs: number; costUsd: number; tokens: number }[] };
@@ -594,7 +551,7 @@ const agentCore = (a: AgentRow, others24: number, othersTokens24: number) => ({ 
   forOthers24h: others24, forOthersTokens24h: othersTokens24, limitReached24h: a.maxOthersTokensPerDay != null && othersTokens24 >= a.maxOthersTokensPerDay,
   lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5,
   outdated: !agentUpToDate(a.version), opensEditor: agentUpToDate(a.version, MIN_OPEN_AGENT), legacy: !!a.version && !semver(a.version), setup: a.setup ?? null,
-  lastError: shownError(a), phoneReady: a.phoneReadyKeys.length > 0 });
+  lastError: shownError(a) });
 export type AgentLite = ReturnType<typeof agentCore>;
 
 /** Lekki odczyt komputerów do /api/me i createStartJob: online, wersja, konfiguracja i (opcjonalnie) tokeny z doby, bez zużycia z 30 dni. */
@@ -623,7 +580,7 @@ export async function myAgents(user: User) {
   return rows.map((a) => ({ id: a.id, maxOthersTokensPerDay: a.maxOthersTokensPerDay, usage30d: usage.get(a.id)!,
     forOthers24h: others24.get(a.id) ?? 0, forOthersTokens24h: othersTokens24.get(a.id) ?? 0, limitReached24h: a.maxOthersTokensPerDay != null && (othersTokens24.get(a.id) ?? 0) >= a.maxOthersTokensPerDay, name: a.label || a.name, version: a.version, computerName: a.name, label: a.label, lastSeenAt: a.lastSeenAt, busy: a.busy, online: isOnline(a.lastSeenAt), inactive: !!a.lastSeenAt && a.lastSeenAt.getTime() < Date.now() - 3 * 864e5, outdated: !agentUpToDate(a.version), legacy: !!a.version && !semver(a.version),
     repos: repos.filter((r) => r.agentId === a.id).map(({ agentId: _, ...r }) => r),
-    teamMode: a.teamMode, phoneReady: a.phoneReadyKeys.length > 0,
+    teamMode: a.teamMode,
     setup: a.setup ?? null,
     // Błąd starszy niż 24 h już nie jest istotny.
     // Błąd starszy niż 24 h już nie jest istotny, a chwilowy błąd połączenia (np. restart serwera przy wdrożeniu) znika, gdy komputer znów jest online.
@@ -689,15 +646,11 @@ export async function createStartJob(p: Project, user: NonNullable<Actor>, numbe
   if (!mine.some((a) => a.online)) throw new RuleError('Your PC is offline', 'invalid');
   // Stary agent nie dostaje pracy, więc zlecenie by tylko wisiało.
   if (!mine.some((a) => a.online && !a.outdated)) throw new RuleError('The agent on this PC is outdated: update it (Settings › My AI)', 'outdated');
-  // Start z telefonu uruchamia sesję Remote Control, więc potrzebny jest PC, który zgłosił gotowość dla tego projektu.
-  const ready = await db.select({ id: agents.id }).from(agents).where(and(eq(agents.userId, user.id), dsql`${p.key} = any(${agents.phoneReadyKeys})`,
-    dsql`${agents.lastSeenAt} > now() - make_interval(secs => ${ONLINE_MS / 1000})`));
-  if (!ready.some((r) => mine.some((a) => a.id === r.id && a.online && !a.outdated))) throw new RuleError('No PC is ready to start from the phone', 'invalid');
   const cur = await requireIssue(p, number);
   const [job] = await db.insert(agentJobs).values({ userId: user.id, issueId: cur.id, kind: 'start' }).returning({ id: agentJobs.id });
   const sts = await db.select().from(statuses).where(eq(statuses.projectId, p.id)).orderBy(asc(statuses.position));
   const now = sts.find((s) => s.id === cur.statusId);
-  const inProgress = inProgressStatus(sts);
+  const inProgress = sts.find((s) => s.type === 'started' && /progress/i.test(s.name)) ?? sts.find((s) => s.type === 'started');
   const patch: { statusId?: number; assigneeId?: number } = {};
   if (inProgress && now && (now.type === 'backlog' || now.type === 'unstarted')) patch.statusId = inProgress.id;
   if (cur.assigneeId == null) patch.assigneeId = user.id;

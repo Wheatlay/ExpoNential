@@ -268,15 +268,6 @@ export async function seedDemo() {
     infoQuestion: 'Is the 15 min idle timeout a product decision, or can we raise it to 30 min on the payment step?',
   });
 
-  // Paused: jedno z powodem, jedno czekające na inne otwarte zgłoszenie (wraca do In Progress po jego zamknięciu).
-  const numOf = (prefix: string) => ISSUES.findIndex((s) => s.title.startsWith(prefix)) + 1;
-  await svc.updateIssue(P, actorOf('maya'), numOf('Add Apple Pay'), {
-    statusId: S.Paused, pauseReason: 'Waiting for the payment provider to enable the sandbox',
-  });
-  await svc.updateIssue(P, actorOf('leo'), numOf('Saved payment methods in checkout'), {
-    statusId: S.Paused, pauseWaitsOn: numOf('Checkout fails for EU VAT'),
-  });
-
   // Komentarze ludzi.
   for (const [n, list] of Object.entries(COMMENTS)) for (const [who, body] of list) await svc.addComment(P, actorOf(who), Number(n), body);
 

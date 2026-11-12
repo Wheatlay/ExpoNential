@@ -70,19 +70,6 @@ button:focus-visible { outline: 2px solid var(--acc-h); outline-offset: 2px; }
 .spin { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line2); border-top-color: var(--acc-h); animation: sp 0.8s linear infinite; }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 3s; } }
-.sel { height: 32px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--line2); background: var(--sec); color: var(--fg); font: inherit; font-size: 13px; max-width: 360px; }
-.plist { display: flex; flex-direction: column; gap: 2px; width: 340px; max-height: 140px; overflow-y: auto; text-align: left; }
-.prow { display: flex; align-items: center; gap: 10px; height: 28px; cursor: pointer; color: var(--fg2); font-size: 13px; flex-shrink: 0; }
-.prow span:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.prow:focus-visible { outline: 2px solid var(--acc-h); outline-offset: 1px; }
-.sw { flex: none; width: 32px; height: 18px; border-radius: 9999px; background: var(--sec); border: 1px solid var(--line2); position: relative; transition: background .15s; }
-.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--mut); transition: transform .15s, background .15s; }
-.prow.on .sw { background: var(--acc); border-color: var(--acc); }
-.prow.on .sw::after { transform: translateX(14px); background: #fff; }
-@media (prefers-reduced-motion: reduce) { .sw, .sw::after { transition: none; } }
-.pill { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; border: 1px solid var(--line2); color: var(--mut); white-space: nowrap; flex: none; }
-.pill.good { color: var(--ok); border-color: var(--ok); }
-button.sm { height: 28px; padding: 0 12px; font-size: 13px; }
 /*{{CSS}}*/
 :root[data-theme] { --bg: var(--bg-primary); --line: var(--border-primary); --line2: var(--border-secondary); --sec: var(--bg-secondary);
   --fg: var(--text-primary); --fg2: var(--text-secondary); --mut: var(--text-tertiary); --acc: var(--accent); --acc-h: var(--accent-hover);
@@ -100,9 +87,6 @@ var S = {
     trayTip: "Ikona Exponential obok zegara pokazuje, co robi agent.",
     onlyClaude: "tylko Claude Code",
     nf: "nie znaleziono na tym komputerze", term: "Terminal",
-    phoneQ: "Uruchamiać zadania z telefonu?", yes: "Tak", notNow: "Nie teraz", phoneHint: "To samo konto co w aplikacji Claude na telefonie", phoneNone: "—",
-    phoneReady: "Gotowe", phoneSetup: "Wymaga przygotowania", phonePrep: "Przygotuj", phoneTrust: "folder nie jest zaufany", phoneOnboarding: "konto nie ukończyło pierwszego uruchomienia", phoneFolder: "brak folderu",
-    phoneChange: "Zmienisz to w Ustawieniach agenta → Start z telefonu",
     close: "Zamknij", open: "Otwórz Exponential", on: "● działa", off: "○ nie działa", disconnect: "Odłącz",
     uninstallQ: "Odinstalować agenta?", uninstallGo: "Odinstaluj", uninstalling: "Odinstalowuję…",
     removeWarn: "Nie udało się wyrejestrować komputera z serwera. Usuń go w Ustawieniach > AI.", removed: "Odłączono", removedLine: "Agent został usunięty z tego komputera.", account: "twoje konto",
@@ -121,9 +105,6 @@ var S = {
     trayTip: "The Exponential icon next to the clock shows what the agent is doing.",
     onlyClaude: "Claude Code only",
     nf: "not found on this computer", term: "Terminal",
-    phoneQ: "Start tasks from your phone?", yes: "Yes", notNow: "Not now", phoneHint: "The same account as in the Claude app on your phone", phoneNone: "—",
-    phoneReady: "Ready", phoneSetup: "Needs setup", phonePrep: "Prepare", phoneTrust: "folder not trusted", phoneOnboarding: "account has not finished first-run setup", phoneFolder: "folder missing",
-    phoneChange: "Change it in agent Settings → Start from phone",
     close: "Close", open: "Open Exponential", on: "● running", off: "○ not running", disconnect: "Disconnect",
     uninstallQ: "Uninstall the agent?", uninstallGo: "Uninstall", uninstalling: "Uninstalling…",
     removeWarn: "Could not unregister this computer from the server. Remove it in Settings > AI.", removed: "Disconnected", removedLine: "The agent was removed from this computer.", account: "your account",
@@ -206,12 +187,11 @@ function setRow(l, state, note) {
   li.title = state === "err" ? note : "";
   if (state === "skip") return;
 }
-function viewDone(title, line, warn, tip, extra) {
+function viewDone(title, line, warn, tip) {
   render(pair("ok") + '<p class="h">' + esc(title) + '</p>' +
     (line ? '<span class="mut">' + esc(line) + '</span>' : "") +
     (warn ? '<span class="mut warn">' + esc(warn) + '</span>' : "") +
     (tip ? '<span class="mut tip">' + TRAYMARK + esc(tip) + '</span>' : "") +
-    (extra ? '<span class="mut">' + esc(extra) + '</span>' : "") +
     '<div class="actions"><button class="p" id="b1">' + esc(T.close) + '</button></div>');
   document.getElementById("b1").onclick = function () { window.close(); };
   document.getElementById("b1").focus();
@@ -220,81 +200,7 @@ function finish(r) {
   var names = [];
   for (var i = 0; i < r.done.length; i++) names.push(rowLabel(r.done[i]));
   var warn = r.goal === 3 && r.done.indexOf(3) >= 0 && !r.agentSeen ? T.doneWarn : "";
-  var tip = r.goal === 3 && r.done.indexOf(3) >= 0 ? T.trayTip : "";
-  var doneScreen = function (extra) { viewDone(r.errors ? T.doneErr : T.done, names.join(" · "), warn, tip, extra); };
-  setTimeout(function () {
-    if (r.errors || cur.engine === "codex" || r.goal !== 3) { doneScreen(""); return; }
-    Promise.resolve(window.phoneState()).then(function (st) {
-      if (!st || st.codex || !st.accounts || !st.accounts.length) { doneScreen(""); return; }
-      viewPhoneQ(doneScreen);
-    }, function () { doneScreen(""); });
-  }, 700);
-}
-var phoneTimer = 0, phoneSt = null;
-function stopPhonePoll() { if (phoneTimer) { clearInterval(phoneTimer); phoneTimer = 0; } }
-function viewPhoneQ(doneScreen) {
-  render(pair("ok") + '<p class="h">' + esc(T.phoneQ) + '</p>' +
-    '<div class="actions"><button id="b1">' + esc(T.notNow) + '</button><button class="p" id="b2">' + esc(T.yes) + '</button></div>');
-  try { window.phoneAsked(); } catch (e) {} // TEMP phone-announce: remove after agent 0.5
-  document.getElementById("b1").onclick = function () { doneScreen(""); };
-  document.getElementById("b2").onclick = function () { viewPhone(doneScreen); };
-  document.getElementById("b2").focus();
-}
-function phoneListHtml() {
-  var projs = phoneSt.projects || [], prep = false;
-  if (!phoneSt.account) return "";
-  var rows = projs.map(function (p) {
-    if (p.on && !p.ready && p.missing !== "folder") prep = true;
-    var pill = p.ready ? '<span class="pill good">' + esc(T.phoneReady) + '</span>'
-      : '<span class="pill" title="' + esc(T["phone" + p.missing.charAt(0).toUpperCase() + p.missing.slice(1)]) + '">' + esc(T.phoneSetup) + '</span>';
-    return '<div class="prow' + (p.on ? " on" : "") + '" data-k="' + esc(p.key) + '" role="switch" tabindex="0" aria-checked="' + p.on + '"><span>' + esc(p.key) + '</span>' + pill + '<i class="sw"></i></div>';
-  }).join("");
-  return '<div class="plist">' + rows + '</div>' + (prep ? '<button class="sm" id="pprep">' + esc(T.phonePrep) + '</button>' : "");
-}
-function bindPhoneList() {
-  Array.prototype.forEach.call(document.querySelectorAll("[data-k]"), function (el) {
-    el.onclick = function () {
-      var on = !el.classList.contains("on");
-      (phoneSt.projects || []).forEach(function (p) { if (p.key === el.dataset.k) p.on = on; });
-      window.setPhoneProject(el.dataset.k, on);
-      drawPhoneList();
-    };
-    el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } };
-  });
-  var b = document.getElementById("pprep");
-  if (b) b.onclick = function () { window.preparePhone(); };
-}
-function drawPhoneList() {
-  var box = document.getElementById("plistbox");
-  if (!box) return;
-  var h = phoneListHtml();
-  if (box.dataset.h !== h) { box.dataset.h = h; box.innerHTML = h; bindPhoneList(); }
-}
-function viewPhone(doneScreen) {
-  window.phoneState().then(function (st) {
-    phoneSt = st;
-    var opts = '<option value="">' + esc(T.phoneNone) + '</option>' + st.accounts.map(function (a) {
-      return '<option value="' + esc(a.dir) + '"' + (a.dir === st.account ? " selected" : "") + '>' + esc(a.email) + '</option>';
-    }).join("");
-    render(pair("ok") + '<p class="h">' + esc(T.phoneQ) + '</p>' +
-      '<select class="sel" id="pacc">' + opts + '</select><span class="mut">' + esc(T.phoneHint) + '</span>' +
-      '<div id="plistbox" class="tip" style="flex-direction:column"></div>' +
-      '<div class="actions"><button class="p" id="b1">' + esc(T.done) + '</button></div>');
-    drawPhoneList();
-    document.getElementById("pacc").onchange = function () {
-      var v = document.getElementById("pacc").value;
-      Promise.resolve(window.setPhoneAccount(v)).then(poll, poll);
-    };
-    document.getElementById("b1").onclick = function () {
-      stopPhonePoll();
-      doneScreen(phoneSt && phoneSt.account ? T.phoneChange : "");
-    };
-    stopPhonePoll();
-    phoneTimer = setInterval(poll, 2000);
-  });
-}
-function poll() {
-  window.phoneState().then(function (st) { phoneSt = st; drawPhoneList(); });
+  setTimeout(function () { viewDone(r.errors ? T.doneErr : T.done, names.join(" · "), warn, r.goal === 3 && r.done.indexOf(3) >= 0 ? T.trayTip : ""); }, 700);
 }
  function showError(e) {
   var m = T.err[e.errCode] || T.err.exe, line = m[1];

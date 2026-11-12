@@ -171,10 +171,6 @@ func updateAct(action string) {
 }
 
 func toastAct(key, action string) {
-	if key == "__phone" { // TEMP phone-announce: remove after agent 0.5
-		phoneAct(action)
-		return
-	}
 	if key == "__update" {
 		updateAct(action)
 		return
@@ -222,7 +218,7 @@ func toastReport(h int, rectsJSON string) {
 
 // toastReap closes the empty window if nothing was shown since the hide that scheduled it.
 func toastReap(gen int) {
-	if p, i := cards.Snapshot(); len(p) > 0 || len(i) > 0 || updCard.Snapshot().Phase != updNone || phoneCard.Shown() { // TEMP phone-announce: remove after agent 0.5
+	if p, i := cards.Snapshot(); len(p) > 0 || len(i) > 0 || updCard.Snapshot().Phase != updNone {
 		return
 	}
 	toastW.mu.Lock()
@@ -233,7 +229,7 @@ func toastReap(gen int) {
 	}
 	toastW.reaped = true
 	toastW.ready = false // toastPush stops sending to the closing window
-	w.Destroy()          // WM_CLOSE through the running message loop: the window, then the loop, end
+	w.Destroy() // WM_CLOSE through the running message loop: the window, then the loop, end
 }
 
 // toastPush sends the current cards to the page (from any goroutine).
@@ -260,13 +256,10 @@ func toastPush() {
 		Prompts []pc              `json:"prompts"`
 		Infos   []ic              `json:"infos"`
 		Update  *updateSnap       `json:"update"`
-		Phone   bool              `json:"phone"` // TEMP phone-announce: remove after agent 0.5
 	}{Theme: currentTheme(), L: toastLabels(agentLang()), Prompts: []pc{}, Infos: []ic{}}
 	if u := updCard.Snapshot(); u.Phase != updNone {
 		st.Update = &u
 	}
-	st.Phone = phoneCard.Shown()           // TEMP phone-announce: remove after agent 0.5
-	phoneAnnounceLabels(agentLang(), st.L) // TEMP phone-announce: remove after agent 0.5
 	for _, p := range prompts {
 		st.Prompts = append(st.Prompts, pc{p.Key, p.Name})
 	}

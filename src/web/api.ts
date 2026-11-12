@@ -6,7 +6,7 @@ import { getProjectKey, ident, onProjectChange } from './project.ts';
 import { t } from './i18n.ts';
 
 export type StatusType = 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled' | 'duplicate';
-export type Status = { id: number; name: string; type: StatusType; color: string; position: number; hiddenOnBoard: boolean; role: 'need_info' | 'testing' | 'paused' | 'in_progress' | null };
+export type Status = { id: number; name: string; type: StatusType; color: string; position: number; hiddenOnBoard: boolean; role: 'need_info' | 'testing' | null };
 export type Label = { id: number; name: string; color: string };
 export type User = { id: number; login: string; name: string; avatarUrl: string | null; isAdmin: boolean; active: boolean; role?: 'admin' | 'member'; tagIds?: number[] };
 export type ProjectSummary = { id: number; key: string; name: string; color: string; logoUrl: string; role: 'admin' | 'member'; memberCount: number; githubRepo: string };
@@ -43,7 +43,7 @@ export type IssueRow = {
   parentId: number | null; sprintId: number | null; sortOrder: number; analysisRequestedAt: string | null; analysisClaimedAt: string | null; analysisClaimedDeviceName?: string | null;
   hasAnalysis: boolean; hasChangeNotes: boolean; changeNotesStale?: boolean; deployedEnv?: string | null; createdAt: string; updatedAt: string; completedAt: string | null;
   labelIds: number[]; subTotal: number; subDone: number; waitingOn: number[]; blocking?: number[];
-  infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null; pauseReason?: string;
+  infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null;
   unreadComments: number; wasTested: boolean;
   analysisWaitReason?: AnalysisWaitReason | null;
 };
@@ -57,8 +57,6 @@ export type ActivityPayload =
   | { kind: 'field'; field: string }
   | { kind: 'analysis_requested'; deep?: boolean }
   | { kind: 'analysis_claimed'; device: string }
-  | { kind: 'started_on_pc'; device: string }
-  | { kind: 'start_on_pc_failed'; device: string; error: string }
   | { kind: 'analysis_failed'; error: string }
   | { kind: 'decision'; question: string; answer: string | null }
   | { kind: 'sprint'; to: string | null }
@@ -68,8 +66,6 @@ export type ActivityPayload =
   | { kind: 'worklog'; session: string; repo: string; files: string[]; commits: { sha: string; message: string }[]; prompts: string[]; updatedAt: string }
   | { kind: 'question'; to: string; question: string }
   | { kind: 'answered'; by: string; backTo: string | null }
-  | { kind: 'paused'; reason: string; waitsOn: number | null }
-  | { kind: 'resumed'; by: number }
   | { kind: 'relation'; action: 'added' | 'removed'; relation: RelationKind; other: number };
 
 export type RelationKind = 'waits_on' | 'blocks' | 'related' | 'duplicate_of' | 'duplicated_by';
@@ -88,12 +84,11 @@ export type AnalysisData = {
 
 export type AnalysisWaitReason = 'queue_off' | 'no_pc_online' | 'no_repo_pc' | 'awaiting_consent';
 
-export type StartOnPc = { state: 'waiting' | 'starting' | 'running' | 'failed'; device: string | null; error: string | null };
 export type IssueDetail = {
   id: number; number: number; identifier: string; title: string; description: string; statusId: number;
   assigneeId: number | null; creatorId: number | null; priority: number; parentId: number | null; sprintId: number | null;
-  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; analysisResultDeep: boolean; analysisClaimedAt: string | null; analysisClaimedDeviceName: string | null; analysisCanRun: boolean; analysisNoCapablePc: boolean; analysisFailedAt: string | null; analysisError: string; teamQueue: boolean; projectHasRepo: boolean; analysisWaitReason: AnalysisWaitReason | null; changeHuman: string; changeAi: string; changeNotesStale?: boolean; startOnPc: StartOnPc | null;
-  infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null; pauseReason?: string;
+  analysis: string; analysisData: AnalysisData | null; analysisRequestedAt: string | null; analysisUpdatedAt: string | null; analysisDeep: boolean; analysisResultDeep: boolean; analysisClaimedAt: string | null; analysisClaimedDeviceName: string | null; analysisCanRun: boolean; analysisNoCapablePc: boolean; analysisFailedAt: string | null; analysisError: string; teamQueue: boolean; projectHasRepo: boolean; analysisWaitReason: AnalysisWaitReason | null; changeHuman: string; changeAi: string; changeNotesStale?: boolean;
+  infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null;
   createdAt: string; updatedAt: string; completedAt: string | null; labelIds: number[];
   parent: { number: number; title: string } | null;
   children: { number: number; title: string; statusId: number; assigneeId: number | null; priority: number; hasChangeNotes: boolean; changeNotesStale?: boolean }[];
@@ -108,7 +103,7 @@ export type IssueDetail = {
 export type IssuePatch = Partial<{
   title: string; description: string; statusId: number; assigneeId: number | null; priority: number; labelIds: number[];
   parentNumber: number | null; sprintId: number | null; sortOrder: number; analysis: string; changeHuman: string; changeAi: string;
-  infoFromId: number | null; infoTagId: number | null; infoQuestion: string; pauseReason: string; pauseWaitsOn: number;
+  infoFromId: number | null; infoTagId: number | null; infoQuestion: string;
 }>;
 
 export function markDemoSession() { try { sessionStorage.setItem('demoSession', '1'); } catch { /* prywatne okno */ } }

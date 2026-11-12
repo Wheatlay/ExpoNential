@@ -1,7 +1,6 @@
 import { useState, useSyncExternalStore } from 'react';
 import { useModal } from './modal.ts';
 import { useMeta, useUpdateIssue, type IssuePatch, type Meta, type Status } from './api.ts';
-import { statusByRole } from '../server/rules.ts';
 import { Icon } from './icons.tsx';
 import { enterToSubmit, keyHint } from './keys.ts';
 import { ident } from './project.ts';
@@ -46,7 +45,7 @@ function DoneGuardModal({ g }: { g: Guard }) {
   const [ai, setAi] = useState('');
   const modalRef = useModal();
   if (!meta) return null;
-  const testing = statusByRole(meta.statuses, 'testing');
+  const testing = meta.statuses.find((s) => s.type === 'started' && /test/i.test(s.name));
   const filled = !!human.trim() && !!ai.trim();
   const done = () => {
     update.mutate({ number: g.number, patch: { ...g.extra, statusId: g.statusId, ...(human.trim() ? { changeHuman: human } : {}), ...(ai.trim() ? { changeAi: ai } : {}) } });

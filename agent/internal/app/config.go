@@ -52,14 +52,11 @@ type Config struct {
 	AutoUpdate      *bool                `json:"autoUpdate,omitempty"`      // install new versions by itself when idle (default on)
 	UpdateDismissed string               `json:"updateDismissed,omitempty"` // agent version whose update card was dismissed
 	UpdatedTo       string               `json:"updatedTo,omitempty"`       // version a self-update was started for (the new process shows "updated" once)
-	PhoneAccount    string               `json:"phoneAccount,omitempty"`    // account dir for "Start on PC" from the phone; "" = none, "default" = default account
-	PhoneAsked      bool                 `json:"phoneAsked,omitempty"`      // TEMP phone-announce: remove after agent 0.5
-	PhoneOff        []string             `json:"phoneOff,omitempty"`        // project keys switched off for phone start (default: all mapped projects on)
 
 	raw map[string]json.RawMessage
 }
 
-var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers", "notifyOwn", "askOthers", "allowUntil", "allowNames", "declined", "goal", "mutedUntil", "teamMode", "theme", "lang", "updateDismissed", "updatedTo", "phoneAccount", "phoneOff", "phoneAsked"}
+var knownKeys = []string{"url", "token", "oauth", "deviceId", "engine", "repos", "version", "lastPairing", "userName", "userId", "notifyOthers", "notifyOwn", "askOthers", "allowUntil", "allowNames", "declined", "goal", "mutedUntil", "teamMode", "theme", "lang", "updateDismissed", "updatedTo"}
 
 func dataDir() string {
 	base := os.Getenv("LOCALAPPDATA")

@@ -102,7 +102,7 @@ export const statuses = pgTable('statuses', {
   position: integer('position').notNull(),
   hiddenOnBoard: boolean('hidden_on_board').notNull().default(false),
   // Rola specjalna: need_info = status "zadaj pytanie", testing = status testów.
-  role: text('role').$type<'need_info' | 'testing' | 'paused' | 'in_progress'>(),
+  role: text('role').$type<'need_info' | 'testing'>(),
 }, (t) => [uniqueIndex('statuses_project_name_uniq').on(t.projectId, t.name)]);
 
 export const labels = pgTable('labels', {
@@ -174,10 +174,6 @@ export const issues = pgTable('issues', {
   infoPrevStatusId: integer('info_prev_status_id').references(() => statuses.id, { onDelete: 'set null' }),
   // Komentarz z pytaniem: odpowiedź zostanie podpięta pod niego jako wątek.
   infoCommentId: integer('info_comment_id').references((): AnyPgColumn => comments.id, { onDelete: 'set null' }),
-  // Paused: powód, status sprzed pauzy (do auto-wznowienia) i kto wstrzymał. Czyszczone przy wyjściu z Paused.
-  pauseReason: text('pause_reason').notNull().default(''),
-  pausePrevStatusId: integer('pause_prev_status_id').references(() => statuses.id, { onDelete: 'set null' }),
-  pauseById: integer('pause_by_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -246,8 +242,6 @@ export type ActivityPayload =
   | { kind: 'field'; field: 'title' | 'description' | 'analysis' | 'change_human' | 'change_ai' }
   | { kind: 'analysis_requested'; deep?: boolean }
   | { kind: 'analysis_claimed'; device: string }
-  | { kind: 'started_on_pc'; device: string }
-  | { kind: 'start_on_pc_failed'; device: string; error: string }
   | { kind: 'analysis_failed'; error: string }
   | { kind: 'decision'; question: string; answer: string | null }
   | { kind: 'sprint'; to: string | null }
@@ -257,8 +251,6 @@ export type ActivityPayload =
   | { kind: 'worklog'; session: string; repo: string; files: string[]; commits: { sha: string; message: string }[]; prompts: string[]; updatedAt: string }
   | { kind: 'question'; to: string; question: string }
   | { kind: 'answered'; by: string; backTo: string | null }
-  | { kind: 'paused'; reason: string; waitsOn: number | null }
-  | { kind: 'resumed'; by: number }
   | { kind: 'relation'; action: 'added' | 'removed'; relation: 'waits_on' | 'blocks' | 'related' | 'duplicate_of' | 'duplicated_by'; other: number };
 
 export const activity = pgTable('activity', {
@@ -541,8 +533,6 @@ export const agents = pgTable('agents', {
   maxOthersTokensPerDay: bigint('max_others_tokens_per_day', { mode: 'number' }),
   // Zlecenia zespołu na tym komputerze: 'ask' (agent pyta właściciela), 'auto' (bez pytania), 'off' (tylko własne).
   teamMode: text('team_mode').notNull().default('ask'),
-  // Klucze projektów, dla których ten PC jest gotowy na Start z telefonu (zgłasza agent w odpytaniu).
-  phoneReadyKeys: text('phone_ready_keys').array().notNull().default(sql`'{}'::text[]`),
   // Kto zlecił to, co agent przejął jako ostatnie (claim analizy / Start). Analiza kasuje claim na zgłoszeniu, więc zapisujemy tu.
   currentRequesterId: integer('current_requester_id').references(() => users.id, { onDelete: 'set null' }),
   // Co agent widzi ustawione na komputerze (z plików konfiguracji, przy każdym odpytaniu): MCP i plugin per konto Claude, Codex, Cursor.
@@ -609,8 +599,6 @@ export const agentJobs = pgTable('agent_jobs', {
   kind: text('kind').notNull().default('start'),
   claimedAt: timestamp('claimed_at', { withTimezone: true }),
   claimedDevice: text('claimed_device'),
-  startedAt: timestamp('started_at', { withTimezone: true }),
-  error: text('error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('agent_jobs_poll_idx').on(t.userId, t.createdAt).where(sql`${t.claimedAt} is null`)]);
 

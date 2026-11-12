@@ -4,8 +4,7 @@ import { CLAIM_TTL_MIN } from './time.ts';
 import { askConfirm } from './Confirm.tsx';
 import { useQuery } from '@tanstack/react-query';
 import { openAsk } from './AskModal.tsx';
-import { isNeedInfo, isPaused } from '../server/rules.ts';
-import { openPause } from './PauseModal.tsx';
+import { isNeedInfo } from '../server/rules.ts';
 import { startWork } from './startWork.ts';
 import { waitReasonText } from './analysisWait.ts';
 import { openAgentRepos } from './settingsNav.ts';
@@ -402,10 +401,6 @@ export function Board() {
       const { statusId: _s, ...extra } = patch;
       return openAsk({ number: issue.number, statusId: st.id, extra });
     }
-    if (patch.statusId && isPaused(st)) {
-      const { statusId: _s, ...extra } = patch;
-      return openPause({ number: issue.number, statusId: st.id, extra });
-    }
     if (Object.keys(patch).length) update.mutate({ number: issue.number, patch });
   };
 
@@ -785,9 +780,6 @@ export function CardView({ issue, meta, dragging, overlay }: { issue: IssueRow; 
               ? (askedMe ? t('Asked your #{tag}', { tag: askedTag.name }) : t('Asking #{tag}', { tag: askedTag.name }))
               : askedMe ? (askedUser ? t('Asked you') : t('Asked everyone')) : t('Asking {name}', { name: askedUser?.name ?? t('anyone') })}
           </span>
-        )}
-        {issue.pauseReason && st && isPaused(st) && (
-          <span className="pill" title={issue.pauseReason}><span className="pill-text">{issue.pauseReason}</span></span>
         )}
         {show.priority && <span className="pill icon-only" title={t(meta.priorities[issue.priority])} {...pillProps('priority')}><PriorityIcon priority={issue.priority} /></span>}
         {show.subIssues && issue.subTotal > 0 && (

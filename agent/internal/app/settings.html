@@ -201,7 +201,6 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     var L = s.L, off = s.teamMode === "off";
     return '<div class="sec"><span class="lbl">' + esc(L.team) + '</span>' +
       seg("team", [["ask", L.ask, "accent", L.tipAsk], ["auto", L.auto, "success", L.tipAuto], ["off", L.off, "danger", L.tipOff]], s.teamMode) + '</div>' +
-      phoneHtml(s) +
       '<button class="btn mute" id="mute"' + (off && !s.muted ? ' disabled title="' + esc(L.offReason) + '"' : "") + '>' + esc(s.muteLabel) + '</button>' +
       '<div class="sec"><div class="row' + (s.notify ? " on" : "") + (off ? " dis" : "") + '" id="notify" role="switch" tabindex="0" aria-checked="' + s.notify + '"' + (off ? ' aria-disabled="true" title="' + esc(L.offReason) + '"' : "") + '><span>' + esc(L.notify) + '</span><i class="sw"></i></div>' +
       '<div class="row' + (s.notifyOwn ? " on" : "") + '" id="notifyown" role="switch" tabindex="0" aria-checked="' + s.notifyOwn + '"><span>' + esc(L.notifyOwn) + '</span><i class="sw"></i></div>' +
@@ -213,24 +212,6 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
       '<div class="btns"><button class="btn" id="showlog">' + esc(L.showLog) + '</button><button class="btn' + (copied ? " ok" : "") + '" id="copylog">' + esc(copied ? L.copied : L.copyLog) + '</button></div>' +
       '<div class="foot"><button class="btn link" id="open">' + esc(L.open) + '</button><button class="btn link" id="ai">' + esc(L.ai) + '</button>' +
       '<button class="btn danger" id="uninstall">' + esc(L.uninstall) + '</button></div>';
-  }
-  function phoneHtml(s) {
-    var L = s.L, accs = s.phoneAccounts || [], projs = s.phoneProjects || [];
-    var opts = '<option value="">' + esc(L.phoneNone) + '</option>' + accs.map(function (a) {
-      return '<option value="' + esc(a.dir) + '"' + (a.dir === s.phoneAccount ? " selected" : "") + '>' + esc(a.email) + '</option>';
-    }).join("");
-    var list = "", prep = false;
-    if (s.phoneAccount && s.phoneCodex) list = '<div class="hintline">' + esc(L.phoneCodex) + '</div>';
-    else if (s.phoneAccount) {
-      list = projs.map(function (p) {
-        if (p.on && !p.ready && p.missing !== "folder") prep = true;
-        var pill = p.ready ? '<span class="pill sm good">' + esc(L.phoneReady) + '</span>'
-          : '<span class="pill sm mut" title="' + esc(L["phone" + p.missing.charAt(0).toUpperCase() + p.missing.slice(1)]) + '">' + esc(L.phoneSetup) + '</span>';
-        return '<div class="row' + (p.on ? " on" : "") + '" data-phone="' + esc(p.key) + '" role="switch" tabindex="0" aria-checked="' + p.on + '"><span>' + esc(p.key) + '</span>' + pill + '<i class="sw"></i></div>';
-      }).join("");
-      if (prep) list += '<div class="btns"><button class="btn" id="phoneprep">' + esc(L.phonePrep) + '</button></div>';
-    }
-    return '<div class="sec" id="phonesec"><span class="lbl">' + esc(L.phone) + '</span><select class="sel" id="phoneacc">' + opts + '</select>' + list + '</div>';
   }
   function consentsHtml(s) {
     var L = s.L, list = s.consents || [];
@@ -266,12 +247,6 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     }
     function toggle(id, f) { var el = $(id); el.onclick = call(function () { f(!el.classList.contains("on")); }); el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } }; }
     if (S.teamMode !== "off") toggle("notify", window.setNotify); toggle("notifyown", window.setNotifyOwn); toggle("autoupdate", window.setAutoUpdate); toggle("autostart", window.setAutostart);
-    $("phoneacc").onchange = call(function () { window.setPhoneAccount($("phoneacc").value); });
-    Array.prototype.forEach.call(panelEl.querySelectorAll("[data-phone]"), function (el) {
-      el.onclick = call(function () { window.setPhoneProject(el.dataset.phone, !el.classList.contains("on")); });
-      el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } };
-    });
-    if ($("phoneprep")) $("phoneprep").onclick = call(window.preparePhone);
     $("mute").onclick = call(window.toggleMute);
     $("open").onclick = call(window.openApp); $("ai").onclick = call(window.openAI); $("uninstall").onclick = call(window.uninstall);
     $("showlog").onclick = function () { view = "log"; logText = null; window.getLog().then(function (t) { logText = t; drawPanel(true); }); drawPanel(); };
@@ -404,7 +379,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     if (!S) return;
     var L = S.L, html, sig;
     if (tab === "general" && view === "log") { sig = JSON.stringify(["log", logText, copied, L.back]); html = logHtml(L); }
-    else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.consents, pairOpen, pairMsg, pairState, S.teamMode, S.notify, S.notifyOwn, S.autoUpdate, S.autostart, S.muteLabel, S.themeSetting, copied, S.phoneAccounts, S.phoneAccount, S.phoneProjects, S.phoneCodex]); html = generalHtml(S); }
+    else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.consents, pairOpen, pairMsg, pairState, S.teamMode, S.notify, S.notifyOwn, S.autoUpdate, S.autostart, S.muteLabel, S.themeSetting, copied]); html = generalHtml(S); }
     else if (tab === "repos") { sig = JSON.stringify(["r", repos, repoMsg, L.pick, rescanning]); html = reposHtml(L); }
     else { sig = JSON.stringify(["u", S.runs, S.limit, L.noRuns]); html = runsHtml(S); }
     if (sig === sigs.panel && !scrollLog) return;
@@ -429,14 +404,9 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
       if (my !== seq) return; // a newer refresh already took over
       busy = false; S = s;
       drawHead(); drawTabs(); drawPanel();
-      if (wantPhone) gotoPhoneNow(); // TEMP phone-announce: remove after agent 0.5
       if (!readySent) { readySent = true; try { window.ready(); } catch (e) {} }
     }, function () { clearTimeout(dog); if (my === seq) busy = false; });
   }
-  // TEMP phone-announce: remove after agent 0.5
-  var wantPhone = false;
-  function gotoPhoneNow() { wantPhone = false; var e = document.getElementById("phonesec"); if (e) e.scrollIntoView({ block: "start" }); }
-  window.gotoPhone = function () { wantPhone = true; if (!busy && S) gotoPhoneNow(); };
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") window.close(); });
   var born = Date.now(), readySent = false;
   // The window is kept and only hidden on close: showing it again starts like a fresh open (General tab, new state).

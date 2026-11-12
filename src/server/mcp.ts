@@ -107,7 +107,6 @@ async function presentIssue(p: Project, number: number) {
       for: userName(d.infoFromId) ?? (d.infoTagId != null ? `#${r.meta.tags.find((x) => x.id === d.infoTagId)?.name ?? '?'}` : 'anyone'),
       by: userName(d.infoById), text: d.infoQuestion,
     } : null,
-    pauseReason: d.pauseReason || null,
     analysis: d.analysis,
     analysisRequested: !!d.analysisRequestedAt,
     changeHuman: d.changeHuman,
@@ -225,8 +224,6 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
     parentId: z.string().nullable().optional().describe('Parent issue identifier, null to detach'),
     askUser: z.string().optional().describe('With question: who should answer (name, login, "me", "#tag" for everyone with that people tag, or "anyone"); use with status "Need Info"'),
     question: z.string().optional(),
-    pauseReason: z.string().optional().describe('Why the issue is paused; use with a status whose role is paused (see list_issue_statuses)'),
-    pauseWaitsOn: z.string().optional().describe('Identifier of the issue this one waits on; use with a status whose role is paused. The issue returns to its previous status when that one closes'),
   }, async (a) => {
     const target = a.id ? await ref(me, a.id) : { p: await projectOf(me, a.project), n: 0 };
     const p = target.p;
@@ -249,8 +246,6 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       infoFromId: !a.question ? undefined : askTag ? null : a.askUser && a.askUser.toLowerCase() !== 'anyone' ? r.user(a.askUser, me) : null,
       infoTagId: !a.question ? undefined : askTag ? tagId(askTag) : null,
       infoQuestion: a.question,
-      pauseReason: a.pauseReason,
-      pauseWaitsOn: a.pauseWaitsOn ? numIn(p, a.pauseWaitsOn) : undefined,
     };
     if (a.id) {
       await svc.updateIssue(p, me, target.n, input);
@@ -320,8 +315,8 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
     return { id: c.id, issue: id };
   });
 
-  tool('list_issue_statuses', 'List statuses of a project with their type (backlog/unstarted/started/completed/canceled/duplicate) and role (need_info/testing/paused/in_progress or null). Status names are free: recognize special statuses by role, never by name.', { project: projectArg }, async (a) =>
-    (await svc.getMeta(await projectOf(me, a.project))).statuses.map((s) => ({ name: s.name, type: s.type, role: s.role })));
+  tool('list_issue_statuses', 'List statuses of a project with their type (backlog/unstarted/started/completed/canceled/duplicate).', { project: projectArg }, async (a) =>
+    (await svc.getMeta(await projectOf(me, a.project))).statuses.map((s) => ({ name: s.name, type: s.type })));
 
   tool('list_issue_labels', 'List labels of a project.', { project: projectArg }, async (a) =>
     (await svc.getMeta(await projectOf(me, a.project))).labels.map((l) => ({ name: l.name, color: l.color })));

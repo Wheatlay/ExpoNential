@@ -522,7 +522,7 @@ describe('start jobs', () => {
   });
 
   it('creates a job, assigns the issue and moves it to In Progress', async () => {
-    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'], phone: ['AGT'] });
+    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'] });
     const n = await newIssue();
     const r = await ag.createStartJob(P, alice, n);
     expect(r.ok).toBe(true);
@@ -533,7 +533,7 @@ describe('start jobs', () => {
   });
 
   it('lists only my unclaimed fresh jobs, claims once, and expires after an hour', async () => {
-    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'], phone: ['AGT'] });
+    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'] });
     await dbmod.sql`delete from agent_jobs`;
     const n = await newIssue();
     const { id } = await ag.createStartJob(P, alice, n);
@@ -550,47 +550,6 @@ describe('start jobs', () => {
     expect(await starts(alice, DEV_A1)).toEqual([]);
     expect(await code(ag.claimStartJob(alice, old.id, DEV_A1))).toBe('conflict');
     expect(await code(ag.claimStartJob(bob, old.id, DEV_B1))).toBe('conflict');
-  });
-
-  it('refuses when the online agent is not phone-ready, accepts when it is', async () => {
-    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'], phone: [] });
-    const n = await newIssue();
-    expect(await code(ag.createStartJob(P, alice, n))).toBe('invalid');
-    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'], phone: ['agt'] });
-    expect((await ag.createStartJob(P, alice, n)).ok).toBe(true);
-    expect((await ag.agentsLite(alice)).find((x) => x.id === DEV_A1)?.phoneReady).toBe(true);
-  });
-
-  it('offers the job only to the ready agent, returns title on claim, tracks result', async () => {
-    await dbmod.sql`delete from agent_jobs`;
-    await ag.heartbeat(alice, DEV_A1, { name: 'ALICE-PC', busy: false, repoKeys: ['AGT'], phone: ['AGT'] });
-    await ag.heartbeat(alice, DEV_A2, { name: 'ALICE-LAPTOP', busy: false, repoKeys: ['AGT'], phone: [] });
-    const n = await newIssue();
-    const cur = await row(n);
-    const { id } = await ag.createStartJob(P, alice, n);
-    const starts = async (dev: string) => (await ag.pendingWork(alice, await agentOf(dev))).filter((j) => j.kind === 'start');
-    expect(await starts(DEV_A2)).toEqual([]);
-    expect(await starts(DEV_A1)).toHaveLength(1);
-    expect((await ag.startJobState(alice, cur.id))?.state).toBe('waiting');
-    const c = await ag.claimStartJob(alice, id, DEV_A1);
-    expect(c.title).toBe(cur.title);
-    expect((await ag.startJobState(alice, cur.id))).toMatchObject({ state: 'starting', device: 'ALICE-PC' });
-    expect(await code(ag.finishStartJob(alice, id, DEV_A2, true))).toBe('not_found');
-    expect(await code(ag.finishStartJob(bob, id, DEV_B1, true))).toBe('not_found');
-    await ag.finishStartJob(alice, id, DEV_A1, true);
-    expect(await ag.startJobState(alice, cur.id)).toEqual({ state: 'running', device: 'ALICE-PC', error: null });
-    const kinds = async () => (await dbmod.db.select().from(schema.activity).where(dz.eq(schema.activity.issueId, cur.id))).map((x) => (x.payload as { kind: string }).kind);
-    expect(await kinds()).toContain('started_on_pc');
-
-    const m = await newIssue();
-    const cm = await row(m);
-    const j2 = await ag.createStartJob(P, alice, m);
-    await ag.claimStartJob(alice, j2.id, DEV_A1);
-    await ag.finishStartJob(alice, j2.id, DEV_A1, false, 'x'.repeat(400));
-    const st = await ag.startJobState(alice, cm.id);
-    expect(st?.state).toBe('failed');
-    expect(st?.error).toHaveLength(300);
-    expect((await dbmod.db.select().from(schema.activity).where(dz.eq(schema.activity.issueId, cm.id))).some((x) => (x.payload as { kind: string }).kind === 'start_on_pc_failed')).toBe(true);
   });
 });
 
