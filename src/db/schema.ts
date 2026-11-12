@@ -437,6 +437,8 @@ export const meetings = pgTable('meetings', {
   createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
   // Kiedy organizator dostał "wszyscy zagłosowali" (raz na komplet terminów; nowy termin zeruje).
   allVotedNotifiedAt: timestamp('all_voted_notified_at', { withTimezone: true }),
+  // Id wiadomości "Nowe spotkanie" / "Termin wybrany" na kanale Discord: zmiana terminu ją edytuje.
+  discordMessageId: text('discord_message_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('meetings_project_idx').on(t.projectId, t.startsAt), uniqueIndex('meetings_sprint_uniq').on(t.sprintId)]);
 

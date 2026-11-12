@@ -54,12 +54,12 @@ export async function registerMeetings(app: FastifyInstance) {
         title: z.string().max(200).optional(), locationUrl: z.string().max(500).optional(), agenda: z.string().max(10000).optional(), reminders: reminders.optional(),
         startsAt: date.optional(), endsAt: date.optional(), attendeeIds: attendees,
       }).parse(req.body);
-      await mt.updateMeeting(p, actor, isAdmin, idParam(req.params.id), b);
+      await mt.updateMeeting(p, actor, isAdmin, idParam(req.params.id), b, req.log);
       return { ok: true };
     });
     r.delete<{ Params: { id: string } }>('/api/meetings/:id', async (req) => {
       const { p, actor, isAdmin } = await scope(req);
-      await mt.cancelMeeting(p, actor, isAdmin, idParam(req.params.id));
+      await mt.cancelMeeting(p, actor, isAdmin, idParam(req.params.id), req.log);
       return { ok: true };
     });
     r.put<{ Params: { id: string } }>('/api/meetings/:id/attendance', async (req) => {

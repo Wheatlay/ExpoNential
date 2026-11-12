@@ -681,9 +681,8 @@ function ScheduledDialog({ m }: { m: Meeting }) {
         <div className="row-6 row-wrap">
           <DateInput aria-label={t('Day')} value={when.date} disabled={!!ro} onChange={(v) => setWhen((w) => ({ ...w, date: v }))} />
           <TimeInput aria-label={t('Time')} value={when.time} disabled={!!ro} onChange={(v) => setWhen((w) => ({ ...w, time: v }))} />
-          <Tooltip text={ro}>
-            <button className="btn sm" disabled={!!ro || !moved} onClick={() => void move()}>{t('Move')}</button>
-          </Tooltip>
+          {/* Pojawia się dopiero po ustawieniu innego terminu, na żółto, żeby nie przeoczyć zapisu. */}
+          {!ro && moved && <button className="btn sm warn" onClick={() => void move()}>{t('Move')}</button>}
         </div>
         <MeetingDetails m={m} ro={ro} roInvite={roInvite} patch={patch} />
         {m.kind === 'fixed' && <AttendanceRows m={m} />}

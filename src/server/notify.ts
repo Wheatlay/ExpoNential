@@ -115,33 +115,71 @@ export function defangMentions(s: string) {
   return s.replace(/@(everyone|here)/gi, "@\u200b$1").replace(/<@/g, "<\u200b@");
 }
 
-/** Wiadomość na kanał projektu z @here. Brak webhooka = nic. Błąd Discorda nie psuje akcji. */
-export async function sendDiscord(p: Project, m: DiscordMessage, log?: { warn: (o: object, m: string) => void }) {
+const discordBody = (m: DiscordMessage) => ({
+  // Powiadomienie systemowe pokazuje tylko content (bez embeda), więc tytuł na początku, @here (tylko dla pingu Discorda) na końcu.
+  content: `**${defangMentions(m.title)}** @here`,
+  allowed_mentions: { parse: ['everyone'] },
+  embeds: [{ title: defangMentions(m.title), description: defangMentions(m.description), url: m.url, color: m.color ?? 0xa855f7 }],
+});
+
+/** Adres webhooka z dopiskiem ścieżki, z zachowaniem parametrów (np. thread_id). */
+function webhookUrl(base: string, path: string, params: Record<string, string> = {}) {
+  const u = new URL(base);
+  u.pathname = u.pathname.replace(/\/$/, '') + path;
+  for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+  return u.toString();
+}
+
+/**
+ * Wiadomość na kanał projektu z @here. Brak webhooka = nic. Błąd Discorda nie psuje akcji.
+ * Zwraca id wiadomości (do późniejszej edycji; pusty napis, gdy Discord go nie podał) albo false.
+ */
+export async function sendDiscord(p: Project, m: DiscordMessage, log?: { warn: (o: object, m: string) => void }): Promise<string | false> {
   if (!p.discordWebhookUrl) return false;
   try {
-    const res = await fetch(p.discordWebhookUrl, {
+    // wait=true: Discord odsyła zapisaną wiadomość, a z nią id.
+    const res = await fetch(webhookUrl(p.discordWebhookUrl, '', { wait: 'true' }), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({
-        // Powiadomienie systemowe pokazuje tylko content (bez embeda), więc tytuł na początku, @here (tylko dla pingu Discorda) na końcu.
-        content: `**${defangMentions(m.title)}** @here`,
+        ...discordBody(m),
         // Nazwa i logo aplikacji zamiast domyślnych z webhooka. Logo Discord pobiera sam, więc tylko z publicznego https.
         username: 'Exponential',
         ...(BASE_URL.startsWith('https://') ? { avatar_url: `${BASE_URL}/icon-256.png` } : {}),
-        allowed_mentions: { parse: ['everyone'] },
-        embeds: [{ title: defangMentions(m.title), description: defangMentions(m.description), url: m.url, color: m.color ?? 0xa855f7 }],
       }),
     });
     if (!res.ok) throw new Error(`Discord ${res.status}`);
+    const sent = await res.json().catch(() => null) as { id?: string } | null;
     // Ślad błędu czyścimy tylko gdy był, żeby nie pisać do bazy przy każdej wiadomości.
     if (p.discordLastError) await db.update(projects).set({ discordLastError: '', discordLastErrorAt: null }).where(eq(projects.id, p.id)).catch(() => {});
-    return true;
+    return sent?.id ?? '';
   } catch (e) {
     const msg = (e as Error).message;
     log?.warn({ err: msg }, 'discord webhook failed');
     // Komunikat z fetch bywa z adresem webhooka, więc zapisujemy tylko kod statusu albo ogólny opis.
     const safe = /^Discord \d+$/.test(msg) ? msg : 'Request failed';
     await db.update(projects).set({ discordLastError: safe.slice(0, 200), discordLastErrorAt: new Date() }).where(eq(projects.id, p.id)).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * Podmienia treść wysłanej wcześniej wiadomości (np. nowa godzina spotkania). Edycja na Discordzie nikogo nie pinguje.
+ * Wiadomość usunięta na kanale albo zmieniony webhook: po cichu nic (tylko log).
+ */
+export async function editDiscord(p: Project, messageId: string, m: DiscordMessage, log?: { warn: (o: object, m: string) => void }) {
+  if (!p.discordWebhookUrl || !messageId) return false;
+  try {
+    const res = await fetch(webhookUrl(p.discordWebhookUrl, `/messages/${messageId}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(discordBody(m)),
+    });
+    if (!res.ok) throw new Error(`Discord ${res.status}`);
+    return true;
+  } catch (e) {
+    const msg = (e as Error).message;
+    log?.warn({ err: /^Discord \d+$/.test(msg) ? msg : 'Request failed' }, 'discord edit failed');
     return false;
   }
 }

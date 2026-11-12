@@ -6,7 +6,7 @@ import {
 } from '../db/schema.ts';
 import { RuleError } from './rules.ts';
 import { publish } from './service.ts';
-import { getNotifySettings, sendDiscord, sendPush } from './notify.ts';
+import { editDiscord, getNotifySettings, sendDiscord, sendPush, type DiscordMessage } from './notify.ts';
 import { formatDateTime, formatTime, lastWorkday, zonedDate, zonedToUtc } from './tz.ts';
 import { LOCALE, st } from './i18n.ts';
 import type { Project } from './projects.ts';
@@ -81,6 +81,23 @@ function invited(m: Invite, userId: number) {
 /** Kogo powiadomić: cały projekt albo tylko zaproszeni. */
 async function recipients(p: Project, m: Invite) {
   return (await memberIds(p)).filter((id) => invited(m, id));
+}
+
+/**
+ * Treść wiadomości o terminie na Discordzie: przy utworzeniu ("Nowe spotkanie" / "Termin wybrany") i przy edycji tej samej
+ * wiadomości po zmianie terminu, tytułu albo linku. Odwołane: ta sama wiadomość z przekreśloną datą, szara.
+ */
+function scheduledMessage(p: Project, m: Pick<typeof meetings.$inferSelect, 'id' | 'kind' | 'title' | 'startsAt' | 'locationUrl'>, cancelled = false): DiscordMessage {
+  const description = `${formatDateTime(m.startsAt!)}${m.locationUrl ? ` · ${m.locationUrl}` : ''}`;
+  const url = meetingUrl(p, m.id);
+  if (cancelled) return { title: st('Cancelled: {title}', { title: m.title }), description: `~~${description}~~`, url, color: 0x6b6f76 };
+  const title = st(m.kind === 'poll' ? 'Time picked: {title}' : 'New meeting: {title}', { title: m.title });
+  return { title, description, url, color: m.kind === 'poll' ? 0x4cb782 : undefined };
+}
+
+/** Zapamiętuje id wiadomości o terminie, żeby późniejsza zmiana spotkania ją edytowała. */
+async function rememberDiscord(meetingId: number, sent: string | false) {
+  if (sent) await db.update(meetings).set({ discordMessageId: sent }).where(eq(meetings.id, meetingId));
 }
 
 /** Na kanał idzie każde spotkanie (także dla wybranych osób), chyba że organizator wyłączył u siebie Discorda (sprint review: zawsze). */
@@ -174,7 +191,7 @@ export async function createMeeting(p: Project, actor: Actor, input: NewMeeting,
     if (await discordAllowed(m)) await sendDiscord(p, { title: st('Poll: {title}', { title }), description: st('{count} to choose from, you can propose another. Organized by {name}.', { count, name: actor.name }), url, color: 0xf2994a }, log);
     await sendPush(others, { title: `Vote: ${title}`, body: `${actor.name} asks when you can meet (${n} option${n === 1 ? '' : 's'}).`, url, tag: `meeting-${m.id}` }, log);
   } else {
-    if (await discordAllowed(m)) await sendDiscord(p, { title: st('New meeting: {title}', { title }), description: `${formatDateTime(m.startsAt!)}${m.locationUrl ? ` · ${m.locationUrl}` : ''}`, url }, log);
+    if (await discordAllowed(m)) await rememberDiscord(m.id, await sendDiscord(p, scheduledMessage(p, m), log));
     await sendPush(others, { title: `New meeting: ${title}`, body: `${formatTime(m.startsAt!)} · added by ${actor.name}`, url, tag: `meeting-${m.id}` }, log);
   }
   return m;
@@ -297,7 +314,7 @@ async function applyPick(p: Project, m: typeof meetings.$inferSelect, slot: type
   if (!done) return false;
   await changed(p);
   const url = meetingUrl(p, m.id);
-  if (await discordAllowed(m)) await sendDiscord(p, { title: st('Time picked: {title}', { title: m.title }), description: `${formatDateTime(slot.startsAt)}${m.locationUrl ? ` · ${m.locationUrl}` : ''}`, url, color: 0x4cb782 }, log);
+  if (await discordAllowed(m)) await rememberDiscord(m.id, await sendDiscord(p, scheduledMessage(p, { ...m, startsAt: slot.startsAt }), log));
   const to = (await recipients(p, m)).filter((id) => id !== actor?.id);
   await sendPush(to, { title: `${m.title}: time picked`, body: `${formatTime(slot.startsAt)} · ${actor ? `picked by ${actor.name}` : st('everyone said yes')}`, url, tag: `meeting-${m.id}` }, log);
   return true;
@@ -305,7 +322,7 @@ async function applyPick(p: Project, m: typeof meetings.$inferSelect, slot: type
 
 export async function updateMeeting(p: Project, actor: Actor, isAdmin: boolean, id: number, patch: {
   title?: string; locationUrl?: string; agenda?: string; reminders?: number[]; startsAt?: Date; endsAt?: Date; attendeeIds?: number[] | null;
-}) {
+}, log?: Log) {
   const m = await requireMeeting(p, id);
   if (!canEdit(m, actor, isAdmin)) throw new RuleError('Only the organizer or a project admin can change this meeting', 'forbidden');
   const set: Partial<typeof meetings.$inferInsert> = {};
@@ -335,14 +352,21 @@ export async function updateMeeting(p: Project, actor: Actor, isAdmin: boolean, 
   }
   if (patch.reminders) await setReminders(m.id, checkReminders(patch.reminders));
   await changed(p);
+  // Wiadomość o terminie na Discordzie pokazuje aktualny termin, tytuł i link (edycja, bez nowego powiadomienia).
+  const after = { ...m, ...set } as typeof m;
+  if (m.discordMessageId && after.status === 'scheduled' && after.startsAt
+    && (after.title !== m.title || after.locationUrl !== m.locationUrl || after.startsAt.getTime() !== m.startsAt?.getTime())) {
+    await editDiscord(p, m.discordMessageId, scheduledMessage(p, after), log);
+  }
 }
 
-export async function cancelMeeting(p: Project, actor: Actor, isAdmin: boolean, id: number) {
+export async function cancelMeeting(p: Project, actor: Actor, isAdmin: boolean, id: number, log?: Log) {
   const m = await requireMeeting(p, id);
   if (!canEdit(m, actor, isAdmin)) throw new RuleError('Only the organizer or a project admin can cancel this meeting', 'forbidden');
   // Odwołane sprint review zostaje w bazie, żeby się samo nie odtworzyło.
   await db.update(meetings).set({ status: 'cancelled' }).where(eq(meetings.id, m.id));
   await changed(p);
+  if (m.discordMessageId && m.startsAt) await editDiscord(p, m.discordMessageId, scheduledMessage(p, m, true), log);
 }
 
 // ---------- sprint review ----------

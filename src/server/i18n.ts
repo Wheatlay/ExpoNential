@@ -25,6 +25,7 @@ const pl: Record<string, string> = {
   '{name} proposes {when}{reason}. Vote.': '{name} proponuje {when}{reason}. Zagłosuj.',
   ' (“{reason}”)': ' („{reason}”)',
   'Time picked: {title}': 'Termin wybrany: {title}',
+  'Cancelled: {title}': 'Odwołane: {title}',
   'everyone said yes': 'wszyscy się zgodzili',
   'Everyone voted. Pick a time.': 'Wszyscy zagłosowali. Wybierz termin.',
   'is starting now': 'zaczyna się teraz',
