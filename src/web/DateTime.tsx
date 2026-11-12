@@ -109,6 +109,35 @@ export function TimeInput({ value, onChange, disabled, style, ...rest }: Props) 
     }, 150);
   };
   useEffect(() => () => { if (settle.current) clearTimeout(settle.current); }, []);
+  // Kółko myszy: jeden ząbek = jeden wiersz (domyślnie przeglądarka przewija ~100 px, czyli 3-4 wiersze).
+  // Gładzik daje drobne delty, więc zbieramy je do progu. Cel trzymamy osobno, bo przy szybkich ząbkach
+  // płynne przewijanie jeszcze trwa i scrollTop nie stoi na wierszu.
+  useEffect(() => {
+    if (!open) return;
+    const cols = [hoursCol.current, minutesCol.current].filter((c): c is HTMLDivElement => !!c);
+    const state = new Map<HTMLDivElement, { acc: number; target: number | null; reset?: ReturnType<typeof setTimeout> }>();
+    const onWheel = (e: WheelEvent) => {
+      const el = e.currentTarget as HTMLDivElement;
+      e.preventDefault();
+      const s = state.get(el) ?? { acc: 0, target: null };
+      state.set(el, s);
+      s.acc += e.deltaMode === 0 ? e.deltaY : e.deltaY * ROW;
+      if (Math.abs(s.acc) < 40) return;
+      const dir = Math.sign(s.acc);
+      s.acc = 0;
+      const max = el.children.length - 1;
+      const from = s.target ?? Math.round(el.scrollTop / ROW);
+      s.target = Math.min(max, Math.max(0, from + dir));
+      el.scrollTo({ top: s.target * ROW, behavior: 'smooth' });
+      if (s.reset) clearTimeout(s.reset);
+      s.reset = setTimeout(() => { s.target = null; s.acc = 0; }, 300);
+    };
+    cols.forEach((c) => c.addEventListener('wheel', onWheel, { passive: false }));
+    return () => {
+      cols.forEach((c) => c.removeEventListener('wheel', onWheel));
+      state.forEach((s) => s.reset && clearTimeout(s.reset));
+    };
+  }, [open, !!at]);
   // Przeciąganie myszą jak palcem; ruch powyżej 4 px to przewijanie, nie klik.
   const drag = useRef<{ y: number; top: number; moved: boolean } | null>(null);
   const dragProps = (col: React.RefObject<HTMLDivElement | null>) => ({
