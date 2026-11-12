@@ -5,7 +5,7 @@ import { z } from 'zod';
 import * as svc from './service.ts';
 import { RuleError, identifier, parseIdentifier, PRIORITIES } from './rules.ts';
 import { projectsOf, requireMember, type Project } from './projects.ts';
-import { listMeetings, meetingUrl } from './meetings.ts';
+import { createMeeting, listMeetings, meetingUrl } from './meetings.ts';
 import type { SessionUser } from './auth.ts';
 import { markMcpUse } from './oauth.ts';
 import { procedures } from './skills/index.ts';
@@ -335,6 +335,33 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
           votes: s.votes.map((v) => `${name(v.userId)}: ${v.vote}`),
         })) : undefined,
       }));
+    });
+
+  tool('save_meeting', 'Schedule a meeting in a project (fixed time, like the Meetings tab). Times are ISO 8601 with the UTC offset of the people meeting, e.g. 2026-11-12T11:30:00+01:00. The team gets the usual notifications and reminders.',
+    {
+      project: projectArg,
+      title: z.string().min(1).max(200),
+      startsAt: z.string().describe('Start, ISO 8601 with offset'),
+      endsAt: z.string().optional().describe('End, ISO 8601 with offset; default startsAt + durationMinutes'),
+      durationMinutes: z.number().int().min(5).max(1440).optional().describe('Used when endsAt is missing; default 60'),
+      agenda: z.string().max(10000).optional(),
+      locationUrl: z.string().max(500).optional(),
+      attendees: z.array(z.string()).max(200).optional().describe('Names or logins ("me" for you); omitted = whole team'),
+    }, async (a) => {
+      const p = await projectOf(me, a.project);
+      const at = (v: string, what: string) => {
+        const d = new Date(v);
+        if (Number.isNaN(d.getTime())) throw new RuleError(`Invalid ${what} "${v}", expected ISO 8601, e.g. 2026-11-12T11:30:00+01:00`, 'invalid');
+        return d;
+      };
+      const startsAt = at(a.startsAt, 'startsAt');
+      const endsAt = a.endsAt ? at(a.endsAt, 'endsAt') : new Date(startsAt.getTime() + (a.durationMinutes ?? 60) * 60e3);
+      const r = await resolver(p);
+      const attendeeIds = a.attendees?.length ? a.attendees.map((x) => r.user(x, me)) : null;
+      const m = await createMeeting(p, { id: me.id, name: me.name }, {
+        title: a.title, kind: 'fixed', startsAt, endsAt, agenda: a.agenda, locationUrl: a.locationUrl, attendeeIds,
+      });
+      return { title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, url: meetingUrl(p, m.id) };
     });
 
   tool('list_users', 'List members of a project.', { project: projectArg }, async (a) =>

@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.35] - 12.11.2026
+
+- MCP `save_meeting`: schedules a fixed-time meeting in a project (title, start with UTC offset, end or length, agenda, link, attendees; default whole team, 60 min), with the usual notifications and reminders.
+
 ## Server [1.3.34] - 09.11.2026
 
 - Activity reads easier: no empty "worked in Claude Code" entries, no separate commit line when the commit is already in a Claude Code entry (linked there), one avatar per series of one person, minor changes dimmed, field edits indented, sparkle icon for Claude work.

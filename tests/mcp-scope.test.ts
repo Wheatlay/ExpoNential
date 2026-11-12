@@ -82,3 +82,19 @@ describe('MCP issue scope', () => {
     expect((await call('list_projects', {}, 'nonsense')).status).toBe(400);
   });
 });
+
+describe('MCP save_meeting', () => {
+  it('schedules a fixed meeting, default length 60 min, and lists it', async () => {
+    const r = await call('save_meeting', { title: 'Tests sync', startsAt: '2099-11-12T11:30:00+01:00' });
+    expect(isError(r)).toBe(false);
+    const m = JSON.parse(text(r));
+    expect(new Date(m.startsAt).toISOString()).toBe('2099-11-12T10:30:00.000Z');
+    expect(new Date(m.endsAt).toISOString()).toBe('2099-11-12T11:30:00.000Z');
+    expect(text(await call('list_meetings', {}))).toContain('Tests sync');
+  });
+  it('rejects a bad time and an unknown attendee, and is not in the issue scope', async () => {
+    expect(isError(await call('save_meeting', { title: 'x', startsAt: 'tomorrow' }))).toBe(true);
+    expect(isError(await call('save_meeting', { title: 'x', startsAt: '2099-11-12T11:30:00Z', attendees: ['nobody'] }))).toBe(true);
+    expect(isError(await call('save_meeting', { title: 'x', startsAt: '2099-11-12T11:30:00Z' }, `SC-${n1}`))).toBe(true);
+  });
+});
