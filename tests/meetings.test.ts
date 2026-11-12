@@ -434,3 +434,34 @@ describe('polls: everyone voted and past times', () => {
     expect(timePicked().filter(([, p]) => p.title.startsWith('Wyścig'))).toHaveLength(1);
   });
 });
+
+describe('attendance on a fixed meeting', () => {
+  it('invitees answer yes / maybe with a note / no, can change or take it back; the time stays', async () => {
+    const m = await mt.createMeeting(P, alice, { title: 'Zewnętrzne', kind: 'fixed', startsAt: at('2026-10-27T10:30:00Z'), endsAt: at('2026-10-27T11:30:00Z') });
+    await mt.setAttendance(P, alice, m.id, 'yes');
+    await mt.setAttendance(P, pawel, m.id, 'maybe', '  druga połowa ');
+    const answers = async () => (await mt.listMeetings(P)).find((x) => x.id === m.id)!.attendance;
+    expect(await answers()).toEqual(expect.arrayContaining([
+      { userId: alice.id, answer: 'yes', note: null }, { userId: pawel.id, answer: 'maybe', note: 'druga połowa' },
+    ]));
+    await mt.setAttendance(P, pawel, m.id, 'no', 'ignored');
+    expect((await answers()).find((a) => a.userId === pawel.id)).toEqual({ userId: pawel.id, answer: 'no', note: null });
+    await mt.setAttendance(P, alice, m.id, null);
+    expect((await answers()).map((a) => a.userId)).toEqual([pawel.id]);
+    const after = (await mt.listMeetings(P)).find((x) => x.id === m.id)!;
+    expect(after.status).toBe('scheduled');
+    expect(after.startsAt?.toISOString()).toBe('2026-10-27T10:30:00.000Z');
+  });
+  it('only invited people, only fixed meetings, not after the end; a removed invitee does not count', async () => {
+    const m = await mt.createMeeting(P, alice, { title: 'Wąsko', kind: 'fixed', startsAt: at('2026-10-28T10:00:00Z'), endsAt: at('2026-10-28T11:00:00Z'), attendeeIds: [alice.id] });
+    await expect(mt.setAttendance(P, pawel, m.id, 'yes')).rejects.toThrow(/invited/);
+    const poll = await mt.createMeeting(P, alice, { title: 'Ankieta', kind: 'poll', slots: [{ startsAt: at('2026-10-29T10:00:00Z'), endsAt: at('2026-10-29T11:00:00Z') }] });
+    await expect(mt.setAttendance(P, alice, poll.id, 'yes')).rejects.toThrow(/fixed time/);
+    const past = await mt.createMeeting(P, alice, { title: 'Było', kind: 'fixed', startsAt: at('2026-10-15T07:00:00Z'), endsAt: at('2026-10-15T08:00:00Z') });
+    await expect(mt.setAttendance(P, alice, past.id, 'yes')).rejects.toThrow(/ended/);
+    const open = await mt.createMeeting(P, alice, { title: 'Wszyscy', kind: 'fixed', startsAt: at('2026-10-28T12:00:00Z'), endsAt: at('2026-10-28T13:00:00Z') });
+    await mt.setAttendance(P, pawel, open.id, 'yes');
+    await mt.updateMeeting(P, alice, false, open.id, { attendeeIds: [alice.id] });
+    expect((await mt.listMeetings(P)).find((x) => x.id === open.id)!.attendance).toEqual([]);
+  });
+});

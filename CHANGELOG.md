@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.36] - 12.11.2026
+
+- Attendance on fixed-time meetings (e.g. set by someone outside the team): the time stays, invitees answer Yes / Maybe (with a note) / No in the meeting window, which lists the answers and who has not answered. MCP: `set_attendance`, `list_meetings` returns the meeting id and attendance. Migration 0041 adds `meeting_attendance`.
+
 ## Server [1.3.35] - 12.11.2026
 
 - MCP `save_meeting`: schedules a fixed-time meeting in a project (title, start with UTC offset, end or length, agenda, link, attendees; default whole team, 60 min), with the usual notifications and reminders.

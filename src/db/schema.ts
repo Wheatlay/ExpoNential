@@ -459,6 +459,15 @@ export const meetingVotes = pgTable('meeting_votes', {
   note: text('note'),
 }, (t) => [primaryKey({ columns: [t.slotId, t.userId] })]);
 
+/** Obecność na spotkaniu o stałym terminie (np. organizowanym przez kogoś spoza zespołu): termin się nie zmienia, zaproszeni mówią, czy będą. */
+export const meetingAttendance = pgTable('meeting_attendance', {
+  meetingId: integer('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  answer: text('answer').$type<Vote>().notNull(),
+  // Powód przy "maybe" (np. "dołączę na drugą połowę"); przy innych odpowiedziach puste.
+  note: text('note'),
+}, (t) => [primaryKey({ columns: [t.meetingId, t.userId] })]);
+
 /** Przypomnienia wybrane w spotkaniu: minuty przed startem (1440, 60, 15, 0). */
 export const meetingReminders = pgTable('meeting_reminders', {
   meetingId: integer('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),

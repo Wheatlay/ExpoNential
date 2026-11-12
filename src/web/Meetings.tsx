@@ -550,6 +550,59 @@ function PollVotes({ m }: { m: Meeting }) {
   );
 }
 
+/**
+ * Obecność na spotkaniu o stałym terminie (np. ustalonym przez kogoś spoza zespołu): termin się nie zmienia,
+ * zaproszeni mówią, czy będą. Te same chipy i kolory co głos w ankiecie, lista jak w ankiecie na telefonie.
+ */
+function Attendance({ m }: { m: Meeting }) {
+  const qc = useQueryClient();
+  const me = useMe().data;
+  const meta = useMeta().data;
+  const people = (meta?.users ?? []).filter((u) => u.active && isInvited(m, u.id));
+  const answer = (uid: number | undefined) => m.attendance.find((a) => a.userId === uid);
+  const mine = answer(me?.id);
+  const answered = people.filter((u) => answer(u.id));
+  const silent = people.filter((u) => !answer(u.id));
+  const off = !isInvited(m, me?.id) ? t('You are not invited to this meeting')
+    : new Date(m.endsAt!).getTime() <= Date.now() ? t('This meeting has already ended') : null;
+  const refresh = () => qc.invalidateQueries({ queryKey: ['meetings'] });
+  const send = (body: { answer: Vote | null; note?: string }) => void api(`/api/meetings/${m.id}/attendance`, { method: 'PUT', body }).then(refresh);
+  return (
+    <div className="poll-votes mt-16">
+      <div className="hint mb-8">{t('Attendance')} · {t('{a} of {b} answered', { a: answered.length, b: people.length })}</div>
+      <div className="row-8 mb-8">
+        <span>{t('Are you coming?')}</span>
+        <Tooltip text={off}>
+          <div className="vote-chips">
+            {(['yes', 'maybe', 'no'] as Vote[]).map((v) => (
+              <button key={v} className={`chip ${mine?.answer === v ? 'on' : ''}`} style={mine?.answer === v ? { borderColor: VOTE_COLOR[v], color: VOTE_COLOR[v] } : undefined}
+                disabled={!!off} onClick={() => send({ answer: mine?.answer === v ? null : v })}>{VOTE_LABEL[v]}</button>
+            ))}
+          </div>
+        </Tooltip>
+      </div>
+      {mine?.answer === 'maybe' && !off && (
+        <textarea className="input vote-note mb-8" rows={1} placeholder={t('Why? (optional)')} aria-label={t('Why maybe')} autoFocus={!mine.note} defaultValue={mine.note ?? ''}
+          onBlur={(e) => { if (e.target.value.trim() !== (mine.note ?? '')) send({ answer: 'maybe', note: e.target.value }); }} />
+      )}
+      {answered.length > 0 && (
+        <div className="poll-list-slot">
+          {answered.map((u) => {
+            const a = answer(u.id)!;
+            return (
+              <div key={u.id} className="poll-list-vote">
+                <PersonLink userId={u.id} className="grow"><Avatar user={u} size={18} />{u.name}</PersonLink>
+                <span style={{ color: VOTE_COLOR[a.answer], fontWeight: 600 }}>{a.answer === 'maybe' && a.note ? a.note : VOTE_LABEL[a.answer]}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {silent.length > 0 && <div className="hint mt-8">{t('No answer: {names}', { names: silent.map((u) => u.name).join(', ') })}</div>}
+    </div>
+  );
+}
+
 /** Agenda: organizator/admin edytuje jak opis zgłoszenia (CHUB-42 staje się linkiem), reszta czyta; pusta i bez prawa edycji = nic. */
 function Agenda({ m, ro, patch }: { m: Meeting; ro: string | null; patch: (body: object) => Promise<unknown> }) {
   const label = <div className="desc-label">{t('Agenda')}</div>;
@@ -630,6 +683,7 @@ function ScheduledDialog({ m }: { m: Meeting }) {
         <MeetingDetails m={m} ro={ro} roInvite={roInvite} patch={patch} />
       </div>
       {m.kind === 'poll' && m.slots.length > 0 && <PollVotes m={m} />}
+      {m.kind === 'fixed' && <Attendance m={m} />}
 
       <div className="foot mt-16">
         <Tooltip text={ro}>

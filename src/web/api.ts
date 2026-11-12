@@ -33,6 +33,8 @@ export type Meeting = {
   /** null = cały projekt */
   attendeeIds: number[] | null;
   reminders: number[]; slots: MeetingSlot[];
+  /** Kto będzie na spotkaniu o stałym terminie (tylko kind 'fixed'). */
+  attendance: { userId: number; answer: Vote; note?: string | null }[];
 };
 export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; onlyImportant: boolean; notifyPromptShown: boolean; pushKey: string | null; analysisToastSticky: boolean; discordProjects: { key: string; name: string }[] };
 

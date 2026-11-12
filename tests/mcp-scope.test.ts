@@ -91,6 +91,8 @@ describe('MCP save_meeting', () => {
     expect(new Date(m.startsAt).toISOString()).toBe('2099-11-12T10:30:00.000Z');
     expect(new Date(m.endsAt).toISOString()).toBe('2099-11-12T11:30:00.000Z');
     expect(text(await call('list_meetings', {}))).toContain('Tests sync');
+    expect(isError(await call('set_attendance', { meetingId: m.id, answer: 'yes' }))).toBe(false);
+    expect(text(await call('list_meetings', {}))).toContain('Dora: yes');
   });
   it('rejects a bad time and an unknown attendee, and is not in the issue scope', async () => {
     expect(isError(await call('save_meeting', { title: 'x', startsAt: 'tomorrow' }))).toBe(true);

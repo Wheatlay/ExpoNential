@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, inArray, isNull, lte, ne, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import {
-  meetingReminders, meetingSlots, meetingVotes, meetings, projectMembers, projects, reminderSends, sprints, users,
+  meetingAttendance, meetingReminders, meetingSlots, meetingVotes, meetings, projectMembers, projects, reminderSends, sprints, users,
   type MeetingKind, type Vote,
 } from '../db/schema.ts';
 import { RuleError } from './rules.ts';
@@ -44,11 +44,14 @@ export async function listMeetings(p: Project, since = new Date(Date.now() - 14 
     db.select().from(meetingReminders).where(inArray(meetingReminders.meetingId, ids)),
   ]);
   const votes = slots.length ? await db.select().from(meetingVotes).where(inArray(meetingVotes.slotId, slots.map((s) => s.id))) : [];
+  const answers = await db.select().from(meetingAttendance).where(inArray(meetingAttendance.meetingId, ids));
   // Wygasła ankieta (żaden termin już nie jest przed nami) jest na liście tak długo, jak jej ostatni termin mieści się w `since`.
   const lastSlot = (id: number) => Math.max(0, ...slots.filter((s) => s.meetingId === id).map((s) => s.startsAt.getTime()));
   return rows.filter((m) => m.status !== 'expired' || lastSlot(m.id) >= since.getTime()).map((m) => ({
     ...m,
     reminders: rems.filter((r) => r.meetingId === m.id).map((r) => r.offsetMinutes).sort((a, b) => b - a),
+    // Kto będzie (stały termin); odpowiedź osoby usuniętej z zaproszonych się nie liczy, jak głos w ankiecie.
+    attendance: answers.filter((a) => a.meetingId === m.id && invited(m, a.userId)).map((a) => ({ userId: a.userId, answer: a.answer, note: a.note })),
     slots: slots.filter((s) => s.meetingId === m.id).map((s) => ({
       // Głos osoby, którą potem usunięto z zaproszonych, nie liczy się i nie jest pokazywany.
       ...s, votes: votes.filter((v) => v.slotId === s.id && invited(m, v.userId)).map((v) => ({ userId: v.userId, vote: v.vote, note: v.note })),
@@ -221,6 +224,21 @@ export async function vote(p: Project, actor: Actor, slotId: number, v: Vote | n
   }
   await changed(p);
   await afterVote(p, row.meeting.id, log);
+}
+
+/** Czy będę na spotkaniu o stałym terminie: yes / maybe (z powodem) / no, null = cofnij odpowiedź. Termin się nie zmienia. */
+export async function setAttendance(p: Project, actor: Actor, meetingId: number, answer: Vote | null, note?: string | null) {
+  const m = await requireMeeting(p, meetingId);
+  if (m.kind !== 'fixed' || m.status !== 'scheduled') throw new RuleError('Attendance is only for meetings with a fixed time', 'invalid');
+  if (!invited(m, actor.id)) throw new RuleError('Only invited people can answer', 'forbidden');
+  if (m.endsAt && m.endsAt.getTime() <= Date.now()) throw new RuleError('This meeting has already ended', 'invalid');
+  if (answer === null) await db.delete(meetingAttendance).where(and(eq(meetingAttendance.meetingId, m.id), eq(meetingAttendance.userId, actor.id)));
+  else {
+    const n = answer === 'maybe' ? note?.trim() || null : null;
+    await db.insert(meetingAttendance).values({ meetingId: m.id, userId: actor.id, answer, note: n })
+      .onConflictDoUpdate({ target: [meetingAttendance.meetingId, meetingAttendance.userId], set: { answer, note: n } });
+  }
+  await changed(p);
 }
 
 /**

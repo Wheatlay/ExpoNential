@@ -1153,4 +1153,11 @@ export const pl: Record<string, string> = {
   'Sent to {pc}': 'Wysłano do {pc}',
   'This PC is offline': 'Ten PC jest offline',
   'Update the agent on this PC first': 'Najpierw zaktualizuj agenta na tym PC',
+  'Attendance': 'Obecność',
+  'Are you coming?': 'Będziesz?',
+  '{a} of {b} answered': 'odpowiedziało {a} z {b}',
+  'No answer: {names}': 'Bez odpowiedzi: {names}',
+  'This meeting has already ended': 'To spotkanie już się skończyło',
+  'Attendance is only for meetings with a fixed time': 'Obecność jest tylko dla spotkań o stałym terminie',
+  'Only invited people can answer': 'Odpowiadać mogą tylko zaproszone osoby',
 };

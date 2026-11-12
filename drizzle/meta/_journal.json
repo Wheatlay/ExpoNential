@@ -288,6 +288,13 @@
       "when": 1794900000000,
       "tag": "0040_worklog_no_prompts",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794470438067,
+      "tag": "0041_meeting_attendance",
+      "breakpoints": true
     }
   ]
 }

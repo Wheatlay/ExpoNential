@@ -62,6 +62,12 @@ export async function registerMeetings(app: FastifyInstance) {
       await mt.cancelMeeting(p, actor, isAdmin, idParam(req.params.id));
       return { ok: true };
     });
+    r.put<{ Params: { id: string } }>('/api/meetings/:id/attendance', async (req) => {
+      const { p, actor } = await scope(req);
+      const { answer, note } = z.object({ answer: z.enum(['yes', 'maybe', 'no']).nullable(), note: z.string().max(200).nullable().optional() }).parse(req.body);
+      await mt.setAttendance(p, actor, idParam(req.params.id), answer, note);
+      return { ok: true };
+    });
     r.post<{ Params: { id: string } }>('/api/meetings/:id/slots', async (req) => {
       const { p, actor } = await scope(req);
       const b = z.object({ startsAt: date, endsAt: date.optional(), reason: z.string().max(300).optional() }).parse(req.body);

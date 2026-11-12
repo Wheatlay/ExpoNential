@@ -5,7 +5,7 @@ import { z } from 'zod';
 import * as svc from './service.ts';
 import { RuleError, identifier, parseIdentifier, PRIORITIES } from './rules.ts';
 import { projectsOf, requireMember, type Project } from './projects.ts';
-import { createMeeting, listMeetings, meetingUrl } from './meetings.ts';
+import { createMeeting, listMeetings, meetingUrl, setAttendance } from './meetings.ts';
 import type { SessionUser } from './auth.ts';
 import { markMcpUse } from './oauth.ts';
 import { procedures } from './skills/index.ts';
@@ -327,9 +327,10 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       const r = await resolver(p);
       const name = (id: number | null) => (id == null ? null : r.meta.users.find((u) => u.id === id)?.name ?? null);
       return (await listMeetings(p, new Date(Date.now() - 864e5))).map((m) => ({
-        title: m.title, kind: m.kind, status: m.status, startsAt: m.startsAt, endsAt: m.endsAt, where: m.locationUrl || null,
+        id: m.id, title: m.title, kind: m.kind, status: m.status, startsAt: m.startsAt, endsAt: m.endsAt, where: m.locationUrl || null,
         organizer: name(m.createdBy), url: meetingUrl(p, m.id),
         invited: m.attendeeIds ? m.attendeeIds.map(name) : 'whole team',
+        attendance: m.kind === 'fixed' ? m.attendance.map((x) => `${name(x.userId)}: ${x.answer}${x.note ? ` (${x.note})` : ''}`) : undefined,
         poll: m.status === 'polling' ? m.slots.map((s) => ({
           startsAt: s.startsAt, proposedBy: name(s.proposedBy), reason: s.reason,
           votes: s.votes.map((v) => `${name(v.userId)}: ${v.vote}`),
@@ -337,7 +338,7 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       }));
     });
 
-  tool('save_meeting', 'Schedule a meeting in a project (fixed time, like the Meetings tab). Times are ISO 8601 with the UTC offset of the people meeting, e.g. 2026-11-12T11:30:00+01:00. The team gets the usual notifications and reminders.',
+  tool('save_meeting', 'Schedule a meeting in a project (fixed time, like the Meetings tab). Times are ISO 8601 with the UTC offset of the people meeting, e.g. 2026-11-12T11:30:00+01:00. The team gets the usual notifications and reminders. The time stays fixed (also for meetings set by someone outside the team); invitees answer whether they come with set_attendance.',
     {
       project: projectArg,
       title: z.string().min(1).max(200),
@@ -361,7 +362,19 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       const m = await createMeeting(p, { id: me.id, name: me.name }, {
         title: a.title, kind: 'fixed', startsAt, endsAt, agenda: a.agenda, locationUrl: a.locationUrl, attendeeIds,
       });
-      return { title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, url: meetingUrl(p, m.id) };
+      return { id: m.id, title: m.title, startsAt: m.startsAt, endsAt: m.endsAt, url: meetingUrl(p, m.id) };
+    });
+
+  tool('set_attendance', 'Answer whether you come to a fixed-time meeting: yes, maybe (with an optional note) or no; null takes the answer back. Meeting id from list_meetings.',
+    {
+      project: projectArg,
+      meetingId: z.number().int(),
+      answer: z.enum(['yes', 'maybe', 'no']).nullable(),
+      note: z.string().max(200).optional().describe('Only with maybe, e.g. "joining for the second half"'),
+    }, async (a) => {
+      const p = await projectOf(me, a.project);
+      await setAttendance(p, { id: me.id, name: me.name }, a.meetingId, a.answer, a.note);
+      return a.answer ? `Answered ${a.answer}` : 'Answer removed';
     });
 
   tool('list_users', 'List members of a project.', { project: projectArg }, async (a) =>
