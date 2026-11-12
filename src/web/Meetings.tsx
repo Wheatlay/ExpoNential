@@ -183,7 +183,12 @@ const LOCATION_KEY = () => `meetingLocation:${getProjectKey()}`;
 function NewMeeting({ date }: { date?: Date }) {
   const qc = useQueryClient();
   const project = useCurrentProject();
-  const start = date ?? (() => { const d = new Date(Date.now() + 864e5); d.setHours(10, 0, 0, 0); return d; })();
+  // Domyślnie dziś o najbliższej pełnej godzinie; od 16:00 jutro o 10:00.
+  const start = date ?? (() => {
+    const d = new Date();
+    if (d.getHours() >= 16) { d.setDate(d.getDate() + 1); d.setHours(10, 0, 0, 0); } else d.setHours(d.getHours() + 1, 0, 0, 0);
+    return d;
+  })();
   if (date && date.getHours() === 0) start.setHours(10, 0, 0, 0);
   const [title, setTitle] = useState('');
   const [agenda, setAgenda] = useState('');
