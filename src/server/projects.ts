@@ -8,12 +8,12 @@ import { uploadPath } from './account.ts';
 export type Project = typeof projects.$inferSelect;
 export type ProjectUser = { id: number; isAdmin: boolean };
 
-const DEFAULT_STATUSES: { name: string; type: StatusType; color: string; hidden?: boolean; role?: 'need_info' | 'testing' }[] = [
+const DEFAULT_STATUSES: { name: string; type: StatusType; color: string; hidden?: boolean; role?: 'need_info' | 'testing' | 'paused' | 'in_progress' }[] = [
   { name: 'Backlog', type: 'backlog', color: '#8a8f98', hidden: true },
   { name: 'Todo', type: 'unstarted', color: '#d4d4d8' },
-  { name: 'Paused', type: 'unstarted', color: '#ef4444' },
+  { name: 'Paused', type: 'unstarted', color: '#ef4444', role: 'paused' },
   { name: 'Need Info', type: 'started', color: '#4cb782', role: 'need_info' },
-  { name: 'In Progress', type: 'started', color: '#f2c94c' },
+  { name: 'In Progress', type: 'started', color: '#f2c94c', role: 'in_progress' },
   { name: 'Testing', type: 'started', color: '#5e6ad2', role: 'testing' },
   { name: 'Done', type: 'completed', color: '#5e6ad2' },
   { name: 'Canceled', type: 'canceled', color: '#8a8f98', hidden: true },

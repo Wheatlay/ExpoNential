@@ -647,7 +647,7 @@ textarea.md-edit {
 .card:hover { transform: translateY(-1px); box-shadow: var(--shadow-popover); }
 .col { transition: background 0.15s; }
 .col.blocked { animation: shake 0.25s ease-in-out; }
-.popover, .display-panel { animation: pop-in 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; transform-origin: top; }
+.popover, .display-panel, .time-list { animation: pop-in 0.12s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; transform-origin: top; }
 .backdrop { animation: fade-in 0.12s ease-out both; }
 .modal, .cmdk { animation: modal-in 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.1) both; }
 .toast { animation: toast-in 0.2s ease-out both; }
@@ -1101,7 +1101,7 @@ textarea.input.vote-note:focus { border-color: var(--accent); }
 .time-col button:hover { background: var(--bg-hover); color: var(--text-primary); }
 /* Pas wyboru stoi na środku na stałe: to, co w nim jest, wybierze się po zatrzymaniu (nie podświetlamy starej wartości). */
 .time-list::before {
-  content: ''; position: absolute; left: 4px; right: 4px; top: calc((210px - var(--control-sm)) / 2); height: var(--control-sm); border-radius: var(--radius-md);
+  content: ''; position: absolute; left: 4px; right: 4px; top: calc(4px + (210px - var(--control-sm)) / 2); height: var(--control-sm); border-radius: var(--radius-md);
   background: var(--bg-active); pointer-events: none;
 }
 .time-col { position: relative; }

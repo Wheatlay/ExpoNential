@@ -258,6 +258,17 @@ export function IssuePage({ number }: { number: number }) {
                 <Icon.play size={12} /> {t('Open in Claude Code')}
               </button>
             )}
+            {issue.startOnPc && !demo && local && isTouchDevice() && (() => {
+              const sp = issue.startOnPc, device = sp.device ?? 'PC';
+              if (sp.state === 'waiting') return <span className="pill">{t('Waiting for PC')}</span>;
+              if (sp.state === 'starting') return <span className="pill">{t('Starting on {device}…', { device })}</span>;
+              if (sp.state === 'failed') return <span className="pill blocked" title={sp.error ?? undefined}>{t('Failed on {device}', { device })}</span>;
+              return <>
+                <span className="pill ok">{t('Running on {device}', { device })}</span>
+                <a className="btn sm" href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">{t('Open in Claude')}</a>
+              </>;
+            })()}
+            {issue.pauseReason && curStatus?.role === 'paused' && <span className="pill" title={issue.pauseReason}><span className="pill-text">{issue.pauseReason}</span></span>}
             {envNow && <span className="pill ok" title={t('All commits are on {env}', { env: envNow })}><Icon.rocket size={12} /> {envNow}</span>}
           </div>
           {startOpen && <DemoStartModal number={number} onClose={() => setStartOpen(false)} />}
@@ -512,6 +523,8 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, co
     case 'field': return <>{t('edited')} {{ title: t('the title'), description: t('the description'), analysis: t('the AI analysis'), change_human: t('the HUMAN change notes'), change_ai: t('the AI change log') }[p.field] ?? p.field}</>;
     case 'analysis_requested': return <>{t('requested')} <b>{p.deep ? t('a deep AI analysis') : t('an AI analysis')}</b></>;
     case 'analysis_claimed': return <>{t('started the analysis on')} <b>{p.device}</b></>;
+    case 'started_on_pc': return <>{t('Started on {device}', { device: p.device })}</>;
+    case 'start_on_pc_failed': return <span title={p.error || undefined}>{t('Start on {device} failed', { device: p.device })}</span>;
     case 'analysis_failed': return <>{t('analysis failed')}{p.error ? <>: <span className="ev-error">{p.error}</span></> : ''}</>;
     case 'decision': return p.answer
       ? <>{t('decided')} „{p.question}”: <b>{p.answer}</b></>
@@ -521,6 +534,8 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, co
     case 'commit': return <>{p.author} {t('committed')} <a href={p.url} target="_blank" rel="noreferrer"><code>{p.sha.slice(0, 7)}</code> {p.message}</a></>;
     case 'question': return <>{t('asked')} <b>{p.to}</b>: {p.question}</>;
     case 'answered': return <>{t('answered the question')}{p.backTo ? <>, {t('back to')} <b>{p.backTo}</b></> : ''}</>;
+    case 'paused': return <>{t('paused it')}{p.reason ? <>: {p.reason}</> : ''}{p.waitsOn ? <>, {t('waiting on')} <a {...linkProps(`/issue/${ident(p.waitsOn)}`)}><b>{ident(p.waitsOn)}</b></a></> : ''}</>;
+    case 'resumed': return <>{t('resumed, unblocked by')} <a {...linkProps(`/issue/${ident(p.by)}`)}><b>{ident(p.by)}</b></a></>;
     case 'relation': {
       const verb = { waits_on: t('waits on'), blocks: t('blocks'), related: t('is related to'), duplicate_of: t('is a duplicate of'), duplicated_by: t('is duplicated by') }[p.relation];
       return <>{p.action === 'added' ? t('marked that this issue') : t('removed:')} {verb} <a {...linkProps(`/issue/${ident(p.other)}`)}><b>{ident(p.other)}</b></a></>;
@@ -544,13 +559,13 @@ function deployedEnvOf(commits: IssueDetail['commits']): string | null {
 }
 
 /** Drobne zmiany pól: przygaszone, żeby wyróżniały się komentarze, praca Claude, commity i deploye. */
-const MINOR_EVENTS = new Set(['created', 'status', 'assignee', 'priority', 'labels', 'sprint', 'parent', 'relation', 'decision', 'answered']);
+const MINOR_EVENTS = new Set(['created', 'status', 'assignee', 'priority', 'labels', 'sprint', 'parent', 'relation', 'decision', 'answered', 'resumed']);
 
 function eventIcon(p: IssueDetail['activity'][number]['payload']) {
   if (p.kind === 'commit') return <Icon.commit size={14} />;
   if (p.kind === 'deploy') return <span style={{ color: p.env && !p.prod ? 'var(--progress-text)' : 'var(--success-text)' }}><Icon.rocket size={14} /></span>;
   if (p.kind === 'analysis_failed') return <span style={{ color: 'var(--danger-text)' }}><Icon.sparkle size={14} /></span>;
-  if (p.kind === 'analysis_requested' || p.kind === 'analysis_claimed') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
+  if (p.kind === 'analysis_requested' || p.kind === 'analysis_claimed' || p.kind === 'started_on_pc') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
   if (p.kind === 'worklog') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
   return null;
 }

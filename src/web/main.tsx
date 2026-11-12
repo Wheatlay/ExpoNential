@@ -15,6 +15,7 @@ import { InboxBell } from './Inbox.tsx';
 import { FeedbackButton, FeedbackHost } from './Feedback.tsx';
 import { NewIssueHost, openNewIssue } from './NewIssue.tsx';
 import { AskHost } from './AskModal.tsx';
+import { PauseHost } from './PauseModal.tsx';
 import { LightboxHost } from './ImageBlock.tsx';
 import { DoneGuardHost } from './DoneGuard.tsx';
 import { ConfirmHost } from './Confirm.tsx';
@@ -131,6 +132,7 @@ function App() {
       <SetupWizardGate />
       <ConfirmHost />
       <AskHost />
+      <PauseHost />
       <CommandMenu />
       <Toasts />
     </div>,

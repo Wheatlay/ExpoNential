@@ -451,6 +451,7 @@ func encodeURIComponent(s string) string {
 func startJob(a *Auth, id int, deviceID string) error {
 	var claim struct {
 		Key       string `json:"key"`
+		Title     string `json:"title"`
 		Requester *struct {
 			ID   int    `json:"id"`
 			Name string `json:"name"`
@@ -465,35 +466,57 @@ func startJob(a *Auth, id int, deviceID string) error {
 	if !keyRe.MatchString(claim.Key) {
 		return fmt.Errorf("rejected key from server: %s", claim.Key)
 	}
-	mk := func(p string) string { return "vscode://anthropic.claude-code/open?prompt=" + encodeURIComponent(p) }
-	const max = 1900 // Windows truncates longer links
-	get := func(q string) (string, error) {
-		var r struct {
-			Prompt string `json:"prompt"`
+	report := func(ok bool, msg string) {
+		body := map[string]any{"deviceId": deviceID, "ok": ok}
+		if !ok {
+			body["error"] = msg
 		}
-		err := request(a, "GET", "/api/issues/"+claim.Key+"/prompt/start"+q, nil, 0, &r)
-		return r.Prompt, err
+		if err := request(a, "POST", fmt.Sprintf("/api/agent/start-jobs/%d/result", id), body, 0, nil); err != nil {
+			logf("start work %s: reporting the result failed: %s", claim.Key, shortErr(err))
+		}
 	}
-	p, err := get("")
-	if err != nil {
+	cfg := loadConfig()
+	projectKey := claim.Key
+	if i := strings.LastIndex(claim.Key, "-"); i > 0 {
+		projectKey = claim.Key[:i]
+	}
+	dir := cfg.Repos[projectKey].Path
+	if st, err := os.Stat(dir); dir == "" || err != nil || !st.IsDir() {
+		logf("start work %s: no repo folder for %s", claim.Key, projectKey)
+		report(false, "no repo folder")
+		return nil
+	}
+	acc := cfg.PhoneAccount
+	if acc == "" {
+		logf("start work %s: no account chosen", claim.Key)
+		report(false, "no account chosen")
+		return nil
+	}
+	var pr struct {
+		Prompt string `json:"prompt"`
+	}
+	if err := request(a, "GET", "/api/issues/"+claim.Key+"/prompt/start", nil, 0, &pr); err != nil {
 		if httpStatus(err) == 409 {
+			report(false, "prompt unavailable")
 			return nil
 		}
+		report(false, shortErr(err))
 		return err
 	}
-	link := mk(p)
-	if len(link) > max {
-		if p, err = get("?compact=1"); err != nil {
-			return err
-		}
-		link = mk(p)
-	}
-	if len(link) > max {
-		link = mk(fmt.Sprintf("Working on %s. Full data: get_issue %s.", claim.Key, claim.Key))
-	}
+	name := claim.Key + " · " + cut(claim.Title, 60)
 	started := time.Now()
-	logf("start work %s", claim.Key)
-	openURLRaw(link)
+	logf("start work %s: remote control session on account %s in %s", claim.Key, accountName(acc), dir)
+	if err := openTerminalClaude(dir, childEnv(os.Environ(), acc), []string{"--remote-control", name}, pr.Prompt); err != nil {
+		logf("start work %s: launch failed: %v", claim.Key, err)
+		report(false, shortErr(err))
+		return nil
+	}
+	go func() {
+		defer guard("start-wait")
+		ok := waitForSession(acc, claim.Key, started, 60*time.Second)
+		logf("start work %s: session %s", claim.Key, map[bool]string{true: "started", false: "not seen"}[ok])
+		report(ok, "Session did not start (check the window on this PC)")
+	}()
 	reportRun(a, deviceID, claim.Key, "start", "claude", "", started, 0, nil)
 	rec := runRecord{Key: claim.Key, Engine: "claude", Duration: time.Since(started).Milliseconds(), Result: runOK}
 	if claim.Requester != nil && claim.Requester.ID != 0 {
@@ -616,6 +639,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 	// Mapping with paths, sources and the validation result ({KEY: {path, source, status, error}}), so the server can show and route by it.
 	reposJSON, _ := json.Marshal(repoReports(a, cfg.Repos))
 	qs := url.Values{"deviceId": {cfg.DeviceID}, "name": {host}, "busy": {b}, "version": {ver}, "engine": {eng}, "repos": {string(reposJSON)}, "setup": {setupJSON(strings.TrimRight(cfg.URL, "/"))}}
+	qs.Set("phone", strings.Join(phoneReadyKeys(cfg), ","))
 	if le := getLastErr(); le != "" {
 		qs.Set("error", cut(le, 300))
 	}
@@ -627,7 +651,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 		qs.Set("found", string(fj))
 	}
 	var res struct {
-		Jobs         []pollJob        `json:"jobs"`
+		Jobs         []pollJob         `json:"jobs"`
 		Repos        []json.RawMessage `json:"repos"`
 		CloneAllowed []any             `json:"cloneAllowed"`
 		TeamMode     string            `json:"teamMode"`
@@ -659,8 +683,9 @@ func pollOnce(delay *int, errLogged *bool) error {
 	syncTeamMode(a, cfg, res.TeamMode)
 	setOthersLimit(res.Limit)
 	go syncLang(a)
-	go pollRepoActions(a)  // clone / pick folder / rescan clicked in the web app
-	go pollOpenRequests(a) // "open in editor / terminal" requests from the web app
+	go maybeAnnouncePhone() // TEMP phone-announce: remove after agent 0.5
+	go pollRepoActions(a)   // clone / pick folder / rescan clicked in the web app
+	go pollOpenRequests(a)  // "open in editor / terminal" requests from the web app
 	*delay, *errLogged = 2, false
 	var job *pollJob
 	pending := 0

@@ -36,6 +36,24 @@ export function isNeedInfo(s: { role?: string | null }) {
   return s.role === 'need_info';
 }
 
+export type StatusRole = 'need_info' | 'testing' | 'paused' | 'in_progress';
+export function isPaused(s: { role?: string | null }) {
+  return s.role === 'paused';
+}
+export function isTesting(s: { role?: string | null }) {
+  return s.role === 'testing';
+}
+export function isInProgress(s: { role?: string | null }) {
+  return s.role === 'in_progress';
+}
+export function statusByRole<T extends { role?: string | null }>(list: T[], role: StatusRole): T | undefined {
+  return list.find((s) => s.role === role);
+}
+/** Status "w toku": rola in_progress, a gdy jej brak pierwszy status typu started bez roli. */
+export function inProgressStatus<T extends { role?: string | null; type: string }>(list: T[]): T | undefined {
+  return statusByRole(list, 'in_progress') ?? list.find((s) => s.type === 'started' && !s.role);
+}
+
 export class RuleError extends Error {
   constructor(message: string, readonly code: string) {
     super(message);
