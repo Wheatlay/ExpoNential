@@ -93,14 +93,30 @@ export function TimeInput({ value, onChange, disabled, style, ...rest }: Props) 
   // Wybór po chwili bez ruchu; dociągnięcie do wiersza robi zwykle snap przeglądarki (CSS), a gdy lista
   // stanie krzywo (proximity nie zadziałało), dosuwamy ją sami.
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Cel przewijania kółkiem (wiersz), póki płynne przewijanie jeszcze trwa.
+  const wheelTarget = useRef(new Map<HTMLDivElement, number>());
+  const rowOf = (el: HTMLDivElement, n: number) => Math.min(n - 1, Math.max(0, wheelTarget.current.get(el) ?? Math.round(el.scrollTop / ROW)));
+  // Zamknięcie w trakcie przewijania: wybierz od razu to, na czym lista stanie, zamiast zgubić wybór.
+  // Zwraca true, gdy coś wybrało (wtedy commit() z pola nie może nadpisać tego starym tekstem).
+  const flush = () => {
+    if (!settle.current) return false;
+    clearTimeout(settle.current);
+    settle.current = null;
+    const hc = hoursCol.current, mc = minutesCol.current;
+    if (!hc || !mc) return false;
+    const v = `${HOURS[rowOf(hc, HOURS.length)]}:${MINUTES[rowOf(mc, MINUTES.length)]}`;
+    if (v === value) return false;
+    pick(v.slice(0, 2), v.slice(3));
+    return true;
+  };
   const onScroll = () => {
     if (settle.current) clearTimeout(settle.current);
     settle.current = setTimeout(() => {
+      settle.current = null;
       if (drag.current?.moved) return; // mysz jeszcze trzyma listę: wybór po puszczeniu
       const hc = hoursCol.current, mc = minutesCol.current;
       if (!hc || !mc) return; // lista już zamknięta
-      const row = (el: HTMLDivElement, n: number) => Math.min(n - 1, Math.max(0, Math.round(el.scrollTop / ROW)));
-      const [h, m] = [HOURS[row(hc, HOURS.length)], MINUTES[row(mc, MINUTES.length)]];
+      const [h, m] = [HOURS[rowOf(hc, HOURS.length)], MINUTES[rowOf(mc, MINUTES.length)]];
       if (`${h}:${m}` === `${hh}:${MINUTES[mi]}`) {
         // Ta sama wartość, ale lista stoi krzywo: dosuń.
         hoursCol.current?.scrollTo({ top: Number(hh) * ROW, behavior: 'smooth' });
@@ -116,6 +132,7 @@ export function TimeInput({ value, onChange, disabled, style, ...rest }: Props) 
     if (!open) return;
     const cols = [hoursCol.current, minutesCol.current].filter((c): c is HTMLDivElement => !!c);
     const state = new Map<HTMLDivElement, { acc: number; target: number | null; reset?: ReturnType<typeof setTimeout> }>();
+    const targets = wheelTarget.current;
     const onWheel = (e: WheelEvent) => {
       const el = e.currentTarget as HTMLDivElement;
       e.preventDefault();
@@ -128,14 +145,16 @@ export function TimeInput({ value, onChange, disabled, style, ...rest }: Props) 
       const max = el.children.length - 1;
       const from = s.target ?? Math.round(el.scrollTop / ROW);
       s.target = Math.min(max, Math.max(0, from + dir));
+      targets.set(el, s.target);
       el.scrollTo({ top: s.target * ROW, behavior: 'smooth' });
       if (s.reset) clearTimeout(s.reset);
-      s.reset = setTimeout(() => { s.target = null; s.acc = 0; }, 300);
+      s.reset = setTimeout(() => { s.target = null; s.acc = 0; targets.delete(el); }, 300);
     };
     cols.forEach((c) => c.addEventListener('wheel', onWheel, { passive: false }));
     return () => {
       cols.forEach((c) => c.removeEventListener('wheel', onWheel));
       state.forEach((s) => s.reset && clearTimeout(s.reset));
+      targets.clear();
     };
   }, [open, !!at]);
   // Przeciąganie myszą jak palcem; ruch powyżej 4 px to przewijanie, nie klik.
@@ -164,9 +183,9 @@ export function TimeInput({ value, onChange, disabled, style, ...rest }: Props) 
     <span className="time-input-wrap">
       <input ref={field} className={`input time-input ${invalid ? 'invalid' : ''}`} aria-invalid={invalid} inputMode="numeric" maxLength={5} placeholder="14:00" value={text} disabled={disabled} aria-label={rest['aria-label'] ?? t('Time')}
         style={{ width: 72, ...style }} onChange={(e) => setText(maskTime(e.target.value, text))} onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
-        onBlur={() => { commit(); setOpen(false); }}
+        onBlur={() => { if (!flush()) commit(); setOpen(false); }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') { commit(); setOpen(false); }
+          if (e.key === 'Enter') { if (!flush()) commit(); setOpen(false); }
           if (e.key === 'Escape') setOpen(false);
           if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); step(e.key === 'ArrowUp' ? 1 : -1); }
         }} />
