@@ -103,6 +103,10 @@ html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-se
         title = L.updDone.replace("%V", v);
       }
       h = '<div class="tt"><span class="ug">' + MARK + '</span><div class="tx"><b>' + esc(title) + '</b></div>' + x + '</div>' + acts + bar;
+    } else if (item.kind === "phone") { // TEMP phone-announce: remove after agent 0.5
+      h = '<div class="tt"><span class="ug">' + MARK + '</span><div class="tx"><b>' + esc(L.phoneAnn) + '</b></div>' +
+        '<span class="x" data-a="close" role="button" tabindex="0" aria-label="' + esc(L.phoneSkip) + '">&#10005;</span></div>' +
+        '<div class="acts"><button class="btn go" data-a="set">' + esc(L.phoneSet) + '</button><button class="btn" data-a="skip">' + esc(L.phoneSkip) + '</button></div>';
     } else if (item.kind === "wait") {
       h = '<div class="tt">' + avatar(item.name) + '<div class="tx"><b>' + esc(item.name) + ' · ' + esc(item.key) + ' ' + esc(L.waiting) + '</b></div></div>';
     } else {
@@ -144,6 +148,7 @@ html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-se
       if (idx === 0) active.push(it); else items.push(it);
     });
     items = items.concat(active); // waiting cards above, the active one at the bottom
+    if (s.phone) items.unshift({ id: "ph", kind: "phone", key: "__phone", name: "" }); // TEMP phone-announce: remove after agent 0.5
     if (s.update && s.update.phase) items.unshift({ id: "u", kind: "upd-" + s.update.phase, key: "__update", name: "", ver: s.update.version, pct: s.update.pct });
     var seen = {};
     items.forEach(function (it, idx) {
@@ -152,7 +157,7 @@ html, body { margin: 0; background: var(--bg-primary); overflow: hidden; user-se
       if (ex && ex.kind !== it.kind) { ex.el.remove(); ex = null; again = true; }
       if (!ex) {
         var el = build(it);
-        var upd = it.kind.indexOf("upd-") === 0;
+        var upd = it.kind.indexOf("upd-") === 0 || it.kind === "phone";
         el.className = "toast" + (upd ? " upd" + (it.kind === "upd-failed" ? " fail" : "") : it.kind === "active" ? "" : " small") + (again ? " noanim" : "");
         el.dataset.key = it.key;
         ex = els[id] = { el: el, kind: it.kind, iid: it.iid };

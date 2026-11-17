@@ -40,6 +40,8 @@ export const issueInputSchema = z.object({
   infoFromId: z.number().int().nullable().optional(),
   infoTagId: z.number().int().nullable().optional(),
   infoQuestion: z.string().max(2000).optional(),
+  pauseReason: z.string().max(2000).optional(),
+  pauseWaitsOn: z.number().int().positive().optional(),
 });
 
 const intParam = (v: string) => z.coerce.number().int().positive().parse(v);
@@ -162,7 +164,7 @@ export async function registerApi(app: FastifyInstance) {
     // Agent na PC (Go): long poll po pracę, przejęcie zlecenia Start, lista i usuwanie komputerów.
     r.get<{ Querystring: Record<string, string> }>('/api/agent/work', async (req) => {
       const q = z.object({
-        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(1200).default('').transform((s) => s.slice(0, 300)), engine: z.enum(['claude', 'codex']).optional(), setup: z.string().max(4000).optional(), found: z.string().max(8000).optional(), skip: z.string().max(1000).optional(),
+        deviceId: z.string().uuid(), name: z.string().max(200).default(''), busy: z.enum(['0', '1']).default('0'), repos: z.string().max(8000).default(''), version: z.string().max(40).default(''), error: z.string().max(1200).default('').transform((s) => s.slice(0, 300)), engine: z.enum(['claude', 'codex']).optional(), setup: z.string().max(4000).optional(), found: z.string().max(8000).optional(), skip: z.string().max(1000).optional(), phone: z.string().max(1000).optional(),
       }).parse(req.query);
       // Zamknięte połączenie przerywa czekanie, żeby pętla nie trzymała zapytań do bazy po odejściu agenta.
       const ac = new AbortController();
@@ -171,11 +173,15 @@ export async function registerApi(app: FastifyInstance) {
       let repos: Record<string, ag.RepoReport | string> | undefined;
       try { repos = z.record(z.string(), z.union([z.string(), z.object({ path: z.string().optional(), source: z.string().optional(), status: z.string().optional(), error: z.string().nullable().optional().transform((e) => e?.slice(0, 300)) })])).parse(JSON.parse(q.repos || '{}')); } catch { repos = {}; }
       const repoKeys = Object.keys(repos);
-      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error, ownOnly: q.engine === 'codex', setup: ag.parseSetup(q.setup), found: ag.parseFound(q.found), skip: ag.parseSkip(q.skip) }, ac.signal);
+      return ag.waitForWork(req.user!, q.deviceId, { name: q.name, busy: q.busy === '1', repoKeys, repos, version: q.version, error: q.error, ownOnly: q.engine === 'codex', setup: ag.parseSetup(q.setup), found: ag.parseFound(q.found), skip: ag.parseSkip(q.skip), phone: ag.parsePhone(q.phone) }, ac.signal);
     });
     r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/claim', async (req) => {
       const { deviceId } = z.object({ deviceId: z.string().uuid() }).parse(req.body);
       return ag.claimStartJob(req.user!, intParam(req.params.id), deviceId);
+    });
+    r.post<{ Params: { id: string } }>('/api/agent/start-jobs/:id/result', async (req) => {
+      const b = z.object({ deviceId: z.string().uuid(), ok: z.boolean(), error: z.string().max(2000).optional() }).parse(req.body);
+      return ag.finishStartJob(req.user!, intParam(req.params.id), b.deviceId, b.ok, b.error);
     });
     // Agent czeka na zgodę właściciela PC na cudze zlecenie (albo już nie czeka): pasek analizy pokazuje "awaiting_consent".
     r.post('/api/agent/consent-pending', async (req) => {
@@ -541,7 +547,7 @@ export async function registerApi(app: FastifyInstance) {
       if (req.authVia !== 'token') await svc.markSeen(req.user!.id, d.id);
       const runner = await ag.analysisRunner(p, d);
       const [waitReason] = await ag.waitReasons(p, [d]);
-      return { ...d, projectKey: p.key, projectHasRepo: !!p.githubRepo, analysisWaitReason: waitReason, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, analysisNoCapablePc: runner.noCapablePc, teamQueue: p.agentTeamQueue };
+      return { ...d, projectKey: p.key, projectHasRepo: !!p.githubRepo, analysisWaitReason: waitReason, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, analysisNoCapablePc: runner.noCapablePc, teamQueue: p.agentTeamQueue, startOnPc: await ag.startJobState(req.user!, d.id) };
     });
 
     r.post('/api/issues', async (req) => {
@@ -703,7 +709,7 @@ export async function registerApi(app: FastifyInstance) {
     r.patch('/api/admin/statuses', async (req) => {
       const body = z.object({
         id: z.number().int(), name: z.string().min(1).optional(), color: z.string().optional(),
-        position: z.number().int().optional(), hiddenOnBoard: z.boolean().optional(), role: z.enum(['need_info', 'testing']).nullable().optional(),
+        position: z.number().int().optional(), hiddenOnBoard: z.boolean().optional(), role: z.enum(['need_info', 'testing', 'paused', 'in_progress']).nullable().optional(),
       }).parse(req.body);
       await svc.saveStatus(await manage(req), body);
       return { ok: true };

@@ -463,7 +463,7 @@ function ClaudeConnect() {
   const qc = useQueryClient();
   const me = useMe().data;
   const tokens = useQuery({ queryKey: ['tokens'], queryFn: () => api<{ id: number; name: string; createdAt: string; lastUsedAt: string | null }[]>('/api/tokens'), enabled: !!me && !me.demo });
-  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; version?: string | null; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxOthersTokensPerDay: number | null; limitReached24h: boolean; forOthers24h: number; forOthersTokens24h: number; claudeLimit: string; usage30d: UsageInfo; teamMode: TeamMode; setup?: { claude: { name: string; mcp: boolean; plugin: boolean }[]; codex: boolean; cursor: boolean } | null; repos?: AgentRepo[] }[]>('/api/agents'), enabled: !!me && !me.demo });
+  const agentList = useQuery({ queryKey: ['agents'], queryFn: () => api<{ id: string; name: string; version?: string | null; computerName: string; label: string; lastSeenAt: string | null; busy: boolean; online: boolean; outdated: boolean; legacy: boolean; inactive?: boolean; lastError: string; lastErrorAt: string | null; maxOthersTokensPerDay: number | null; limitReached24h: boolean; forOthers24h: number; forOthersTokens24h: number; claudeLimit: string; phoneReady?: boolean; usage30d: UsageInfo; teamMode: TeamMode; setup?: { claude: { name: string; mcp: boolean; plugin: boolean }[]; codex: boolean; cursor: boolean } | null; repos?: AgentRepo[] }[]>('/api/agents'), enabled: !!me && !me.demo });
   const projects = useProjects(!!me && !me.demo).data;
   const projectOf = (k: string) => projects?.find((p) => p.key === k);
   const refreshTeam = () => { void qc.invalidateQueries({ queryKey: ['agents'] }); void qc.invalidateQueries({ queryKey: ['me'] }); void qc.invalidateQueries({ queryKey: ['project-agents'] }); };
@@ -534,6 +534,7 @@ function ClaudeConnect() {
                 <span className="my-pc-pills">
                   <span className={`pill${a.online ? ' ok' : ''}`}>{a.online ? t('Online') : t('Offline')}</span>
                   {a.outdated && !a.legacy && <span className="pill stalled">{t('Update needed')}</span>}
+                  {a.phoneReady && <span className="pill ok">{t('Phone start ready')}</span>}
                   {a.legacy && <button className="btn sm" onClick={() => openSetupWizard(3)}>{t('Switch to the new agent')}</button>}
                   {a.limitReached24h && <span className="pill stalled">{t('Limit reached')}</span>}
                   {a.setup && a.setup.claude.some((c) => !c.mcp || !c.plugin) && (
@@ -992,6 +993,19 @@ const LOG_FIELDS: Record<string, string> = {
   promptStart: t('AI agent'), promptAnalyze: t('AI agent'), promptClose: t('AI agent'), promptDeep: t('AI agent'),
 };
 const logStamp = (iso: string) => { const x = new Date(iso); return `${fmtDate(x)}, ${String(x.getHours()).padStart(2, '0')}:${String(x.getMinutes()).padStart(2, '0')}`; };
+/** Opis roli statusu w podpowiedzi przy wyborze; funkcje, bo tekst zależy od języka w chwili renderu. */
+const ROLE_HINT: Record<string, () => string> = {
+  '': () => t('No special behavior'),
+  need_info: () => t('Asks who and what; goes back after the answer'),
+  testing: () => t('Done warns when this was skipped; shows the deployed environment'),
+  paused: () => t('Asks why or which issue it waits on; goes back when that issue closes'),
+  in_progress: () => t('Start work and the agent move issues here'),
+};
+/** Rola należy do jednego statusu; przy opcji pokazujemy, któremu (wybór przenosi ją). */
+const roleOwner = (list: { id: number; name: string; role: string | null }[], self: { id: number }, role: string) => {
+  const o = list.find((x) => x.role === role && x.id !== self.id);
+  return o ? ` (${o.name})` : '';
+};
 const roleName = (r: unknown) => (r === 'admin' ? t('Admin') : t('Member'));
 
 function logSentence(e: LogRow) {
@@ -1111,12 +1125,14 @@ function ProjectLabelsStatuses() {
             <Tooltip text={t(s.type)}><span className="s-inline"><StatusIcon status={s} fraction={startedFraction(meta.statuses, s)} /></span></Tooltip>
             <Tooltip text={ro}><Swatches value={s.color} disabled={!!ro} onChange={(c) => void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, color: c } }).then(refresh)} /></Tooltip>
             <input className="input grow" defaultValue={s.name} disabled={!!ro} onBlur={(e) => { const el = e.target; if (el.value.trim() && el.value !== s.name) void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, name: el.value.trim() } }).then(refresh).catch((err: Error) => { toast(err.message, 'err'); el.value = s.name; }); }} />
-            <Tooltip text={ro}>
+            <Tooltip text={ro ?? ROLE_HINT[s.role ?? '']()}>
               <select className="input" value={s.role ?? ''} disabled={!!ro} aria-label={t('Status role')}
                 onChange={(e) => void api('/api/admin/statuses', { method: 'PATCH', body: { id: s.id, role: e.target.value || null } }).then(refresh)}>
                 <option value="">{t('No special role')}</option>
-                <option value="need_info">{t('Need Info (asks a question)')}</option>
-                <option value="testing">{t('Testing')}</option>
+                <option value="need_info">{t('Need Info (asks a question)')}{roleOwner(meta.statuses, s, 'need_info')}</option>
+                <option value="testing">{t('Testing')}{roleOwner(meta.statuses, s, 'testing')}</option>
+                <option value="paused">{t('Paused (asks why)')}{roleOwner(meta.statuses, s, 'paused')}</option>
+                <option value="in_progress">{t('In progress (start work)')}{roleOwner(meta.statuses, s, 'in_progress')}</option>
               </select>
             </Tooltip>
             <label className="hint s-check">

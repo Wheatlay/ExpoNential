@@ -138,6 +138,8 @@ Zasady:
 - Bez narracji ("najpierw…, potem…, okazało się…"), bez powtarzania tematów commitów w "Gdzie"
   i bez opisu kodu, który widać w diffie. Liczy się to, czego z kodu nie widać: powody, granice,
   stan.
+- W polu AI nazwy zmiennych, kluczy, plików, poleceń i wzorce z `*` lub `_` (np. `OCR_AWS_*`)
+  zawsze w backtickach: pole jest Markdownem i bez nich `*` robi kursywę, a znaki znikają.
 - Nie używaj pauzy em dash (—).
 
 ## Czego NIE robić

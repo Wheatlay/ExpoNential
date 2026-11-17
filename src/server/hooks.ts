@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, desc, eq, inArray, isNull, sql as dsql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { activity, deploys, issueCommitDeploys, issueCommits, issues, projects } from '../db/schema.ts';
 import { extractIssueRefs, identifier, RuleError } from './rules.ts';
@@ -96,13 +96,14 @@ export async function recordDeploy(p: Project, sha: string, env: DeployEnvRow) {
   const [prev] = await db.select().from(deploys).where(and(eq(deploys.projectId, p.id), eq(deploys.envId, env.id))).orderBy(desc(deploys.at)).limit(1);
   if (prev?.sha === sha) return [];
   let shas: string[] = [sha];
+  let compared = false;
   if (prev) {
     try {
       const cmp = (await github(`/repos/${p.githubRepo}/compare/${prev.sha}...${sha}`)) as { commits: { sha: string }[]; total_commits?: number };
       // Compare zwraca najwyżej 250 commitów; ponad to oznaczamy tylko bieżący.
-      if ((cmp.total_commits ?? cmp.commits.length) <= 250) shas = cmp.commits.map((c) => c.sha);
+      if ((cmp.total_commits ?? cmp.commits.length) <= 250) { shas = cmp.commits.map((c) => c.sha); compared = true; }
     } catch {
-      // Poprzedni SHA zniknął (force-push): zapisujemy deploy mimo to, inaczej każdy kolejny też by padł.
+      // Poprzedni SHA zniknął (force-push) albo brak dostępu do repo: zapisujemy deploy mimo to, inaczej każdy kolejny też by padł.
     }
   }
   await db.insert(deploys).values({ projectId: p.id, sha, envId: env.id });
@@ -110,6 +111,18 @@ export async function recordDeploy(p: Project, sha: string, env: DeployEnvRow) {
 
   const now = new Date();
   const inProject = inArray(issueCommits.issueId, db.select({ id: issues.id }).from(issues).where(eq(issues.projectId, p.id)));
+  if (!compared) {
+    // Bez compare znamy tylko wdrożony commit. Zadanie, do którego on należy, ma też na środowisku swoje starsze commity
+    // (wdrożony zawiera je w historii przy liniowej pracy), inaczej po prod-deployu ostatniego commita starsze świecą się "tylko Stage".
+    const head = await db.select({ issueId: issueCommits.issueId, at: issueCommits.committedAt }).from(issueCommits)
+      .where(and(eq(issueCommits.sha, sha), inProject));
+    for (const h of head) {
+      const older = await db.select({ sha: issueCommits.sha }).from(issueCommits)
+        .where(and(eq(issueCommits.issueId, h.issueId), lte(issueCommits.committedAt, h.at)));
+      shas.push(...older.map((o) => o.sha));
+    }
+    shas = [...new Set(shas)];
+  }
   // Znacznik środowiska: powtórny deploy tego samego commita niczego nie dubluje (klucz główny).
   const rows = await db.insert(issueCommitDeploys)
     .select(db.select({ issueId: issueCommits.issueId, sha: issueCommits.sha, envId: dsql<number>`${env.id}::int`.as('env_id'), at: dsql<Date>`${now.toISOString()}::timestamptz`.as('at') })

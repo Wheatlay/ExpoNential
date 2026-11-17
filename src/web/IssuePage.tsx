@@ -102,7 +102,7 @@ export function MarkdownField({ value, onSave, placeholder, size, flash }: {
       />
       <MentionHint text={draft} />
       {mention.popup}
-      <Attachments urls={att.urls} onRemove={att.remove} />
+      <Attachments urls={att.urls} onRemove={att.remove} onReplace={att.replace} />
       <div className="edit-actions">
         <span className="hint edit-hint">{keyHint('save')}</span>
         <button className="btn sm" onClick={() => { setDraft(value); setEditing(false); }}>{t('Cancel')}</button>
@@ -152,6 +152,8 @@ export function IssuePage({ number }: { number: number }) {
 
   const testingNames = (meta?.statuses ?? []).filter((s) => s.role === 'testing').map((s) => s.name);
   const curStatus = meta?.statuses.find((s) => s.id === issue?.statusId);
+  // Zamknięte zgłoszenie: zlecanie analizy tylko zaśmiecałoby pasek (README: ukryte, gdy tylko zaśmieca). Po ponownym otwarciu wraca.
+  const closed = ['completed', 'canceled', 'duplicate'].includes(curStatus?.type ?? '');
   const envNow = issue && (curStatus?.role === 'testing' || curStatus?.type === 'completed') ? deployedEnvOf(issue.commits) : null;
   const target: PickTarget | null = issue ? {
     number, statusId: issue.statusId, priority: issue.priority, assigneeId: issue.assigneeId, labelIds: issue.labelIds,
@@ -258,6 +260,17 @@ export function IssuePage({ number }: { number: number }) {
                 <Icon.play size={12} /> {t('Open in Claude Code')}
               </button>
             )}
+            {issue.startOnPc && !demo && local && isTouchDevice() && (() => {
+              const sp = issue.startOnPc, device = sp.device ?? 'PC';
+              if (sp.state === 'waiting') return <span className="pill">{t('Waiting for PC')}</span>;
+              if (sp.state === 'starting') return <span className="pill">{t('Starting on {device}…', { device })}</span>;
+              if (sp.state === 'failed') return <span className="pill blocked" title={sp.error ?? undefined}>{t('Failed on {device}', { device })}</span>;
+              return <>
+                <span className="pill ok">{t('Running on {device}', { device })}</span>
+                <a className="btn sm" href="https://claude.ai/code" target="_blank" rel="noopener noreferrer">{t('Open in Claude')}</a>
+              </>;
+            })()}
+            {issue.pauseReason && curStatus?.role === 'paused' && <span className="pill" title={issue.pauseReason}><span className="pill-text">{issue.pauseReason}</span></span>}
             {envNow && <span className="pill ok" title={t('All commits are on {env}', { env: envNow })}><Icon.rocket size={12} /> {envNow}</span>}
           </div>
           {startOpen && <DemoStartModal number={number} onClose={() => setStartOpen(false)} />}
@@ -298,7 +311,7 @@ export function IssuePage({ number }: { number: number }) {
               meta={issue.analysisUpdatedAt && !issue.analysisRequestedAt ? `${timeAgo(issue.analysisUpdatedAt)}${!issue.analysisRequestedAt && issue.analysisResultDeep ? ` · ${t('Deep')}` : ''}` : ''}
               tools={<span className="fold-tools">
                 {/* Kolejka zespołu jest domyślnie wyłączona; gdy włączona, widać to przy analizie, bo zmienia, czyj PC ją uruchomi. */}
-                {issue.teamQueue && !demo && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in project settings > AI agent.")}>{t('Team queue')}</span>}
+                {issue.teamQueue && !demo && !closed && <span className="pill" title={t("Team queue is on: any teammate's PC that is online can run this analysis. Change it in project settings > AI agent.")}>{t('Team queue')}</span>}
                 {/* Czeka, a mój PC ma stare skrypty: to zwykle prawdziwa przyczyna, więc mówimy o niej tutaj, nie tylko w Ustawieniach. */}
                 {outdated && !issue.analysisClaimedAt && (
                   <span className="pill stalled" role="button" title={t('This PC has an old agent and may not pick this up. Click to open Settings › My AI.')}
@@ -313,7 +326,7 @@ export function IssuePage({ number }: { number: number }) {
                       : claimedAt ? t('Running on {name}', { name: issue.analysisClaimedDeviceName ?? t('a PC') }) : t('Waiting')}{issue.analysisDeep ? ` · ${t('Deep')}` : ''} · {timeAgo(failed ? issue.analysisFailedAt! : claimedAt ?? issue.analysisRequestedAt)}</span></span>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); void cancelAnalysis(); }}>{t('Cancel')}</button>
                 </>}
-                {(!issue.analysisRequestedAt || stalled || failed) && <>
+                {(!issue.analysisRequestedAt || stalled || failed) && !closed && <>
                     <Tooltip text={noRepo ? noRepoTip : outdated ? outdatedReason : local ? t('Runs on your PC, read-only') : t('Marks the issue for AI analysis')}>
                       <button className="btn sm ai-btn" data-tour="analyze" disabled={outdated && !noRepo} aria-disabled={noRepo || undefined}
                         onClick={(e) => { e.stopPropagation(); if (noRepo) { goRepoSettings(); return; } void analyze(false, e.currentTarget); }}><Icon.sparkle size={13} /> {issue.analysis ? t('Re-analyze') : t('Analyze')}</button>
@@ -410,7 +423,7 @@ export function IssuePage({ number }: { number: number }) {
               <a key={c.sha} className="prop" href={c.url} target="_blank" rel="noreferrer" title={c.message}>
                 <Icon.commit size={14} />
                 <code style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{c.sha.slice(0, 7)}</code>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 400 }}>{c.message.split('\n')[0]}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 400 }}>{stripOwnKey(c.message.split('\n')[0], ident(number))}</span>
                 {/* Stare deployed_at bez wpisów środowisk (np. dane demo) dalej pokazują jedną rakietę produkcji. */}
                 {c.envs.length === 0 && c.deployedAt && <span title={t('Deployed {when}', { when: fullDate(c.deployedAt) })} style={{ color: 'var(--success-text)', marginLeft: 'auto' }}><Icon.rocket size={13} /></span>}
                 {c.envs.map((e, i) => <span key={e.name} title={t('{env} {when}', { env: e.name, when: fullDate(e.at) })} style={{ color: e.isProduction ? 'var(--success-text)' : 'var(--progress-text)', marginLeft: i === 0 ? 'auto' : undefined }}><Icon.rocket size={13} /></span>)}
@@ -502,7 +515,8 @@ function SubIssues({ issue, meta, done }: { issue: IssueDetail; meta: Meta; done
   );
 }
 
-function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, commitUrl?: (sha: string) => string | undefined) {
+type CommitRef = { sha: string; url: string };
+function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, resolveCommit?: (c: { sha: string; message: string }) => CommitRef | undefined, deployCount?: number) {
   switch (p.kind) {
     case 'created': return <>{t('created the issue')}</>;
     case 'status': return <>{t('changed status from')} <b>{p.from ?? '—'}</b> {t('to')} <b>{p.to}</b></>;
@@ -512,6 +526,8 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, co
     case 'field': return <>{t('edited')} {{ title: t('the title'), description: t('the description'), analysis: t('the AI analysis'), change_human: t('the HUMAN change notes'), change_ai: t('the AI change log') }[p.field] ?? p.field}</>;
     case 'analysis_requested': return <>{t('requested')} <b>{p.deep ? t('a deep AI analysis') : t('an AI analysis')}</b></>;
     case 'analysis_claimed': return <>{t('started the analysis on')} <b>{p.device}</b></>;
+    case 'started_on_pc': return <>{t('Started on {device}', { device: p.device })}</>;
+    case 'start_on_pc_failed': return <span title={p.error || undefined}>{t('Start on {device} failed', { device: p.device })}</span>;
     case 'analysis_failed': return <>{t('analysis failed')}{p.error ? <>: <span className="ev-error">{p.error}</span></> : ''}</>;
     case 'decision': return p.answer
       ? <>{t('decided')} „{p.question}”: <b>{p.answer}</b></>
@@ -521,19 +537,26 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, co
     case 'commit': return <>{p.author} {t('committed')} <a href={p.url} target="_blank" rel="noreferrer"><code>{p.sha.slice(0, 7)}</code> {p.message}</a></>;
     case 'question': return <>{t('asked')} <b>{p.to}</b>: {p.question}</>;
     case 'answered': return <>{t('answered the question')}{p.backTo ? <>, {t('back to')} <b>{p.backTo}</b></> : ''}</>;
+    case 'paused': return <>{t('paused it')}{p.reason ? <>: {p.reason}</> : ''}{p.waitsOn ? <>, {t('waiting on')} <a {...linkProps(`/issue/${ident(p.waitsOn)}`)}><b>{ident(p.waitsOn)}</b></a></> : ''}</>;
+    case 'resumed': return <>{t('resumed, unblocked by')} <a {...linkProps(`/issue/${ident(p.by)}`)}><b>{ident(p.by)}</b></a></>;
     case 'relation': {
       const verb = { waits_on: t('waits on'), blocks: t('blocks'), related: t('is related to'), duplicate_of: t('is a duplicate of'), duplicated_by: t('is duplicated by') }[p.relation];
       return <>{p.action === 'added' ? t('marked that this issue') : t('removed:')} {verb} <a {...linkProps(`/issue/${ident(p.other)}`)}><b>{ident(p.other)}</b></a></>;
     }
-    case 'deploy': return <>{t('changes were')} {p.env ? <b style={{ color: p.prod ? 'var(--success-text)' : 'var(--progress-text)' }}>{t('deployed to {env}', { env: p.env })}</b> : <b style={{ color: 'var(--success-text)' }}>{t('deployed')}</b>} (<code>{p.sha.slice(0, 7)}</code>)</>;
+    case 'deploy': return <>{t('changes were')} {p.env ? <b style={{ color: p.prod ? 'var(--success-text)' : 'var(--progress-text)' }}>{t('deployed to {env}', { env: p.env })}</b> : <b style={{ color: 'var(--success-text)' }}>{t('deployed')}</b>}{deployCount ? <>: {tn(deployCount, '{n} commit', '{n} commits')}</> : ''} (<code>{p.sha.slice(0, 7)}</code>)</>;
     case 'worklog': return (
       <details className="worklog">
         <summary>{t('worked in Claude Code')}{p.repo ? <> {t('on')} <b>{p.repo}</b></> : ''}: {tn(p.files.length, '{n} file', '{n} files')}, {tn(p.commits.length, '{n} commit', '{n} commits')}</summary>
-        {p.commits.length > 0 && <><h5>{t('Commits')}</h5><ul>{p.commits.map((c) => { const url = commitUrl?.(c.sha); return <li key={c.sha}>{url ? <a href={url} target="_blank" rel="noreferrer"><code>{c.sha.slice(0, 7)}</code> {c.message}</a> : <><code>{c.sha.slice(0, 7)}</code> {c.message}</>}</li>; })}</ul></>}
+        {p.commits.length > 0 && <><h5>{t('Commits')}</h5><ul>{p.commits.map((c) => { const r = resolveCommit?.(c); return <li key={c.sha}>{r ? <a href={r.url} target="_blank" rel="noreferrer"><code>{r.sha.slice(0, 7)}</code> {c.message}</a> : <><code>{c.sha.slice(0, 7)}</code> {c.message}</>}</li>; })}</ul></>}
         {p.files.length > 0 && <><h5>{t('Files')}</h5><ul>{p.files.map((f) => <li key={f}><code>{f}</code></li>)}</ul></>}
       </details>
     );
   }
+}
+
+/** Temat commita bez identyfikatora zgłoszenia, na którego stronie jesteśmy ("CHUB-200 Infra: x" → "Infra: x"). */
+function stripOwnKey(subject: string, id: string) {
+  return subject.startsWith(id) && /^[\s:]/.test(subject.slice(id.length)) ? subject.slice(id.length).replace(/^[\s:]+/, '') || subject : subject;
 }
 
 /** Najdalsze środowisko, na którym są wszystkie commity zgłoszenia (Prod przed resztą, potem kolejność z ustawień). */
@@ -544,13 +567,13 @@ function deployedEnvOf(commits: IssueDetail['commits']): string | null {
 }
 
 /** Drobne zmiany pól: przygaszone, żeby wyróżniały się komentarze, praca Claude, commity i deploye. */
-const MINOR_EVENTS = new Set(['created', 'status', 'assignee', 'priority', 'labels', 'sprint', 'parent', 'relation', 'decision', 'answered']);
+const MINOR_EVENTS = new Set(['created', 'status', 'assignee', 'priority', 'labels', 'sprint', 'parent', 'relation', 'decision', 'answered', 'resumed']);
 
 function eventIcon(p: IssueDetail['activity'][number]['payload']) {
   if (p.kind === 'commit') return <Icon.commit size={14} />;
   if (p.kind === 'deploy') return <span style={{ color: p.env && !p.prod ? 'var(--progress-text)' : 'var(--success-text)' }}><Icon.rocket size={14} /></span>;
   if (p.kind === 'analysis_failed') return <span style={{ color: 'var(--danger-text)' }}><Icon.sparkle size={14} /></span>;
-  if (p.kind === 'analysis_requested' || p.kind === 'analysis_claimed') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
+  if (p.kind === 'analysis_requested' || p.kind === 'analysis_claimed' || p.kind === 'started_on_pc') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
   if (p.kind === 'worklog') return <span style={{ color: 'var(--ai-text)' }}><Icon.sparkle size={14} /></span>;
   return null;
 }
@@ -568,16 +591,26 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
   const refresh = () => void qc.invalidateQueries({ queryKey: ['issue', issue.number] });
 
   // Commit z sesji Claude jest już we wpisie worklog (z linkiem): osobna linia z webhooka GitHuba tylko by go dublowała.
-  const worklogShas = issue.activity.flatMap((e) => (e.payload.kind === 'worklog' ? e.payload.commits.map((c) => c.sha) : []));
   const sameSha = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
+  const subject = (m: string) => m.split('\n')[0].trim();
+  // Commit z worklogu po rebase/amend ma inny SHA niż ten, który doszedł z GitHuba: dopasowanie po temacie prowadzi do istniejącego.
+  const resolveCommit = (c: { sha: string; message: string }): CommitRef | undefined =>
+    issue.commits.find((x) => sameSha(x.sha, c.sha)) ?? issue.commits.find((x) => subject(x.message) === subject(c.message));
+  const worklogShas = issue.activity.flatMap((e) => (e.payload.kind === 'worklog' ? e.payload.commits.flatMap((c) => [c.sha, resolveCommit(c)?.sha ?? c.sha]) : []));
   const inWorklog = (sha: string) => worklogShas.some((w) => sameSha(w, sha));
-  const emptyWorklog = (p: IssueDetail['activity'][number]['payload']) => p.kind === 'worklog' && !p.files.length && !p.commits.length;
-  const commitUrl = (sha: string) => issue.commits.find((c) => sameSha(c.sha, sha))?.url;
+  const emptyWorklog = (p: IssueDetail['activity'][number]['payload']) => p.kind === 'worklog' && !p.commits.length;
+  // Ile commitów tego zgłoszenia weszło danym deployem (wpis środowiska ma ten sam znacznik czasu co zdarzenie).
+  const deployCount = (e: IssueDetail['activity'][number]) => {
+    const p = e.payload;
+    if (p.kind !== 'deploy' || !p.env) return undefined;
+    const at = new Date(e.createdAt).getTime();
+    return issue.commits.filter((c) => c.envs.some((x) => x.name === p.env && Math.abs(new Date(x.at).getTime() - at) < 1000)).length || undefined;
+  };
 
   type Entry = { at: string; kind: 'event'; e: IssueDetail['activity'][number] } | { at: string; kind: 'comment'; c: IssueDetail['comments'][number] };
   const entries: Entry[] = [
     // Pytanie widać w komentarzu, więc wpis "asked X: …" w historii tylko by je dublował.
-    ...issue.activity.filter((e) => (e.payload.kind !== 'field' || showAll) && e.payload.kind !== 'question' && !emptyWorklog(e.payload) && !(e.payload.kind === 'commit' && inWorklog(e.payload.sha))).map((e) => ({ at: e.createdAt, kind: 'event' as const, e })),
+    ...issue.activity.filter((e) => (e.payload.kind !== 'field' || showAll) && e.payload.kind !== 'question' && !emptyWorklog(e.payload) && !(e.payload.kind === 'commit' && inWorklog(e.payload.sha))).map((e) => ({ at: e.payload.kind === 'worklog' && e.payload.updatedAt ? e.payload.updatedAt : e.createdAt, kind: 'event' as const, e })),
     ...issue.comments.filter((c) => !c.replyToId).map((c) => ({ at: c.createdAt, kind: 'comment' as const, c })),
   ].sort((a, b) => (newestFirst ? b.at.localeCompare(a.at) : a.at.localeCompare(b.at)));
   const hiddenEdits = issue.activity.filter((e) => e.payload.kind === 'field').length;
@@ -603,7 +636,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
       />
       <MentionHint text={body} />
       {mention.popup}
-      <Attachments urls={att.urls} onRemove={att.remove} />
+      <Attachments urls={att.urls} onRemove={att.remove} onReplace={att.replace} />
       <div className="row">
         <button className="btn sm primary" disabled={!body.trim() && !att.urls.length} onClick={() => void send()}><Icon.arrowUp size={13} /> {t('Comment')}</button>
       </div>
@@ -634,7 +667,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
           return (
             <div key={`e${en.e.id}`} className={`event ${tone} ${cont ? 'cont' : ''}`}>
               <span className="ev-icon">{cont ? null : eventIcon(en.e.payload) ?? <Avatar user={actor} size={16} />}</span>
-              <span>{!anon && !cont && <b>{actor ? <PersonLink userId={actor.id}>{actor.name}</PersonLink> : t('System')} </b>}{en.e.viaAi && !cont && <><span className="badge ai">AI</span> </>}{eventText(en.e.payload, meta, commitUrl)} · <span title={fullDate(en.at)}>{timeAgo(en.at)}</span></span>
+              <span>{!anon && !cont && <b>{actor ? <PersonLink userId={actor.id}>{actor.name}</PersonLink> : t('System')} </b>}{en.e.viaAi && !cont && <><span className="badge ai">AI</span> </>}{eventText(en.e.payload, meta, resolveCommit, deployCount(en.e))} · <span title={fullDate(en.at)}>{timeAgo(en.at)}</span></span>
             </div>
           );
         }
@@ -831,7 +864,7 @@ function AnswerBox({ number }: { number: number }) {
       <button className="btn sm primary" disabled={!v.trim() && !att.urls.length} onClick={() => void send()}>{t('Answer')}</button>
       <MentionHint text={v} />
       {mention.popup}
-      <Attachments urls={att.urls} onRemove={att.remove} />
+      <Attachments urls={att.urls} onRemove={att.remove} onReplace={att.replace} />
     </div>
   );
 }

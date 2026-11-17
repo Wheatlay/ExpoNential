@@ -77,6 +77,8 @@ export function IssueMention({ id, preview }: { id: string; preview?: boolean })
   const update = useUpdateIssue();
   const me = useMe().data;
   const st = row && meta?.statuses.find((s) => s.id === row.statusId);
+  // Wzmianka o zgłoszeniu, na którego stronie jesteśmy: chip z jego własnym tytułem to tylko szum (np. "CHUB-200 Infra: ..." w liście commitów).
+  if (!preview && location.pathname === `/issue/${id}`) return <>{id}</>;
   if (!row || !st || !meta) return preview ? <span className="issue-mention"><span className="id">{id}</span></span> : <a {...linkProps(`/issue/${id}`)}>{id}</a>;
   if (preview) {
     return (

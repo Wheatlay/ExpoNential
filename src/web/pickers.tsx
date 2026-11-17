@@ -2,7 +2,8 @@ import { api, queryClient, type IssuePatch, type Label, type IssueRow, type Meta
 import { copyText, toast } from './toast.ts';
 import { openAsk } from './AskModal.tsx';
 import { guardDone } from './DoneGuard.tsx';
-import { isNeedInfo } from '../server/rules.ts';
+import { isNeedInfo, isPaused } from '../server/rules.ts';
+import { openPause } from './PauseModal.tsx';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu, type MenuItem, type MenuSpec } from './menu.tsx';
 import { getProjectKey, ident } from './project.ts';
@@ -41,6 +42,7 @@ export function statusMenu(meta: Meta, tg: PickTarget, update: Update): MenuSpec
       // Need Info na istniejącym zadaniu otwiera okno pytania (kogo i o co).
       onSelect: () => {
         if (tg.number > 0 && isNeedInfo(s) && s.id !== tg.statusId) return openAsk({ number: tg.number, statusId: s.id });
+        if (tg.number > 0 && isPaused(s) && s.id !== tg.statusId) return openPause({ number: tg.number, statusId: s.id });
         if (tg.number > 0 && isDuplicate(s) && s.id !== tg.statusId) return duplicateOfMenu(tg.number, meta.statuses, () => update({ statusId: s.id }));
         if (guardDone(meta, s, tg)) return;
         update({ statusId: s.id });

@@ -5,6 +5,7 @@ export const LOCALE: 'en' | 'pl' = process.env.APP_LOCALE === 'pl' ? 'pl' : 'en'
 const pl: Record<string, string> = {
   // pytanie z Need Info (komentarz)
   'Question for {who}': 'Pytanie do {who}', 'anyone': 'kogokolwiek',
+  'Paused': 'Wstrzymane', 'Waiting on {id}': 'Czeka na {id}',
   // analiza AI (analysis.ts render)
   'Type': 'Typ', 'bug': 'błąd', 'feature': 'funkcja', 'to investigate': 'do zbadania',
   'Does it happen': 'Czy występuje', 'How to reproduce': 'Jak odtworzyć', 'Current state': 'Stan obecny', 'Answer': 'Odpowiedź',

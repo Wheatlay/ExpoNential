@@ -1,13 +1,13 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql as dsql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, ne, sql as dsql } from 'drizzle-orm';
 import { db, sql, type Tx } from '../db/index.ts';
 import {
-  activity, comments, deployEnvs, inboxItems, issueCommitDeploys, issueCommits, issueLabels, issueViews, issues, labels, projectMembers, projects, sprints, statuses, userTagMembers, userTags, users,
+  activity, comments, deployEnvs, inboxItems, issueCommitDeploys, issueCommits, issueLabels, issueRelations, issueViews, issues, labels, projectMembers, projects, sprints, statuses, userTagMembers, userTags, users,
   type ActivityPayload,
 } from '../db/schema.ts';
-import { RuleError, identifier, isEmail, isNeedInfo, PRIORITIES } from './rules.ts';
+import { RuleError, identifier, isEmail, isNeedInfo, isPaused, PRIORITIES } from './rules.ts';
 import { logProject } from './projectLog.ts';
 import { st } from './i18n.ts';
-import { relationsOf } from './relations.ts';
+import { addRelation, relationsOf } from './relations.ts';
 import { notifyMentions } from './mentions.ts';
 import { listAllProjects, seedProjectStatuses, type Project } from './projects.ts';
 import { TYPE_LABEL_COLORS, TYPE_LABEL_NAMES, chosenText, fromInput, parseData, render, type AnalysisData, type AnalysisInput } from './analysis.ts';
@@ -82,6 +82,7 @@ export async function listIssues(p: Project, filter: {
     wasTested: dsql<boolean>`exists (select 1 from activity a where a.issue_id = "issues"."id" and a.payload->>'kind' = 'status' and a.payload->>'to' in (select s.name from statuses s where s.project_id = "issues"."project_id" and s.role = 'testing'))`,
     // Niezamknięte zadania, na które to zadanie czeka (relacja blocks).
     infoFromId: issues.infoFromId, infoTagId: issues.infoTagId, infoQuestion: issues.infoQuestion, infoById: issues.infoById,
+    pauseReason: issues.pauseReason,
     // Komentarze innych od ostatniego otwarcia zadania (bez wizyty: od założenia konta), tylko w "moich" zadaniach:
     // przypisanych do mnie, założonych przeze mnie, skomentowanych przeze mnie albo z wzmianką do mnie w skrzynce.
     unreadComments: filter.viewerId ? dsql<number>`(select case when ("issues"."assignee_id" = ${filter.viewerId} or "issues"."creator_id" = ${filter.viewerId}
@@ -218,6 +219,9 @@ export type IssueInput = {
   /** Albo #tag zamiast osoby: odpowiada każdy jego członek. Bez obu pól pytanie jest "do każdego". */
   infoTagId?: number | null;
   infoQuestion?: string;
+  /** Paused: powód pauzy i numer zgłoszenia, na które zadanie czeka (przy wejściu w status z rolą paused). */
+  pauseReason?: string;
+  pauseWaitsOn?: number;
 };
 
 export async function createIssue(p: Project, actor: Actor, input: IssueInput & { title: string }) {
@@ -266,7 +270,7 @@ export async function createIssue(p: Project, actor: Actor, input: IssueInput & 
 
 export async function updateIssue(p: Project, actor: Actor, number: number, patch: IssueInput) {
   // Do powiadomień o wzmiankach po zapisie: stary opis i komentarz z pytaniem.
-  const after: { prevDescription: string | null; asked: { id: number; body: string; to: number | null; tagId: number | null } | null } = { prevDescription: null, asked: null };
+  const after: { prevDescription: string | null; asked: { id: number; body: string; to: number | null; tagId: number | null } | null; closed: boolean; waitsOn: number | null } = { prevDescription: null, asked: null, closed: false, waitsOn: null };
   const result = await db.transaction(async (tx) => {
     const found = await requireIssue(p, number, tx);
     // Blokada wiersza do końca transakcji: równoległe zmiany statusu/pól nie nadpisują się nawzajem.
@@ -324,6 +328,23 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
         set.infoQuestion = '';
         set.infoById = null;
         set.infoPrevStatusId = null;
+      }
+      after.closed = ['completed', 'canceled', 'duplicate'].includes(to.type);
+      if (isPaused(to)) {
+        // Wejście w Paused: powód, status sprzed pauzy (do auto-wznowienia) i ewentualny bloker.
+        const reason = (patch.pauseReason ?? '').trim();
+        const waitsOn = patch.pauseWaitsOn ?? null;
+        set.pausePrevStatusId = cur.statusId;
+        set.pauseById = actor?.id ?? null;
+        set.pauseReason = reason;
+        after.waitsOn = waitsOn;
+        await log(tx, cur.id, actor, { kind: 'paused', reason, waitsOn });
+        const lines = [reason ? `**${st('Paused')}:** ${reason}` : '', waitsOn ? st('Waiting on {id}', { id: identifier(p.key, waitsOn) }) : ''].filter(Boolean);
+        if (lines.length) await tx.insert(comments).values({ issueId: cur.id, authorId: actor?.id ?? null, body: lines.join(String.fromCharCode(10).repeat(2)) });
+      } else if (cur.pauseReason || cur.pausePrevStatusId || cur.pauseById) {
+        set.pauseReason = '';
+        set.pausePrevStatusId = null;
+        set.pauseById = null;
       }
     }
     if (patch.assigneeId !== undefined && patch.assigneeId !== cur.assigneeId) {
@@ -403,9 +424,39 @@ export async function updateIssue(p: Project, actor: Actor, number: number, patc
     return { ...cur, ...set };
   });
   await publish({ type: 'issue', projectKey: p.key, number });
+  if (after.waitsOn) await addRelation(p, actor, number, 'waits_on', after.waitsOn);
+  if (after.closed) await resumeUnblocked(p, result.id, number, actor);
   if (after.prevDescription !== null) await notifyMentions(p, actor, result, { body: result.description, previousBody: after.prevDescription });
   if (after.asked) await notifyMentions(p, actor, result, { body: after.asked.body, commentId: after.asked.id, questionFor: after.asked.to, questionForTag: after.asked.tagId });
   return result;
+}
+
+/**
+ * Zamknięte zgłoszenie odblokowuje zadania, które na nie czekały w statusie Paused: wracają do statusu sprzed pauzy,
+ * o ile nie czekają już na inne otwarte zgłoszenie.
+ */
+export async function resumeUnblocked(p: Project, closedIssueId: number, closedNumber: number, actor: Actor) {
+  const waiting = await db.select({ issue: issues }).from(issueRelations)
+    .innerJoin(issues, eq(issues.id, issueRelations.toIssueId))
+    .innerJoin(statuses, eq(statuses.id, issues.statusId))
+    .where(and(eq(issueRelations.kind, 'blocks'), eq(issueRelations.fromIssueId, closedIssueId), eq(statuses.role, 'paused'), isNotNull(issues.pausePrevStatusId)));
+  for (const { issue: x } of waiting) {
+    const [open] = await db.select({ id: issueRelations.id }).from(issueRelations)
+      .innerJoin(issues, eq(issues.id, issueRelations.fromIssueId))
+      .innerJoin(statuses, eq(statuses.id, issues.statusId))
+      .where(and(eq(issueRelations.kind, 'blocks'), eq(issueRelations.toIssueId, x.id), inArray(statuses.type, ['backlog', 'unstarted', 'started']))).limit(1);
+    if (open) continue;
+    const all = await db.select().from(statuses).where(eq(statuses.projectId, p.id));
+    const from = all.find((s) => s.id === x.statusId);
+    const back = all.find((s) => s.id === x.pausePrevStatusId);
+    if (!back) continue;
+    await db.transaction(async (tx) => {
+      await tx.update(issues).set({ statusId: back.id, completedAt: back.type === 'completed' ? new Date() : null, pauseReason: '', pausePrevStatusId: null, pauseById: null, updatedAt: new Date() }).where(eq(issues.id, x.id));
+      await log(tx, x.id, actor, { kind: 'resumed', by: closedNumber });
+      await log(tx, x.id, actor, { kind: 'status', from: from?.name ?? null, to: back.name });
+    });
+    await publish({ type: 'issue', projectKey: p.key, number: x.number });
+  }
 }
 
 export async function deleteIssue(p: Project, number: number) {
@@ -666,9 +717,13 @@ export async function deleteLabel(p: Project, id: number) {
   await publish({ type: 'meta', projectKey: p.key });
 }
 
-export async function saveStatus(p: Project, input: { id: number; name?: string; color?: string; position?: number; hiddenOnBoard?: boolean; role?: 'need_info' | 'testing' | null }) {
+export async function saveStatus(p: Project, input: { id: number; name?: string; color?: string; position?: number; hiddenOnBoard?: boolean; role?: 'need_info' | 'testing' | 'paused' | 'in_progress' | null }) {
   const { id, ...rest } = input;
-  await db.update(statuses).set(rest).where(and(eq(statuses.id, id), eq(statuses.projectId, p.id)));
+  await db.transaction(async (tx) => {
+    // Jedna rola na projekt: ustawienie jej na tym statusie zdejmuje ją z pozostałych.
+    if (input.role) await tx.update(statuses).set({ role: null }).where(and(eq(statuses.projectId, p.id), eq(statuses.role, input.role), ne(statuses.id, id)));
+    await tx.update(statuses).set(rest).where(and(eq(statuses.id, id), eq(statuses.projectId, p.id)));
+  });
   await publish({ type: 'meta', projectKey: p.key });
 }
 
