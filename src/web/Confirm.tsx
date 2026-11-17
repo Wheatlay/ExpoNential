@@ -7,15 +7,15 @@ import { t } from './i18n.ts';
  * Potwierdzenie w stylu aplikacji zamiast systemowego confirm(). askConfirm zwraca Promise<boolean>;
  * Enter potwierdza, Escape i klik w tło anulują. `type`: potwierdzenie wymaga wpisania tego tekstu (np. loginu przy usuwaniu konta).
  */
-type Ask = { title: string; body?: string; action: string; danger: boolean; type?: string; resolve: (ok: boolean) => void };
+type Ask = { title: string; body?: string; action: string; cancel?: string; danger: boolean; type?: string; resolve: (ok: boolean) => void };
 let current: Ask | null = null;
 let subs: (() => void)[] = [];
 const emit = () => subs.forEach((s) => s());
 
-export function askConfirm(opts: { title: string; body?: string; action?: string; danger?: boolean; type?: string }): Promise<boolean> {
+export function askConfirm(opts: { title: string; body?: string; action?: string; cancel?: string; danger?: boolean; type?: string }): Promise<boolean> {
   current?.resolve(false);
   return new Promise((resolve) => {
-    current = { title: opts.title, body: opts.body, action: opts.action ?? t('Delete'), danger: opts.danger ?? true, type: opts.type, resolve };
+    current = { title: opts.title, body: opts.body, action: opts.action ?? t('Delete'), cancel: opts.cancel, danger: opts.danger ?? true, type: opts.type, resolve };
     emit();
   });
 }
@@ -52,7 +52,7 @@ export function ConfirmHost() {
         )}
         <div className="foot">
           <span className="spacer" />
-          <button className="btn" onClick={() => answer(false)}>{t('Cancel')}</button>
+          <button className="btn" onClick={() => answer(false)}>{a.cancel ?? t('Cancel')}</button>
           <button ref={ok} className={`btn ${a.danger ? 'danger' : 'primary'}`} disabled={blocked} onClick={() => answer(true)}>{a.action}</button>
         </div>
       </div>
