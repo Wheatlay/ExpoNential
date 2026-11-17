@@ -127,6 +127,10 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 
 - **Moved repo folders are found again:** a mapping made by discovery (`source: auto`) whose folder no longer exists counts as missing, so the next discovery pass maps the project to the folder's new place. Manual and cloned mappings are never replaced.
 
+## 0.4.26
+
+- **Phone start setup from the project row:** "Set up" on a project that is not ready opens the terminal for that project only, the pill shows "Waiting…" with what to confirm there, and a short success line appears when the folder becomes trusted. The separate Prepare button is gone.
+
 ## 0.4.25
 
 - **Start on PC from the phone:** opens a Claude Code Remote Control session in the project's repo folder on the account chosen in Settings (which projects are available from the phone is set there too) and reports to the tracker whether the session started. One-time card for users who updated.

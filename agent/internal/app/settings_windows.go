@@ -70,7 +70,7 @@ func settingsLabels(lang string) map[string]string {
 			"nofolder": "brak folderu", "notclone": "to nie klon repo", "norepo": "brak repo w projekcie", "noRuns": "Brak analiz",
 			"resOk": "ok", "resFail": "błąd", "resLimit": "limit Claude", "resDeclined": "odmowa", "resMuted": "wyciszone",
 			"consents": "Zgody na 24 h", "until": "do %D", "revoke": "Cofnij", "pairAgain": "Połącz ponownie", "pairHint": "Kod z Ustawienia > Moje AI", "pairGo": "Połącz", "pairing": "Łączę…", "pairOk": "Połączono ponownie", "rescan": "Skanuj ponownie", "rescanning": "Skanuję…",
-			"phone": "Start z telefonu", "phoneReady": "Gotowe", "phoneSetup": "Wymaga przygotowania", "phonePrep": "Przygotuj", "phoneNone": "—", "phoneCodex": "Silnik Codex nie obsługuje startu z telefonu", "phoneOnboarding": "konto nie ukończyło pierwszego uruchomienia", "phoneTrust": "folder nie jest zaufany", "phoneFolder": "brak folderu"}
+			"phone": "Start z telefonu", "phoneReady": "Gotowe", "phoneSetup": "Przygotuj", "phoneSetupTip": "Kliknij, żeby przygotować: %R", "phoneWaiting": "Czekam…", "phoneTrustHint": "W otwartym terminalu potwierdź zaufanie do folderu (Yes, proceed), potem możesz go zamknąć.", "phoneDoneMsg": "%K: gotowe do startu z telefonu.", "phonePrep": "Przygotuj", "phoneNone": "—", "phoneCodex": "Silnik Codex nie obsługuje startu z telefonu", "phoneOnboarding": "konto nie ukończyło pierwszego uruchomienia", "phoneTrust": "folder nie jest zaufany", "phoneFolder": "brak folderu"}
 	}
 	return map[string]string{"team": "Team jobs", "ask": "Ask", "auto": "Don't ask", "off": "Don't take",
 		"tipAsk": "Ask before running someone else's analysis", "tipAuto": "Run others' analyses without asking", "tipOff": "Never take others' analyses",
@@ -83,7 +83,7 @@ func settingsLabels(lang string) map[string]string {
 		"nofolder": "folder missing", "notclone": "not a clone of the repo", "norepo": "no repo in the project", "noRuns": "No analyses yet",
 		"resOk": "ok", "resFail": "error", "resLimit": "Claude limit", "resDeclined": "declined", "resMuted": "muted",
 		"consents": "24 h consents", "until": "until %D", "revoke": "Revoke", "pairAgain": "Pair again", "pairHint": "Code from Settings > My AI", "pairGo": "Pair", "pairing": "Pairing…", "pairOk": "Paired again", "rescan": "Rescan", "rescanning": "Scanning…",
-		"phone": "Start from phone", "phoneReady": "Ready", "phoneSetup": "Needs setup", "phonePrep": "Prepare", "phoneNone": "—", "phoneCodex": "The Codex engine does not support starting from the phone", "phoneOnboarding": "account has not finished first-run setup", "phoneTrust": "folder not trusted", "phoneFolder": "folder missing"}
+		"phone": "Start from phone", "phoneReady": "Ready", "phoneSetup": "Set up", "phoneSetupTip": "Click to set up: %R", "phoneWaiting": "Waiting…", "phoneTrustHint": "In the terminal that opened, confirm you trust the folder (Yes, proceed), then you can close it.", "phoneDoneMsg": "%K is ready to start from the phone.", "phonePrep": "Prepare", "phoneNone": "—", "phoneCodex": "The Codex engine does not support starting from the phone", "phoneOnboarding": "account has not finished first-run setup", "phoneTrust": "folder not trusted", "phoneFolder": "folder missing"}
 }
 
 func buildSettingsState() (st settingsState) {
@@ -366,8 +366,8 @@ func openSettings() {
 		_ = w.Bind("setPhoneProject", func(key string, on bool) {
 			bg("setPhoneProject", func() { setPhoneProject(key, on) })
 		})
-		_ = w.Bind("preparePhone", func() {
-			bg("preparePhone", func() { preparePhone() })
+		_ = w.Bind("preparePhone", func(key string) {
+			bg("preparePhone", func() { preparePhone(key) })
 		})
 		_ = w.Bind("toggleMute", func() {
 			bg("toggleMute", func() { toggleMute() })

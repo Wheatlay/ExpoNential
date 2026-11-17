@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.26] - 17.11.2026
+
+- Start from phone settings: "Set up" on each project that is not ready, "Waiting…" while the trust question is open in the terminal, a success line when it is ready.
+
 ## Server [1.3.37], Agent [0.4.25] - 17.11.2026
 
 - Paused status: pausing asks for the reason or the issue it waits on; the issue goes back to its previous status when that issue closes ("resumed, unblocked by"). Statuses get the roles Paused and In progress. Migration 0043.

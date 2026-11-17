@@ -22,6 +22,9 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
 .pill.warn { color: var(--warning-text); background: color-mix(in srgb, var(--warning) 12%, transparent); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
 .pill.danger { color: var(--danger-text); background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 .pill.sm { height: 20px; padding: 0 8px; font-size: 11px; }
+.pbtn { font-family: inherit; cursor: pointer; }
+.pbtn:hover { background: color-mix(in srgb, var(--warning) 22%, transparent); }
+.pbtn:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 1px; }
 .pill.res { max-width: 150px; }
 .sec { display: flex; flex-direction: column; gap: 4px; }
 .lbl { font-size: 12px; color: var(--text-tertiary); font-weight: 500; }
@@ -148,6 +151,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
   function fmtDur(ms) { if (!ms) return ""; var s = Math.round(ms / 1000); return s < 60 ? s + "s" : Math.floor(s / 60) + "m " + pad(s % 60) + "s"; }
 
   // Run a binding, then refresh the state shortly after.
+  var phoneWait = {}, phoneDone = {}; // project key -> ms: setup started from its pill / became ready
   function call(fn) { return function () { fn(); setTimeout(refresh, 80); setTimeout(refresh, 600); }; }
 
   function drawHead() {
@@ -219,16 +223,23 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     var opts = '<option value="">' + esc(L.phoneNone) + '</option>' + accs.map(function (a) {
       return '<option value="' + esc(a.dir) + '"' + (a.dir === s.phoneAccount ? " selected" : "") + '>' + esc(a.email) + '</option>';
     }).join("");
-    var list = "", prep = false;
+    var list = "", waiting = false, done = [], now = Date.now();
     if (s.phoneAccount && s.phoneCodex) list = '<div class="hintline">' + esc(L.phoneCodex) + '</div>';
     else if (s.phoneAccount) {
       list = projs.map(function (p) {
-        if (p.on && !p.ready && p.missing !== "folder") prep = true;
-        var pill = p.ready ? '<span class="pill sm good">' + esc(L.phoneReady) + '</span>'
-          : '<span class="pill sm mut" title="' + esc(L["phone" + p.missing.charAt(0).toUpperCase() + p.missing.slice(1)]) + '">' + esc(L.phoneSetup) + '</span>';
+        var why = p.missing ? L["phone" + p.missing.charAt(0).toUpperCase() + p.missing.slice(1)] : "";
+        if (p.ready && phoneWait[p.key]) { delete phoneWait[p.key]; phoneDone[p.key] = now; }
+        if (phoneWait[p.key] && now - phoneWait[p.key] > 180000) delete phoneWait[p.key];
+        if (phoneDone[p.key] && now - phoneDone[p.key] < 6000) done.push(p.key);
+        if (phoneWait[p.key]) waiting = true;
+        var pill = p.ready ? '<span class="pill sm ok">' + esc(L.phoneReady) + '</span>'
+          : p.missing === "folder" || !p.on ? '<span class="pill sm" title="' + esc(why) + '">' + esc(why) + '</span>'
+          : phoneWait[p.key] ? '<span class="pill sm ai">' + esc(L.phoneWaiting) + '</span>'
+          : '<button class="pill sm warn pbtn" data-prep="' + esc(p.key) + '" title="' + esc(L.phoneSetupTip.replace("%R", why)) + '">' + esc(L.phoneSetup) + '</button>';
         return '<div class="row' + (p.on ? " on" : "") + '" data-phone="' + esc(p.key) + '" role="switch" tabindex="0" aria-checked="' + p.on + '"><span>' + esc(p.key) + '</span>' + pill + '<i class="sw"></i></div>';
       }).join("");
-      if (prep) list += '<div class="btns"><button class="btn" id="phoneprep">' + esc(L.phonePrep) + '</button></div>';
+      if (waiting) list += '<div class="hintline">' + esc(L.phoneTrustHint) + '</div>';
+      if (done.length) list += '<div class="hintline" style="color:var(--success-text)">' + esc(L.phoneDoneMsg.replace("%K", done.join(", "))) + '</div>';
     }
     return '<div class="sec" id="phonesec"><span class="lbl">' + esc(L.phone) + '</span><select class="sel" id="phoneacc">' + opts + '</select>' + list + '</div>';
   }
@@ -271,7 +282,10 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
       el.onclick = call(function () { window.setPhoneProject(el.dataset.phone, !el.classList.contains("on")); });
       el.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); el.click(); } };
     });
-    if ($("phoneprep")) $("phoneprep").onclick = call(window.preparePhone);
+    Array.prototype.forEach.call(panelEl.querySelectorAll("[data-prep]"), function (el) {
+      el.onclick = function (e) { e.stopPropagation(); phoneWait[el.dataset.prep] = Date.now(); call(function () { window.preparePhone(el.dataset.prep); })(); drawPanel(); };
+      el.onkeydown = function (e) { e.stopPropagation(); };
+    });
     $("mute").onclick = call(window.toggleMute);
     $("open").onclick = call(window.openApp); $("ai").onclick = call(window.openAI); $("uninstall").onclick = call(window.uninstall);
     $("showlog").onclick = function () { view = "log"; logText = null; window.getLog().then(function (t) { logText = t; drawPanel(true); }); drawPanel(); };
@@ -404,7 +418,7 @@ html, body { margin: 0; height: 100%; background: var(--bg-primary); color: var(
     if (!S) return;
     var L = S.L, html, sig;
     if (tab === "general" && view === "log") { sig = JSON.stringify(["log", logText, copied, L.back]); html = logHtml(L); }
-    else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.consents, pairOpen, pairMsg, pairState, S.teamMode, S.notify, S.notifyOwn, S.autoUpdate, S.autostart, S.muteLabel, S.themeSetting, copied, S.phoneAccounts, S.phoneAccount, S.phoneProjects, S.phoneCodex]); html = generalHtml(S); }
+    else if (tab === "general") { sig = JSON.stringify(["g", S.L, S.consents, pairOpen, pairMsg, pairState, S.teamMode, S.notify, S.notifyOwn, S.autoUpdate, S.autostart, S.muteLabel, S.themeSetting, copied, S.phoneAccounts, S.phoneAccount, S.phoneProjects, S.phoneCodex, phoneWait, Object.keys(phoneDone).filter(function (k) { return Date.now() - phoneDone[k] < 6000; })]); html = generalHtml(S); }
     else if (tab === "repos") { sig = JSON.stringify(["r", repos, repoMsg, L.pick, rescanning]); html = reposHtml(L); }
     else { sig = JSON.stringify(["u", S.runs, S.limit, L.noRuns]); html = runsHtml(S); }
     if (sig === sigs.panel && !scrollLog) return;

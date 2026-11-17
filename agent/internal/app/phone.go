@@ -240,7 +240,8 @@ func childEnv(base []string, acc string) []string {
 }
 
 // preparePhone opens plain `claude` terminals so the user can finish onboarding / trust the folders.
-func preparePhone() {
+// only = one project key (the clicked "Needs setup" pill); "" = every enabled project that needs it.
+func preparePhone(only string) {
 	cfg := loadConfig()
 	if cfg.PhoneAccount == "" {
 		return
@@ -250,7 +251,7 @@ func preparePhone() {
 	var todo []string
 	notOnboarded := false
 	for _, p := range phoneProjects(cfg) {
-		if !p.On || p.Ready || p.Missing == "folder" {
+		if !p.On || p.Ready || p.Missing == "folder" || (only != "" && p.Key != only) {
 			continue
 		}
 		if p.Missing == "onboarding" {
