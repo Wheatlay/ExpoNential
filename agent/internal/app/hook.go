@@ -43,17 +43,26 @@ type commit struct {
 	Sha     string `json:"sha"`
 	Message string `json:"message"`
 }
+type sessCommit struct {
+	Key     string `json:"key"`
+	Sha     string `json:"sha"`
+	Message string `json:"message"`
+	Repo    string `json:"repo"`
+	At      int64  `json:"at"`
+}
 type hookState struct {
 	Issue        string     `json:"issue"`
 	Files        []string   `json:"files"`
 	Commits      []commit   `json:"commits"`
 	Prompts      []string   `json:"prompts"`
 	SessionFiles []sessFile `json:"sessionFiles"`
-	Dirty        bool       `json:"dirty"`
-	LastSync     float64    `json:"lastSync"`
-	Off          bool       `json:"off"`
-	Repo         string     `json:"repo,omitempty"`
-	Mapped       bool       `json:"mapped,omitempty"`
+	// Commits made in tracker repos before the session was pinned; attached on the first pin like SessionFiles.
+	SessionCommits []sessCommit `json:"sessionCommits,omitempty"`
+	Dirty          bool         `json:"dirty"`
+	LastSync       float64      `json:"lastSync"`
+	Off            bool         `json:"off"`
+	Repo           string       `json:"repo,omitempty"`
+	Mapped         bool         `json:"mapped,omitempty"`
 	// Unix time of the newest commit in this session and of the last change-notes check on Stop.
 	LastCommitAt int64 `json:"lastCommitAt,omitempty"`
 	NotesCheckAt int64 `json:"notesCheckAt,omitempty"`
@@ -229,7 +238,18 @@ func hookMain(event string) {
 					break
 				}
 			}
-			st.Dirty = len(st.Files) > 0
+			if first {
+				for _, c := range st.SessionCommits {
+					if c.Key == key {
+						st.Commits = append(st.Commits, commit{c.Sha, c.Message})
+						st.Repo = c.Repo
+						if c.At > st.LastCommitAt {
+							st.LastCommitAt = c.At
+						}
+					}
+				}
+			}
+			st.Dirty = len(st.Files) > 0 || len(st.Commits) > 0
 			context = issueContext(next)
 		}
 		// The conversation itself is never collected (privacy): the worklog carries only files and commits.
@@ -292,13 +312,13 @@ func hookMain(event string) {
 			save()
 		case "Bash", "PowerShell":
 			cmd := promptString(in.ToolInput.Command)
-			if !commitRe.MatchString(cmd) || st.Issue == "" {
+			if !commitRe.MatchString(cmd) {
 				return
 			}
 			where := commitDir(cmd, cwd)
 			repo := repoOf(where)
-			if repo == nil || !strings.HasPrefix(st.Issue, repo.key+"-") {
-				return // commit in another project's repo
+			if repo == nil {
+				return // commit outside the tracker projects' repos
 			}
 			out := gitHook(where, "log", "-1", "--format=%H%x1f%ct%x1f%s")
 			parts := strings.Split(out, "\x1f")
@@ -309,13 +329,30 @@ func hookMain(event string) {
 			fmt.Sscan(parts[1], &ct)
 			// A failed commit leaves the old HEAD: only a fresh one counts.
 			fresh := float64(time.Now().Unix())-ct < 120
+			if parts[0] == "" || !fresh {
+				return
+			}
+			// Remembered even before a pin: "do it, deploy, then note it in CHUB-200" is a common order.
+			known := false
+			for _, c := range st.SessionCommits {
+				if c.Sha == parts[0] {
+					known = true
+				}
+			}
+			if !known {
+				st.SessionCommits = append(st.SessionCommits, sessCommit{repo.key, parts[0], cut(parts[2], 300), repo.name, int64(ct)})
+				save()
+			}
+			if !strings.HasPrefix(st.Issue, repo.key+"-") {
+				return // not pinned, or pinned to another project's issue
+			}
 			dup := false
 			for _, c := range st.Commits {
 				if c.Sha == parts[0] {
 					dup = true
 				}
 			}
-			if parts[0] != "" && fresh && !dup {
+			if !dup {
 				st.Commits = append(st.Commits, commit{parts[0], cut(parts[2], 300)})
 				st.LastCommitAt = int64(ct)
 				st.Repo = repo.name
