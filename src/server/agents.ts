@@ -209,10 +209,11 @@ export async function rescanWhereRepoMissing(projectId: number) {
 
 /** Ile sekund własny PC zlecającego ma pierwszeństwo, zanim zlecenie trafi do kolejki zespołu (inaczej koledzy dostają kartę zgody na pracę, którą i tak bierze PC zlecającego). */
 export const OWN_PC_GRACE_S = 60;
-/** Warunek SQL: zlecenie świeże, a zlecający ma własny wolny komputer online z repo projektu (albo projekt pozwala klonować). */
+/** Warunek SQL: zlecenie świeże, a zlecający ma własny komputer online z repo projektu (albo projekt pozwala klonować).
+ * Zajęty też się liczy: zwykle kończy poprzednią analizę (np. Deep zaraz po zwykłej) i bierze zlecenie po chwili. */
 function ownPcFirst() {
   return dsql`(${issues.analysisRequestedAt} > now() - make_interval(secs => ${OWN_PC_GRACE_S}) and exists (
-    select 1 from agents oa where oa.user_id = ${issues.analysisRequestedBy} and not oa.busy
+    select 1 from agents oa where oa.user_id = ${issues.analysisRequestedBy}
       and oa.last_seen_at > now() - make_interval(secs => ${ONLINE_MS / 1000})
       and (${projects.agentsMayClone} or exists (select 1 from agent_repos orr where orr.agent_id = oa.id and orr.project_id = ${issues.projectId} and orr.status = 'ok'))))`;
 }

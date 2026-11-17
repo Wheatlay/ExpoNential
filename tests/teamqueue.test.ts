@@ -90,9 +90,10 @@ describe('team mode per computer', () => {
     expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).not.toContain(`TQ-${n}`);
     await dbmod.sql`update issues set analysis_requested_at = now() - make_interval(secs => ${ag.OWN_PC_GRACE_S + 5}) where number = ${n}`;
     expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).toContain(`TQ-${n}`);
+    // A busy own PC (finishing the previous run, e.g. Deep right after a normal analysis) still gets the grace.
     await dbmod.sql`update agents set busy = true where id = ${DEV_A}`;
     const m = await requested(alice);
-    expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).toContain(`TQ-${m}`);
+    expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).not.toContain(`TQ-${m}`);
     await dbmod.sql`update agents set busy = false where id = ${DEV_A}`;
   });
 
@@ -102,6 +103,7 @@ describe('team mode per computer', () => {
       await clear();
       await setMode(DEV_B, mode);
       const n = await requested(alice);
+      await dbmod.sql`update issues set analysis_requested_at = now() - make_interval(secs => ${ag.OWN_PC_GRACE_S + 5}) where number = ${n}`;
       expect(keys(await ag.pendingWork(bob, await agentOf(DEV_B)))).toContain(`TQ-${n}`);
       await expect(ag.claimAnalysis(P, bob, n, DEV_B)).resolves.toMatchObject({ ok: true });
     }
