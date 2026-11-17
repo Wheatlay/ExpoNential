@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.28] - 17.11.2026
+
+- A deleted project (or one you left) is removed from the agent's repo mappings and the Start from phone list on the next scan.
+
 ## Server [1.3.38] - 17.11.2026
 
 - Project admins can delete a project in Settings › Project (typing the project key confirms); all its issues, comments, sprints and meetings are removed.

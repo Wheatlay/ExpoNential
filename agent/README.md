@@ -127,6 +127,10 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 
 - **Moved repo folders are found again:** a mapping made by discovery (`source: auto`) whose folder no longer exists counts as missing, so the next discovery pass maps the project to the folder's new place. Manual and cloned mappings are never replaced.
 
+## 0.4.28
+
+- **Deleted projects disappear from the agent:** on each repo scan (agent start, Rescan, hourly) the local mapping and phone switch of a project the server no longer lists (deleted, or you left it) are removed.
+
 ## 0.4.27
 
 - **Toast when phone start is ready:** after "Set up", the agent shows a Windows notification once the project becomes ready (the user is in the terminal, not in Settings).

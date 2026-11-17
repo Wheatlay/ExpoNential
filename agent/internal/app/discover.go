@@ -233,6 +233,7 @@ func discoverRepos(a *Auth) int {
 	if err != nil {
 		return 0
 	}
+	pruneGoneProjects(list)
 	have := loadConfig().Repos
 	var todo []Project
 	for _, p := range list {
@@ -454,6 +455,37 @@ func cachedFoundSlugs(force bool) []string {
 		}()
 	}
 	return foundCache
+}
+
+// pruneGoneProjects drops local mappings (and phone switches) of projects the server no longer lists for this
+// user: the project was deleted or the user left it. An empty list is treated as a glitch and changes nothing.
+func pruneGoneProjects(list []Project) {
+	if len(list) == 0 {
+		return
+	}
+	alive := map[string]bool{}
+	for _, p := range list {
+		alive[p.Key] = true
+	}
+	var gone []string
+	updateConfig(func(c *Config) {
+		for k := range c.Repos {
+			if !alive[k] {
+				delete(c.Repos, k)
+				gone = append(gone, k)
+			}
+		}
+		off := c.PhoneOff[:0]
+		for _, k := range c.PhoneOff {
+			if alive[k] {
+				off = append(off, k)
+			}
+		}
+		c.PhoneOff = off
+	})
+	for _, k := range gone {
+		logf("%s: project no longer on the server, local mapping removed", k)
+	}
 }
 
 // discoverLoop runs discovery now and then every discoverEvery.
