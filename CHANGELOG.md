@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.27] - 17.11.2026
+
+- Windows notification when a project becomes ready for phone start after "Set up".
+
 ## Agent [0.4.26] - 17.11.2026
 
 - Start from phone settings: "Set up" on each project that is not ready, "Waiting…" while the trust question is open in the terminal, a success line when it is ready.

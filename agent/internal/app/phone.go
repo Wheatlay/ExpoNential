@@ -275,6 +275,29 @@ func preparePhone(only string) {
 			logf("phone setup: %v", err)
 		}
 	}
+	go notifyWhenReady(todo)
+}
+
+// notifyWhenReady: system toast per project once it becomes ready (the user is in the terminal, not in Settings).
+func notifyWhenReady(keys []string) {
+	defer guard("phone-ready")
+	left := map[string]bool{}
+	for _, k := range keys {
+		left[k] = true
+	}
+	for end := time.Now().Add(5 * time.Minute); len(left) > 0 && time.Now().Before(end); {
+		time.Sleep(2 * time.Second)
+		for _, p := range phoneProjects(loadConfig()) {
+			if left[p.Key] && p.Ready {
+				delete(left, p.Key)
+				if agentLang() == "pl" {
+					notifyText(p.Key + ": gotowe do startu z telefonu")
+				} else {
+					notifyText(p.Key + " is ready to start from the phone")
+				}
+			}
+		}
+	}
 }
 
 // waitForSession: true once a transcript of the account that mentions key appeared after since.
