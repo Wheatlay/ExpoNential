@@ -697,7 +697,7 @@ function ProjectGeneral() {
         <span className="hint">min</span>
       </div>
       <div id="project-delete" className="s-row">
-        <Tooltip text={t('All issues, comments, sprints and meetings of this project are deleted for everyone. This cannot be undone.')}><span className="grow">{t('Delete project')}</span></Tooltip>
+        <Tooltip text={t('All issues, comments, sprints and meetings of this project are deleted for everyone. This cannot be undone.')}><span className="s-label">{t('Delete project')}</span></Tooltip>
         <Tooltip text={ro ?? (demo ? t('Disabled in the demo') : null)}>
           <button className="btn sm danger" disabled={!!ro || demo} onClick={() => void askConfirm({
             title: t('Delete project {name}?', { name: p.name }),
