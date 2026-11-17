@@ -11,7 +11,7 @@ import {
 import { waitReasonText } from './analysisWait.ts';
 import { openAgentRepos } from './settingsNav.ts';
 import { analysisToast } from './analysisToast.ts';
-import { collapseImages, expandImages } from './paste.ts';
+import { collapseImages, expandImages, pasteImage } from './paste.ts';
 import { useProjectKey } from './project.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu, isMenuOpen, Tooltip, type MenuSpec } from './menu.tsx';
@@ -55,11 +55,11 @@ export function MarkdownField({ value, onSave, placeholder, size, flash }: {
   const [draft, setDraft] = useState(() => collapseImages(value).text);
   // Obrazki w polu edycji to krótkie ![image 1]; pełny adres wraca przy zapisie.
   const images = useRef<Record<string, string>>(collapseImages(value).map);
+  const [, bump] = useState(0); // przerysowanie po zmianie mapy obrazków
   const own = useRef<string | null>(null);
   const flashing = useRemoteFlash(value, own, editing || !flash);
   const ref = useRef<HTMLTextAreaElement>(null);
   // Hooki przed warunkowym return (inaczej klik w pole zmienia liczbę hooków i React się wywraca).
-  const att = useAttachments();
   const mention = useMentionAutocomplete(ref, draft, setDraft);
   useEffect(() => { if (!editing) { const c = collapseImages(value); images.current = c.map; setDraft(c.text); } }, [value, editing]);
   useEffect(() => { if (editing) { const el = ref.current; el?.focus(); el?.setSelectionRange(el.value.length, el.value.length); } }, [editing]);
@@ -73,9 +73,7 @@ export function MarkdownField({ value, onSave, placeholder, size, flash }: {
   }
   const save = () => {
     setEditing(false);
-    const expanded = expandImages(draft, images.current);
-    const next = att.urls.length ? att.withImages(expanded) : expanded;
-    att.clear();
+    const next = expandImages(draft, images.current);
     if (next !== value) { own.current = next; onSave(next); }
   };
   const insert = (s: string) => {
@@ -83,6 +81,20 @@ export function MarkdownField({ value, onSave, placeholder, size, flash }: {
     const next = draft.slice(0, el.selectionStart) + s + draft.slice(el.selectionEnd);
     setDraft(next);
   };
+  // Wklejony obrazek trafia w miejsce kursora jako kolejny ![image N], tak jak obrazki już zapisane w opisie.
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    const at = [el.selectionStart, el.selectionEnd] as const;
+    void pasteImage(e).then((url) => {
+      if (!url) return;
+      const n = Math.max(0, ...Object.keys(images.current).map((k) => Number(/\d+/.exec(k)?.[0] ?? 0))) + 1;
+      const key = `![image ${n}]`;
+      images.current = { ...images.current, [key]: url };
+      setDraft((d) => d.slice(0, at[0]) + key + d.slice(at[1]));
+    });
+  };
+  const shown = [...new Set(draft.match(/!\[image \d+\]/g) ?? [])].filter((k) => images.current[k]);
+  const keyOf = (u: string) => shown.find((k) => images.current[k] === u);
   return (
     <div>
       <textarea
@@ -91,7 +103,7 @@ export function MarkdownField({ value, onSave, placeholder, size, flash }: {
         value={draft}
         placeholder={placeholder}
         onChange={(e) => setDraft(e.target.value)}
-        onPaste={att.onPaste}
+        onPaste={onPaste}
         onKeyDown={(e) => {
           e.stopPropagation();
           mention.onKeyDown(e);
@@ -102,7 +114,9 @@ export function MarkdownField({ value, onSave, placeholder, size, flash }: {
       />
       <MentionHint text={draft} />
       {mention.popup}
-      <Attachments urls={att.urls} onRemove={att.remove} onReplace={att.replace} />
+      <Attachments urls={shown.map((k) => images.current[k])}
+        onRemove={(u) => { const k = keyOf(u); if (k) setDraft((d) => d.split(k).join('')); }}
+        onReplace={(from, to) => { const k = keyOf(from); if (k) { images.current = { ...images.current, [k]: to }; bump((x) => x + 1); } }} />
       <div className="edit-actions">
         <span className="hint edit-hint">{keyHint('save')}</span>
         <button className="btn sm" onClick={() => { setDraft(value); setEditing(false); }}>{t('Cancel')}</button>

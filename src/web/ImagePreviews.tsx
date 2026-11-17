@@ -25,9 +25,12 @@ export function useAttachments() {
 
 export function Attachments({ urls, onRemove, onReplace }: { urls: string[]; onRemove: (u: string) => void; onReplace?: (from: string, to: string) => void }) {
   const [drawing, setDrawing] = useState<string | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  // Po zamknięciu edytora fokus wraca do pola tekstu obok (przycisk ołówka mógł zniknąć), żeby Esc i Ctrl+Enter działały dalej.
+  const done = () => { setDrawing(null); requestAnimationFrame(() => root.current?.parentElement?.querySelector<HTMLTextAreaElement>("textarea")?.focus()); };
   if (!urls.length) return null;
   return (
-    <div className="attachments">
+    <div className="attachments" ref={root}>
       {urls.map((u) => (
         <span key={u} className="attachment">
           <img src={u} alt={t('Pasted image')} onClick={() => openLightbox(u)} style={{ cursor: "zoom-in" }} />
@@ -44,7 +47,7 @@ export function Attachments({ urls, onRemove, onReplace }: { urls: string[]; onR
         </span>
       ))}
       {drawing && onReplace && createPortal(
-        <DrawEditor src={drawing} onClose={() => setDrawing(null)} onSaved={(url) => { onReplace(drawing, url); setDrawing(null); }} />,
+        <DrawEditor src={drawing} onClose={done} onSaved={(url) => { onReplace(drawing, url); done(); }} />,
         document.body,
       )}
     </div>
