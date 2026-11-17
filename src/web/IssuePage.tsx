@@ -90,7 +90,14 @@ export function MarkdownField({ value, onSave, placeholder, size, flash }: {
       const n = Math.max(0, ...Object.keys(images.current).map((k) => Number(/\d+/.exec(k)?.[0] ?? 0))) + 1;
       const key = `![image ${n}]`;
       images.current = { ...images.current, [key]: url };
-      setDraft((d) => d.slice(0, at[0]) + key + d.slice(at[1]));
+      // Obrazek w osobnym akapicie: bez odstępu Markdown skleja go z tekstem obok.
+      setDraft((d) => {
+        const before = d.slice(0, at[0]);
+        const after = d.slice(at[1]);
+        const lead = !before || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+        const trail = !after || after.startsWith('\n') ? '' : '\n\n';
+        return before + lead + key + trail + after;
+      });
     });
   };
   const shown = [...new Set(draft.match(/!\[image \d+\]/g) ?? [])].filter((k) => images.current[k]);
