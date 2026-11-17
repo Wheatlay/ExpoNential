@@ -119,7 +119,11 @@ export function Attachments({ urls, onRemove, onReplace }: { urls: string[]; onR
     if (!s || full) return;
     const onDown = (e: MouseEvent) => {
       const el = e.target as HTMLElement;
-      if (el.closest('.attachment.drawing, .backdrop.confirm-host, [role="alertdialog"]')) return;
+      if (el.closest('.attachment.drawing, [role="alertdialog"]') || document.querySelector('[role="alertdialog"]')) return;
+      // Klik tylko pyta: nie oddaje fokusu ani nie klika tego, co pod spodem (np. Create issue), inaczej Esc trafiłby obok pytania.
+      e.preventDefault(); e.stopPropagation();
+      const swallow = (ev: MouseEvent) => { ev.preventDefault(); ev.stopPropagation(); };
+      document.addEventListener('click', swallow, { capture: true, once: true });
       leave();
     };
     document.addEventListener('mousedown', onDown, true);
