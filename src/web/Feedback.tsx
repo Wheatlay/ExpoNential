@@ -88,7 +88,7 @@ function FeedbackModal() {
         <textarea placeholder={kind === 'bug' ? t('What happens?\nWhat should happen?\nWhere (screen, link, steps)?') : t('What would you like to be able to do?')}
           maxLength={20_000} value={description} onChange={(e) => setDescription(e.target.value)} onPaste={att.onPaste}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') close(); enterToSubmit(e, () => void submit(), setDescription); }} />
-        <Attachments urls={att.urls} onRemove={att.remove} />
+        <Attachments urls={att.urls} onRemove={att.remove} onReplace={att.replace} />
         <div className="foot">
           {kind === 'bug' ? <span className="hint">{t('Page, browser and app version are attached.')}</span> : <span className="hint">{keyHint('send')}</span>}
           <span className="spacer" />

@@ -148,6 +148,7 @@ export const Icon = {
   ),
   close: (p: P = {}) => path('M4 4l8 8M12 4l-8 8', p),
   check: (p: P = {}) => path('M3.5 8.5l3 3 6-7', p),
+  undo: (p: P = {}) => path('M5.5 3L2.5 6l3 3M2.5 6h7a3.5 3.5 0 010 7H6', p),
   trash: (p: P = {}) => path('M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9', p),
   link: (p: P = {}) => path('M7 9a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9 7a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.8-.8', p),
   copy: (p: P = {}) => path('M5.5 5.5V3h7.5v7.5h-2.5M3 5.5h7.5V13H3z', p),

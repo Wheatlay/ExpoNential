@@ -43,7 +43,8 @@ function NewIssueModal({ init }: { init: Init }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [another, setAnother] = useState(false);
-  const [analyze, setAnalyze] = useState(false);
+  const [analyze, setAnalyzeState] = useState(() => { try { return localStorage.getItem('newIssue.analyze') === '1'; } catch { return false; } });
+  const setAnalyze = (v: boolean) => { setAnalyzeState(v); try { localStorage.setItem('newIssue.analyze', v ? '1' : '0'); } catch { /* brak storage */ } };
   const att = useAttachments();
   const descRef = useRef<HTMLTextAreaElement>(null);
   const mention = useMentionAutocomplete(descRef, description, setDescription);
@@ -78,7 +79,7 @@ function NewIssueModal({ init }: { init: Init }) {
 
   return (
     <div className="backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label={t('New issue')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => {
+      <div className="modal new-issue" role="dialog" aria-modal="true" aria-label={t('New issue')} ref={modalRef} tabIndex={-1} onKeyDown={(e) => {
         if (e.key === 'Escape') { e.stopPropagation(); close(); }
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void submit(); }
       }}>
@@ -92,7 +93,7 @@ function NewIssueModal({ init }: { init: Init }) {
           onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; if (e.key === 'Escape') close(); enterToSubmit(e, () => void submit(), setDescription); }} />
         <MentionHint text={description} />
         {mention.popup}
-        <Attachments urls={att.urls} onRemove={att.remove} />
+        <Attachments urls={att.urls} onRemove={att.remove} onReplace={att.replace} />
         <div className="props">
           <button className="chip" onClick={(e) => openMenu(e.currentTarget, statusMenu(meta, form, set))}>
             <StatusIcon status={status} fraction={startedFraction(meta.statuses, status)} /> {status.name}
