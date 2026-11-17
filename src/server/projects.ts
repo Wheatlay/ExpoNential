@@ -89,6 +89,16 @@ export async function createProject(creatorId: number, input: { key: string; nam
   return p;
 }
 
+/**
+ * Usuwa projekt z całą zawartością (zgłoszenia, komentarze, sprinty, spotkania: kaskada w bazie).
+ * confirm = wpisany klucz projektu, jak przy usuwaniu konta.
+ */
+export async function deleteProject(project: Project, confirm: string) {
+  if (process.env.DEMO_MODE === '1') throw new RuleError('Disabled in the demo', 'forbidden');
+  if (confirm.trim().toUpperCase() !== project.key) throw new RuleError('Type the project key to confirm', 'invalid');
+  await db.delete(projects).where(eq(projects.id, project.id));
+}
+
 export type ProjectPatch = Partial<{
   name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; meetingLocationUrl: string; sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;

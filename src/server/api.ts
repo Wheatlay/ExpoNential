@@ -280,6 +280,14 @@ export async function registerApi(app: FastifyInstance) {
       // Webhook to sekret: widzi go tylko admin projektu.
       return { ...project, discordWebhookUrl: canEdit ? project.discordWebhookUrl : null, role, canEdit, members: await pr.listMembers(project.id), defaultModels: DEFAULT_MODELS };
     });
+    // Usunięcie projektu z całą zawartością: tylko admin projektu, z wpisanym kluczem.
+    r.delete<{ Params: { key: string } }>('/api/projects/:key', async (req) => {
+      const p = await manage(req, req.params.key);
+      const body = z.object({ confirm: z.string().max(20) }).parse(req.body ?? {});
+      await pr.deleteProject(p, body.confirm);
+      await svc.publish({ type: 'projects' });
+      return { ok: true };
+    });
     r.patch<{ Params: { key: string } }>('/api/projects/:key', async (req, reply) => {
       const p = await manage(req, req.params.key);
       const body = z.object({

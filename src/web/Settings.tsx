@@ -215,6 +215,7 @@ const SEARCH: SearchEntry[] = [
   { label: t('Project color'), to: 'project', target: 'project-name', keywords: ['kolor', 'color', 'project', 'projekt'] },
   { label: t('Logo'), to: 'project', target: 'project-name', keywords: ['logo projektu', 'project logo', 'ikona', 'icon', 'obrazek', 'image', 'badge', 'plakietka'] },
   { label: t('Sprint length'), to: 'project', target: 'sprint-length', keywords: ['days', 'dni', 'sprint', 'dlugosc', 'length'] },
+  { label: t('Delete project'), to: 'project', target: 'project-delete', keywords: ['usun projekt', 'delete', 'remove project', 'skasuj'] },
   { label: t('Sprint review'), to: 'project', target: 'sprint-review', keywords: ['meeting', 'spotkanie', 'przeglad', 'review', 'kalendarz', 'calendar'] },
   { label: t('Sprint review time'), to: 'project', target: 'sprint-review', keywords: ['godzina', 'hour', 'time', 'meeting', 'spotkanie', 'minuty', 'minutes'] },
   // Projekt › Ludzie
@@ -694,6 +695,16 @@ function ProjectGeneral() {
             onBlur={(e) => Number(e.target.value) !== p.reviewMinutes && void patch({ reviewMinutes: Number(e.target.value) })} />
         </Tooltip>
         <span className="hint">min</span>
+      </div>
+      <div id="project-delete" className="s-row">
+        <Tooltip text={t('All issues, comments, sprints and meetings of this project are deleted for everyone. This cannot be undone.')}><span className="grow">{t('Delete project')}</span></Tooltip>
+        <Tooltip text={ro ?? (demo ? t('Disabled in the demo') : null)}>
+          <button className="btn sm danger" disabled={!!ro || demo} onClick={() => void askConfirm({
+            title: t('Delete project {name}?', { name: p.name }),
+            body: t('All issues, comments, sprints and meetings of {key} are deleted for everyone. This cannot be undone.', { key: p.key }),
+            action: t('Delete project'), type: p.key,
+          }).then((ok) => { if (ok) return api(`/api/projects/${p.key}`, { method: 'DELETE', body: { confirm: p.key } }).then(() => location.assign('/')); })}>{t('Delete project…')}</button>
+        </Tooltip>
       </div>
     </div>
   );

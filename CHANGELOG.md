@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.38] - 17.11.2026
+
+- Project admins can delete a project in Settings › Project (typing the project key confirms); all its issues, comments, sprints and meetings are removed.
+
 ## Agent [0.4.27] - 17.11.2026
 
 - Windows notification when a project becomes ready for phone start after "Set up".
