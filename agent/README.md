@@ -127,6 +127,11 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 
 - **Moved repo folders are found again:** a mapping made by discovery (`source: auto`) whose folder no longer exists counts as missing, so the next discovery pass maps the project to the folder's new place. Manual and cloned mappings are never replaced.
 
+## 0.4.25
+
+- **Start on PC from the phone:** opens a Claude Code Remote Control session in the project's repo folder on the account chosen in Settings (which projects are available from the phone is set there too) and reports to the tracker whether the session started. One-time card for users who updated.
+- **Worklog keeps early commits:** a commit made before the session was pinned to an issue (e.g. "deploy it, then note it in CHUB-200") is remembered and attached on the first pin, like the files.
+
 ## 0.4.24
 
 - **No conversation in the worklog:** the hook no longer collects the prompts of a pinned session; the worklog carries only files and commits.

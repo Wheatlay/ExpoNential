@@ -2,6 +2,15 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Server [1.3.37], Agent [0.4.25] - 17.11.2026
+
+- Paused status: pausing asks for the reason or the issue it waits on; the issue goes back to its previous status when that issue closes ("resumed, unblocked by"). Statuses get the roles Paused and In progress. Migration 0043.
+- Start on PC from the phone runs a Remote Control session on the PC and the activity shows "started on PC" or the failure. Migration 0044.
+- Pen drawing on pasted images (new issue, description, comments, answers, feedback), e.g. to mark where the bug is.
+- New issue remembers the Request AI analysis choice; many pasted images scroll inside the window instead of pushing Create off the screen.
+- "Worked in Claude Code" entries without commits are hidden.
+- Meeting Discord message is edited in place on change and marked cancelled on cancel (migration 0042); new meeting defaults to the next full hour; time picker fixes.
+
 ## Server [1.3.36] - 12.11.2026
 
 - Attendance on fixed-time meetings (e.g. set by someone outside the team): the time stays, invitees answer Yes / Maybe (with a note) / No in the meeting window, which lists the answers and who has not answered. MCP: `set_attendance`, `list_meetings` returns the meeting id and attendance. Migration 0041 adds `meeting_attendance`.
