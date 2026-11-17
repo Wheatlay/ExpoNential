@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from './icons.tsx';
 import { pasteImage } from './paste.ts';
 import { openLightbox } from './ImageBlock.tsx';
@@ -42,8 +43,9 @@ export function Attachments({ urls, onRemove, onReplace }: { urls: string[]; onR
           </span>
         </span>
       ))}
-      {drawing && onReplace && (
-        <DrawEditor src={drawing} onClose={() => setDrawing(null)} onSaved={(url) => { onReplace(drawing, url); setDrawing(null); }} />
+      {drawing && onReplace && createPortal(
+        <DrawEditor src={drawing} onClose={() => setDrawing(null)} onSaved={(url) => { onReplace(drawing, url); setDrawing(null); }} />,
+        document.body,
       )}
     </div>
   );

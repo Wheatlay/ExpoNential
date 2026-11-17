@@ -300,6 +300,8 @@ svg.i { flex-shrink: 0; }
 .modal.new-issue { display: flex; flex-direction: column; max-height: calc(88vh - 24px); }
 .modal.new-issue > * { flex-shrink: 0; }
 .modal.new-issue .attachments { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
+.modal.new-issue .attachment { flex-shrink: 0; }
+.modal.new-issue .foot { flex-wrap: wrap; }
 .btn {
   height: var(--control-md); padding: 0 12px; border-radius: var(--radius-md); font-weight: 500; display: inline-flex; align-items: center; gap: 6px;
   border: 1px solid var(--border-secondary); background: var(--bg-tertiary); color: var(--text-primary);
