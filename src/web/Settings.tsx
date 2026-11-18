@@ -804,7 +804,8 @@ function GithubRepoRows({ p, ro, patch, demo }: { p: ProjectDetail; ro: string |
         </Tooltip>
         {exists === true && <Tooltip text={t('Found on GitHub')}><span className="hint" tabIndex={0} role="img" aria-label={t('Found on GitHub')}><Icon.check size={14} /></span></Tooltip>}
         {exists === false && <Tooltip text={t('The repo does not exist or is private.')}><span className="hint s-hint" tabIndex={0}>{t('Not found on GitHub')}</span></Tooltip>}
-        {suggestions.length > 0 && (
+        {/* Podpowiedzi tylko do wyboru repo: przy ustawionym i znalezionym repo są zbędne. */}
+        {suggestions.length > 0 && (!p.githubRepo || exists === false) && (
           <span className="my-pc-pills s-hint">
             <span className="hint">{t('On your PCs')}</span>
             {suggestions.map((r) => (
