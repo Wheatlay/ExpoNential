@@ -41,7 +41,7 @@ export type NotifySettings = { inApp: boolean; push: boolean; discord: boolean; 
 export type IssueRow = {
   id: number; number: number; title: string; statusId: number; assigneeId: number | null; creatorId: number | null; priority: number;
   parentId: number | null; sprintId: number | null; sortOrder: number; analysisRequestedAt: string | null; analysisClaimedAt: string | null; analysisClaimedDeviceName?: string | null;
-  hasAnalysis: boolean; hasChangeNotes: boolean; changeNotesStale?: boolean; deployedEnv?: string | null; createdAt: string; updatedAt: string; completedAt: string | null;
+  hasAnalysis: boolean; hasChangeNotes: boolean; changeNotesStale?: boolean; deployedEnv?: string | null; deployedEnvProd?: boolean | null; createdAt: string; updatedAt: string; completedAt: string | null;
   labelIds: number[]; subTotal: number; subDone: number; waitingOn: number[]; blocking?: number[];
   infoFromId: number | null; infoTagId?: number | null; infoQuestion: string; infoById: number | null; pauseReason?: string;
   unreadComments: number; wasTested: boolean;

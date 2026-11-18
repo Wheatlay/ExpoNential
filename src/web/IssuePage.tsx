@@ -292,7 +292,7 @@ export function IssuePage({ number }: { number: number }) {
               </>;
             })()}
             {issue.pauseReason && curStatus?.role === 'paused' && <span className="pill" title={issue.pauseReason}><span className="pill-text">{issue.pauseReason}</span></span>}
-            {envNow && <span className="pill ok" title={t('All commits are on {env}', { env: envNow })}><Icon.rocket size={12} /> {envNow}</span>}
+            {envNow && <span className={`pill ${envNow.isProduction ? 'ok' : 'progress'}`} title={t('All commits are on {env}', { env: envNow.name })}><Icon.rocket size={12} /> {envNow.name}</span>}
           </div>
           {startOpen && <DemoStartModal number={number} onClose={() => setStartOpen(false)} />}
           {/* Pytanie pokazuje jego komentarz (QuestionFooter); baner tylko dla starych pytań bez komentarza. */}
@@ -581,10 +581,10 @@ function stripOwnKey(subject: string, id: string) {
 }
 
 /** Najdalsze środowisko, na którym są wszystkie commity zgłoszenia (Prod przed resztą, potem kolejność z ustawień). */
-function deployedEnvOf(commits: IssueDetail['commits']): string | null {
+function deployedEnvOf(commits: IssueDetail['commits']): { name: string; isProduction: boolean } | null {
   if (!commits.length) return null;
   const common = commits[0].envs.filter((e) => commits.every((c) => c.envs.some((x) => x.name === e.name)));
-  return (common.find((e) => e.isProduction) ?? common[common.length - 1])?.name ?? null;
+  return common.find((e) => e.isProduction) ?? common[common.length - 1] ?? null;
 }
 
 /** Drobne zmiany pól: przygaszone, żeby wyróżniały się komentarze, praca Claude, commity i deploye. */

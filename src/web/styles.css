@@ -236,6 +236,7 @@ code, pre { font-family: 'Berkeley Mono', 'SFMono-Regular', Consolas, monospace;
 .pill.notes-missing { border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning-text); }
 /* Stan dostępu (konta, zaproszenia): gotowe / czeka / zakończone. */
 .pill.ok { border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); background: color-mix(in srgb, var(--success) 10%, transparent); }
+.pill.progress { border-color: color-mix(in srgb, var(--progress) 45%, transparent); color: var(--progress-text); background: color-mix(in srgb, var(--progress) 10%, transparent); }
 .pill.waiting { border-color: color-mix(in srgb, var(--info) 45%, transparent); color: var(--info-text); background: color-mix(in srgb, var(--info) 10%, transparent); }
 .pill.ended { color: var(--text-tertiary); }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
