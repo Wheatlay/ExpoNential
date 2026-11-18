@@ -98,7 +98,7 @@ Copy `.env.example`. Only `DATABASE_URL` is needed to start; everything else ena
 | `DEMO_RESET_MINUTES` | no | Demo reset interval in minutes (default 60). |
 | `PUBLIC_REPO_URL` | no | Repository link shown on the landing page. |
 | `GITHUB_WEBHOOK_SECRET` | for commit linking | HMAC secret of the GitHub webhook (`/hooks/github`, push and deployment_status). |
-| `GITHUB_API_TOKEN` | no | Token for GitHub API calls made by the server (avoids rate limits). |
+| `GITHUB_API_TOKEN` | for private repos | Server-wide token for GitHub API calls (deploy commit ranges, commit authors, repo check). A project can set its own token in Settings › Integrations › GitHub repo, which wins over this one. Without any token a private repo deploy marks only the deployed commit, and Settings › Deploys shows a warning. |
 | `DEPLOY_WEBHOOK_SECRET` | for deploy webhook | Secret sent in `X-Webhook-Secret` to `/hooks/deploy`. |
 | `COOLIFY_API_URL`, `COOLIFY_API_TOKEN`, `COOLIFY_WEBHOOK_SECRET` | optional | Coolify deploy source. |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | for Web Push | VAPID keys and contact (`mailto:`) for push notifications. |

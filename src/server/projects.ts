@@ -102,8 +102,14 @@ export async function deleteProject(project: Project, confirm: string) {
 export type ProjectPatch = Partial<{
   name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; meetingLocationUrl: string; sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
-  githubRepo: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean; agentsMayClone: boolean;
+  githubRepo: string; githubToken: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean; agentsMayClone: boolean;
 }>;
+
+/** Projekt do wysłania klientowi: bez tokenu GitHuba, tylko informacja, czy jest ustawiony. */
+export function publicProject<T extends { githubToken: string }>(p: T) {
+  const { githubToken, ...rest } = p;
+  return { ...rest, githubTokenSet: !!githubToken };
+}
 
 export async function updateProject(projectId: number, patch: ProjectPatch, actorId: number | null = null) {
   if (patch.name !== undefined && !patch.name.trim()) throw new RuleError('Project name cannot be empty', 'invalid');
@@ -115,6 +121,10 @@ export async function updateProject(projectId: number, patch: ProjectPatch, acto
   if (patch.reviewMinutes !== undefined && (patch.reviewMinutes < 5 || patch.reviewMinutes > 480)) throw new RuleError('Review length must be 5-480 minutes', 'invalid');
   if (patch.discordWebhookUrl && !/^https:\/\/(discord\.com|discordapp\.com|canary\.discord\.com)\/api\/webhooks\//.test(patch.discordWebhookUrl)) {
     throw new RuleError('Discord webhook URL must start with https://discord.com/api/webhooks/', 'invalid');
+  }
+  if (patch.githubToken !== undefined) {
+    patch.githubToken = patch.githubToken.trim();
+    if (patch.githubToken && !/^(github_pat_|gh[pousr]_)[A-Za-z0-9_]{20,250}$/.test(patch.githubToken)) throw new RuleError('Not a GitHub token (github_pat_… or ghp_…)', 'invalid');
   }
   if (patch.githubRepo !== undefined) {
     // Wklejony adres (https://github.com/owner/name.git) też przechodzi: zostawiamy samo owner/name.

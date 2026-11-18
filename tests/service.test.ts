@@ -560,6 +560,28 @@ describe('reportDeploy', () => {
     expect(row.e).toBe('HTTP 404');
   });
 
+  it('a project GitHub token is used for compare, validated, and never returned by publicProject', async () => {
+    const { vi } = await import('vitest');
+    const deploys = await import('../src/server/deploys.ts');
+    await projects.createProject((await member('tokener', 'Tokener')).id, { key: 'DEPT', name: 'Token' });
+    const id = (await projects.getProjectByKey('DEPT'))!.id;
+    await expect(projects.updateProject(id, { githubToken: 'not-a-token' })).rejects.toThrow('Not a GitHub token');
+    const tok = 'github_pat_' + 'a'.repeat(40);
+    await projects.updateProject(id, { githubRepo: 'acme/dept', githubToken: tok });
+    const p = (await projects.getProjectByKey('DEPT'))!;
+    const pub = projects.publicProject(p) as Record<string, unknown>;
+    expect(pub.githubToken).toBeUndefined();
+    expect(pub.githubTokenSet).toBe(true);
+    await deploys.saveDeployEnvs(p, [{ name: 'Prod', sourceRef: '', isProduction: true }]);
+    const auth: string[] = [];
+    vi.stubGlobal('fetch', async (_u: string, init?: { headers?: Record<string, string> }) => { auth.push(init?.headers?.Authorization ?? ''); return new Response(JSON.stringify({ commits: [], total_commits: 0 }), { status: 200 }); });
+    try {
+      await hooks.reportDeployHook({ project: 'DEPT', sha: 'tok0001', status: 'finished' });
+      await hooks.reportDeployHook({ project: 'DEPT', sha: 'tok0002', status: 'finished' });
+    } finally { vi.unstubAllGlobals(); }
+    expect(auth).toContain(`Bearer ${tok}`);
+  });
+
   it('saveDeployEnvs validates names and the production marker, and replaces the list', async () => {
     const deploys = await import('../src/server/deploys.ts');
     const web = await projects.createProject((await member('envsaver', 'Envsaver')).id, { key: 'DEPV', name: 'Deploy validate' });

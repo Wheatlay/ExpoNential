@@ -278,7 +278,7 @@ export async function registerApi(app: FastifyInstance) {
       const { project, role } = await ctx(req, req.params.key);
       const canEdit = pr.canManage(req.user!, role);
       // Webhook to sekret: widzi go tylko admin projektu.
-      return { ...project, discordWebhookUrl: canEdit ? project.discordWebhookUrl : null, role, canEdit, members: await pr.listMembers(project.id), defaultModels: DEFAULT_MODELS };
+      return { ...pr.publicProject(project), discordWebhookUrl: canEdit ? project.discordWebhookUrl : null, role, canEdit, members: await pr.listMembers(project.id), defaultModels: DEFAULT_MODELS };
     });
     // Usunięcie projektu z całą zawartością: tylko admin projektu, z wpisanym kluczem.
     r.delete<{ Params: { key: string } }>('/api/projects/:key', async (req) => {
@@ -294,7 +294,7 @@ export async function registerApi(app: FastifyInstance) {
         name: z.string().optional(), color: z.string().optional(), logoUrl: z.string().max(300).optional(), discordWebhookUrl: z.string().nullable().optional(), meetingLocationUrl: z.string().max(500).refine((u) => u === '' || /^https?:\/\/\S+$/i.test(u), 'Meeting location must be empty or an http(s) URL').optional(),
         sprintLengthDays: z.number().int().optional(), reviewMeeting: z.boolean().optional(), reviewTime: z.string().optional(), reviewMinutes: z.number().int().optional(),
                 analyzeModel: z.enum(['', ...MODELS]).optional(), deepModel: z.enum(['', ...MODELS]).optional(),
-        githubRepo: z.string().max(200).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(),
+        githubRepo: z.string().max(200).optional(), githubToken: z.string().max(300).optional(), deploySource: z.enum(['', 'webhook', 'github', 'coolify']).optional(),
         agentTeamQueue: z.boolean().optional(), agentsMayClone: z.boolean().optional(),
       }).parse(req.body);
       if (body.githubRepo !== undefined) {
@@ -308,7 +308,7 @@ export async function registerApi(app: FastifyInstance) {
       await sp.ensureProjectSprints(next);
       await svc.publish({ type: 'projects' });
       await svc.publish({ type: 'sprints', projectKey: p.key });
-      return next;
+      return pr.publicProject(next);
     });
     // Podpowiedzi repo: repozytoria znalezione na własnych PC pytającego (bez ścieżek); trasa projektu sprawdza członkostwo.
     r.get<{ Params: { key: string } }>('/api/projects/:key/repo-suggestions', async (req) => {
@@ -316,10 +316,12 @@ export async function registerApi(app: FastifyInstance) {
       return ag.repoSuggestions(req.user!.id);
     });
     // Czy repo istnieje na GitHubie (cache 10 min).
-    r.get<{ Querystring: { name?: string } }>('/api/github/repo-check', async (req) => {
+    // Z project= sprawdza tokenem projektu (prywatne repo); trasa projektu sprawdza członkostwo.
+    r.get<{ Querystring: { name?: string; project?: string } }>('/api/github/repo-check', async (req) => {
       const name = normGithubRepo(z.string().max(200).parse(req.query.name ?? ''));
       if (!name) throw new RuleError('Not a GitHub repo. Use owner/name or the repo URL.', 'invalid');
-      return { exists: await githubRepoExists(name) };
+      const token = req.query.project ? (await ctx(req, req.query.project)).project.githubToken : '';
+      return { exists: await githubRepoExists(name, token) };
     });
     // Wiadomość próbna na kanał Discord projektu (admin projektu).
     r.post<{ Params: { key: string } }>('/api/projects/:key/discord-test', async (req) => {

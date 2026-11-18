@@ -596,7 +596,7 @@ function ClaudeConnect() {
 }
 
 export type ProjectDetail = {
-  id: number; key: string; name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; githubLastError: string; githubLastErrorAt: string | null; meetingLocationUrl: string;
+  id: number; key: string; name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; githubLastError: string; githubLastErrorAt: string | null; githubTokenSet: boolean; githubWebhookAt: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
   githubRepo: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean; agentsMayClone: boolean;
@@ -782,8 +782,8 @@ type PatchFn = (body: object, msg?: string) => Promise<void>;
 /** Pole GitHub repo: normalizacja wklejonego adresu, sprawdzenie na GitHubie, podpowiedzi z PC zespołu i przełącznik klonowania. */
 function GithubRepoRows({ p, ro, patch, demo }: { p: ProjectDetail; ro: string | null; patch: PatchFn; demo: boolean }) {
   const check = useQuery({
-    queryKey: ['repo-check', p.githubRepo],
-    queryFn: () => api<{ exists: boolean | null }>(`/api/github/repo-check?name=${encodeURIComponent(p.githubRepo)}`),
+    queryKey: ['repo-check', p.githubRepo, p.key, p.githubTokenSet],
+    queryFn: () => api<{ exists: boolean | null }>(`/api/github/repo-check?name=${encodeURIComponent(p.githubRepo)}&project=${p.key}`),
     enabled: !!p.githubRepo && !demo, staleTime: 10 * 60_000, retry: false,
   });
   const sugg = useQuery({ queryKey: ['repo-suggestions', p.key], queryFn: () => api<string[]>(`/api/projects/${p.key}/repo-suggestions`), enabled: !demo, staleTime: 60_000 });
@@ -813,7 +813,23 @@ function GithubRepoRows({ p, ro, patch, demo }: { p: ProjectDetail; ro: string |
           </span>
         )}
       </div>
-      {/* Ustawienie tego repo: wcięte pod polem repo (jak środowiska deployu), żeby było widać, do czego należy. */}
+      {/* Ustawienia tego repo: wcięte pod polem repo (jak środowiska deployu), żeby było widać, do czego należy. */}
+      <div className="s-row s-sub">
+        <Tooltip text={t('Only for a private repo: a fine-grained token with Contents read-only on this repo. Deploys then mark every deployed commit.')}><span className="hint" tabIndex={0}>{t('Token')}</span></Tooltip>
+        <Tooltip text={ro}>
+          {/* Token tylko do zapisu: serwer go nie oddaje, pole pokazuje jedynie, że jest zapisany. */}
+          <input className="input grow" type="password" autoComplete="off" disabled={!!ro} placeholder={p.githubTokenSet ? t('Saved') : 'github_pat_…'}
+            onBlur={(e) => { const v = e.target.value.trim(); e.target.value = ''; if (v) void patch({ githubToken: v }); }} />
+        </Tooltip>
+        {p.githubTokenSet && <Tooltip text={ro ?? t('Remove')}><button className="icon-btn" disabled={!!ro} aria-label={t('Remove')} onClick={() => void patch({ githubToken: '' })}><Icon.trash size={14} /></button></Tooltip>}
+      </div>
+      <div className="s-row s-sub">
+        <Tooltip text={t('Repo › Settings › Webhooks: this URL, content type application/json, the server webhook secret, events Pushes and Deployment statuses.')}><span className="hint" tabIndex={0}>{t('Webhook')}</span></Tooltip>
+        <code className="hint grow">{`${location.origin}/hooks/github`}</code>
+        {p.githubWebhookAt
+          ? <Tooltip text={t('Last event {when}', { when: timeAgo(p.githubWebhookAt) })}><span className="hint" tabIndex={0} role="img" aria-label={t('Last event {when}', { when: timeAgo(p.githubWebhookAt) })}><Icon.check size={14} /></span></Tooltip>
+          : <span className="hint">{t('No events yet')}</span>}
+      </div>
       <div className="s-row s-sub last">
         <Tooltip text={ro}>
           <button className={`switch ${p.agentsMayClone ? 'on' : ''}`} role="switch" aria-checked={p.agentsMayClone} aria-label={t('Agents may clone the repo')}
@@ -875,7 +891,7 @@ function ProjectIntegrations() {
   return (
     <div className="s-card">
       <GithubRepoRows p={p} ro={ro} patch={patch} demo={demo} />
-      <DeployEnvs projectKey={p.key} ro={ro} githubError={p.githubLastError ? t('GitHub could not compare commits {when} ({error}): deploys mark only the deployed commit. Give the server a GITHUB_API_TOKEN with read access to the repo.', { when: p.githubLastErrorAt ? timeAgo(p.githubLastErrorAt) : '', error: p.githubLastError }) : null} />
+      <DeployEnvs projectKey={p.key} ro={ro} githubError={p.githubLastError ? t('GitHub could not compare commits {when} ({error}): deploys mark only the deployed commit. Set a token under GitHub repo.', { when: p.githubLastErrorAt ? timeAgo(p.githubLastErrorAt) : '', error: p.githubLastError }) : null} />
       <DiscordRow p={p} ro={ro} patch={patch} />
       <MeetingPlaceRow p={p} ro={ro} patch={patch} />
     </div>

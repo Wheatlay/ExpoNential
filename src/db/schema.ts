@@ -56,6 +56,10 @@ export const projects = pgTable('projects', {
   // Ostatni deploy, przy którym GitHub nie porównał commitów (brak tokenu, brak dostępu): oznaczenia środowisk są wtedy niepełne.
   githubLastError: text('github_last_error').notNull().default(''),
   githubLastErrorAt: timestamp('github_last_error_at', { withTimezone: true }),
+  // Token GitHuba projektu (prywatne repo): tylko do zapisu, nigdy nie wraca do klienta. Pusty = GITHUB_API_TOKEN serwera.
+  githubToken: text('github_token').notNull().default(''),
+  // Ostatnie zdarzenie webhooka GitHuba z repo projektu (także ping): dowód, że webhook jest podpięty.
+  githubWebhookAt: timestamp('github_webhook_at', { withTimezone: true }),
   // Domyślne miejsce spotkań (link do kanału głosowego Discorda): nowe spotkania i sprint review.
   meetingLocationUrl: text('meeting_location_url').notNull().default(''),
   sprintLengthDays: integer('sprint_length_days').notNull().default(14),

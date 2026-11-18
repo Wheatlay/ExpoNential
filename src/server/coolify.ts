@@ -17,10 +17,10 @@ function safeEqual(a: string, b: string) { const x = Buffer.from(a); const y = B
 
 /** Autor commita z GitHuba (Coolify go nie podaje); po SHA, bo commit się nie zmienia. */
 const authors = new Map<string, string | null>();
-async function authorOf(repo: string, sha: string | null) {
-  if (!repo || !sha) return null;
+async function authorOf(p: { githubRepo: string; githubToken: string }, sha: string | null) {
+  if (!p.githubRepo || !sha) return null;
   if (!authors.has(sha)) {
-    const c = (await github(`/repos/${repo}/commits/${sha}`).catch(() => null)) as { author?: { login?: string } | null; commit?: { author?: { name?: string } } } | null;
+    const c = (await github(`/repos/${p.githubRepo}/commits/${sha}`, p.githubToken).catch(() => null)) as { author?: { login?: string } | null; commit?: { author?: { name?: string } } } | null;
     authors.set(sha, c?.author?.login ?? c?.commit?.author?.name ?? null);
   }
   return authors.get(sha) ?? null;
@@ -49,7 +49,7 @@ async function pollProject(p: typeof projects.$inferSelect, env: DeployEnvRow, l
       finishedAt: status === 'finished' || status === 'failed' ? d.updated_at : null,
       commit: d.commit,
       message: d.commit_message?.split('\n')[0] ?? null,
-      author: await authorOf(p.githubRepo, d.commit),
+      author: await authorOf(p, d.commit),
     }, log, env);
   } catch (e) {
     log.warn({ err: (e as Error).message, project: p.key, env: env.name }, 'deploy status poll failed');
@@ -119,11 +119,11 @@ export async function registerCoolify(app: FastifyInstance) {
       // Coolify nie zawsze podaje SHA: bierzemy HEAD gałęzi, z której buduje się aplikacja TEGO środowiska (prod i stage mają różne).
       let sha: string | null = typeof body.commit === 'string' && /^[0-9a-f]{7,40}$/.test(body.commit) ? body.commit : null;
       if (!sha && coolifyConfigured()) {
-        try { sha = ((await github(`/repos/${p.githubRepo}/commits/${encodeURIComponent(await appBranch(env.sourceRef))}`)) as { sha: string }).sha; }
+        try { sha = ((await github(`/repos/${p.githubRepo}/commits/${encodeURIComponent(await appBranch(env.sourceRef))}`, p.githubToken)) as { sha: string }).sha; }
         catch (e) { app.log.warn(e, 'coolify webhook: no sha'); }
       }
       const now = new Date().toISOString();
-      await reportDeploy(p, { status: 'finished', startedAt: now, finishedAt: now, commit: sha, message: null, author: await authorOf(p.githubRepo, sha) }, app.log, env);
+      await reportDeploy(p, { status: 'finished', startedAt: now, finishedAt: now, commit: sha, message: null, author: await authorOf(p, sha) }, app.log, env);
       return { sha };
     });
   });

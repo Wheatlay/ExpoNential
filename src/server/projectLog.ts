@@ -15,7 +15,7 @@ export async function logProject(projectId: number, actorId: number | null, kind
 }
 
 // Pola, których wartości nie trafiają do dziennika: sekret (tylko czy ustawiony) albo długi tekst/obrazek (tylko "changed").
-const SECRET_FIELDS = new Set(['discordWebhookUrl']);
+const SECRET_FIELDS = new Set(['discordWebhookUrl', 'githubToken']);
 const OPAQUE_FIELDS = new Set(['color', 'logoUrl', 'promptStart', 'promptAnalyze', 'promptClose', 'promptDeep']);
 
 /** Zmienione pola ustawień projektu (tylko te, które naprawdę się zmieniły), bez wartości sekretów. */

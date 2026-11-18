@@ -56,28 +56,29 @@ export async function recordCommits(commits: GhCommit[], repo: string | null) {
   return [...touched.keys()];
 }
 
-export async function github(path: string) {
-  const res = await fetch(`https://api.github.com${path}`, {
-    headers: {
-      'User-Agent': 'tracker', Accept: 'application/vnd.github+json',
-      ...(process.env.GITHUB_API_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_API_TOKEN}` } : {}),
-    },
-  });
+/** Nagłówki GitHub API: token projektu (prywatne repo), a bez niego GITHUB_API_TOKEN serwera. */
+function ghHeaders(token = '') {
+  const auth = token || process.env.GITHUB_API_TOKEN;
+  return { 'User-Agent': 'tracker', Accept: 'application/vnd.github+json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}) };
+}
+
+export async function github(path: string, token = '') {
+  const res = await fetch(`https://api.github.com${path}`, { headers: ghHeaders(token) });
   if (!res.ok) throw new Error(`GitHub ${path}: ${res.status}`);
   return res.json();
 }
 
 const repoCheckCache = new Map<string, { at: number; exists: boolean | null }>();
 /** Czy repo istnieje na GitHubie: true / false (404) / null (inny błąd albo brak odpowiedzi w 5 s). Wynik trzymany 10 minut. */
-export async function githubRepoExists(name: string): Promise<boolean | null> {
-  const key = name.toLowerCase();
+export async function githubRepoExists(name: string, token = ''): Promise<boolean | null> {
+  const key = `${name.toLowerCase()}|${token ? createHmac('sha256', 'repo-check').update(token).digest('hex').slice(0, 12) : ''}`;
   const hit = repoCheckCache.get(key);
   if (hit && Date.now() - hit.at < 10 * 60_000) return hit.exists;
   let exists: boolean | null = null;
   try {
     const res = await fetch(`https://api.github.com/repos/${name}`, {
       signal: AbortSignal.timeout(5000),
-      headers: { 'User-Agent': 'tracker', Accept: 'application/vnd.github+json', ...(process.env.GITHUB_API_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_API_TOKEN}` } : {}) },
+      headers: ghHeaders(token),
     });
     exists = res.ok ? true : res.status === 404 ? false : null;
   } catch { exists = null; }
@@ -99,7 +100,7 @@ export async function recordDeploy(p: Project, sha: string, env: DeployEnvRow) {
   let compared = false;
   if (prev) {
     try {
-      const cmp = (await github(`/repos/${p.githubRepo}/compare/${prev.sha}...${sha}`)) as { commits: { sha: string }[]; total_commits?: number };
+      const cmp = (await github(`/repos/${p.githubRepo}/compare/${prev.sha}...${sha}`, p.githubToken)) as { commits: { sha: string }[]; total_commits?: number };
       // Compare zwraca najwyżej 250 commitów; ponad to oznaczamy tylko bieżący.
       if ((cmp.total_commits ?? cmp.commits.length) <= 250) { shas = cmp.commits.map((c) => c.sha); compared = true; }
       if (p.githubLastError) await db.update(projects).set({ githubLastError: '', githubLastErrorAt: null }).where(eq(projects.id, p.id));
@@ -226,10 +227,13 @@ export async function registerHooks(app: FastifyInstance) {
         return reply.code(401).send({ error: 'Bad signature' });
       }
       const event = req.headers['x-github-event'];
-      if (event === 'ping') return { ok: true };
-      if (event === 'deployment_status') return { touched: await reportGithubDeployment(JSON.parse(raw.toString('utf8')), req.log) };
-      if (event !== 'push') return { ignored: event };
       const body = JSON.parse(raw.toString('utf8')) as { commits?: GhCommit[]; repository?: { full_name?: string } };
+      // Każde podpisane zdarzenie (też ping) to dowód dla Ustawień, że webhook repo działa.
+      const repo = body.repository?.full_name;
+      if (repo) await db.update(projects).set({ githubWebhookAt: new Date() }).where(dsql`lower(${projects.githubRepo}) = ${repo.toLowerCase()}`);
+      if (event === 'ping') return { ok: true };
+      if (event === 'deployment_status') return { touched: await reportGithubDeployment(body as Parameters<typeof reportGithubDeployment>[0], req.log) };
+      if (event !== 'push') return { ignored: event };
       return { touched: await recordCommits(body.commits ?? [], body.repository?.full_name ?? null) };
     });
 
