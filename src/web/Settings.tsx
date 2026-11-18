@@ -872,6 +872,9 @@ function MeetingPlaceRow({ p, ro, patch }: { p: ProjectDetail; ro: string | null
   const places = useQuery({ queryKey: ['recent-places', p.key], queryFn: () => api<string[]>(`/api/projects/${p.key}/recent-places`), staleTime: 60_000 });
   const label = (u: string) => { try { const x = new URL(u); return `${x.hostname}${x.pathname.length > 1 ? x.pathname.slice(0, 16) + (x.pathname.length > 16 ? '…' : '') : ''}`; } catch { return u; } };
   const list = (places.data ?? []).filter((u) => u !== p.meetingLocationUrl);
+  // Jak przy repo: przy ustawionym miejscu ostatnie linki zwinięte do jednego przycisku.
+  const [open, setOpen] = useState(false);
+  const expanded = open || !p.meetingLocationUrl;
   return (
     <div id="meeting-place" className="s-row">
       <Tooltip text={t('Default meeting link (Teams, Discord, Meet…) for new meetings and sprint reviews.')}><span className="s-label">{t('Meeting place')}</span></Tooltip>
@@ -880,7 +883,12 @@ function MeetingPlaceRow({ p, ro, patch }: { p: ProjectDetail; ro: string | null
           defaultValue={p.meetingLocationUrl}
           onBlur={(e) => e.target.value.trim() !== p.meetingLocationUrl && void patch({ meetingLocationUrl: e.target.value.trim() })} />
       </Tooltip>
-      {list.length > 0 && (
+      {list.length > 0 && !expanded && (
+        <span className="my-pc-pills s-hint">
+          <button type="button" className="chip" onClick={() => setOpen(true)}>{t('Recent')} ({list.length})</button>
+        </span>
+      )}
+      {list.length > 0 && expanded && (
         <span className="my-pc-pills s-hint">
           {list.map((u) => <Tooltip key={u} text={ro ?? u}><button type="button" className="chip" disabled={!!ro} onClick={() => void patch({ meetingLocationUrl: u })}>{label(u)}</button></Tooltip>)}
         </span>
