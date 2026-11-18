@@ -596,7 +596,7 @@ function ClaudeConnect() {
 }
 
 export type ProjectDetail = {
-  id: number; key: string; name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; meetingLocationUrl: string;
+  id: number; key: string; name: string; color: string; logoUrl: string; discordWebhookUrl: string | null; discordLastError: string; discordLastErrorAt: string | null; githubLastError: string; githubLastErrorAt: string | null; meetingLocationUrl: string;
   sprintLengthDays: number; reviewMeeting: boolean; reviewTime: string; reviewMinutes: number;
   promptStart: string; promptAnalyze: string; promptClose: string; promptDeep: string; analyzeModel: string; deepModel: string;
   githubRepo: string; deploySource: '' | 'webhook' | 'github' | 'coolify'; agentTeamQueue: boolean; agentsMayClone: boolean;
@@ -727,7 +727,7 @@ function WebhookSecret({ projectKey }: { projectKey: string }) {
 const SOURCE_LABEL: Record<string, () => string> = { github: () => 'GitHub', coolify: () => 'Coolify', webhook: () => t('CI'), '': () => t('Manual') };
 
 /** Wiersz "Deploys": środowiska wykrywane automatycznie z pierwszego zdarzenia; ręcznie można dodać własne. */
-function DeployEnvs({ projectKey, ro }: { projectKey: string; ro: string | null }) {
+function DeployEnvs({ projectKey, ro, githubError }: { projectKey: string; ro: string | null; githubError: string | null }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['deploy-envs', projectKey], queryFn: () => api<DeployEnvRow[]>('/api/deploy-envs') });
   const envs = q.data ?? [];
@@ -748,6 +748,7 @@ function DeployEnvs({ projectKey, ro }: { projectKey: string; ro: string | null 
         <Tooltip text={t('Detected automatically: GitHub Deployments of this repo (repo webhook with Deployment statuses) and Coolify apps built from it.')}><span className="s-label">{t('Deploys')}</span></Tooltip>
         {envs.length ? <span className="grow" /> : <span className="hint grow">{t('No deploys yet')}</span>}
         <Tooltip text={ro}><button className="btn sm" disabled={!!ro} onClick={() => void add()}><Icon.plus size={13} /> {t('Add environment')}</button></Tooltip>
+        {githubError && <span className="hint s-hint">{githubError}</span>}
       </div>
       {/* Środowiska wcięte pod nagłówkiem (kolumna pól), bez kresek między nimi: widać, że to jedna lista. */}
       {envs.map((e, i) => (
@@ -874,7 +875,7 @@ function ProjectIntegrations() {
   return (
     <div className="s-card">
       <GithubRepoRows p={p} ro={ro} patch={patch} demo={demo} />
-      <DeployEnvs projectKey={p.key} ro={ro} />
+      <DeployEnvs projectKey={p.key} ro={ro} githubError={p.githubLastError ? t('GitHub could not compare commits {when} ({error}): deploys mark only the deployed commit. Give the server a GITHUB_API_TOKEN with read access to the repo.', { when: p.githubLastErrorAt ? timeAgo(p.githubLastErrorAt) : '', error: p.githubLastError }) : null} />
       <DiscordRow p={p} ro={ro} patch={patch} />
       <MeetingPlaceRow p={p} ro={ro} patch={patch} />
     </div>

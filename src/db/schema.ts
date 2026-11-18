@@ -53,6 +53,9 @@ export const projects = pgTable('projects', {
   // Ostatnia nieudana wysyłka na Discorda (bez adresu webhooka), żeby zepsuty webhook nie milczał.
   discordLastError: text('discord_last_error').notNull().default(''),
   discordLastErrorAt: timestamp('discord_last_error_at', { withTimezone: true }),
+  // Ostatni deploy, przy którym GitHub nie porównał commitów (brak tokenu, brak dostępu): oznaczenia środowisk są wtedy niepełne.
+  githubLastError: text('github_last_error').notNull().default(''),
+  githubLastErrorAt: timestamp('github_last_error_at', { withTimezone: true }),
   // Domyślne miejsce spotkań (link do kanału głosowego Discorda): nowe spotkania i sprint review.
   meetingLocationUrl: text('meeting_location_url').notNull().default(''),
   sprintLengthDays: integer('sprint_length_days').notNull().default(14),

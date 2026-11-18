@@ -535,6 +535,31 @@ describe('reportDeploy', () => {
     expect((await svc.getIssueDetail(p, i.number)).commits[0].envs.map((e) => e.name)).toEqual(['Prod', 'QA']);
   });
 
+  it('without GitHub compare a production deploy takes what stage had at the same commit, and the error stays on the project', async () => {
+    const { vi } = await import('vitest');
+    const deploys = await import('../src/server/deploys.ts');
+    const { issueCommitDeploys, projects: projectsT } = await import('../src/db/schema.ts');
+    const { eq } = await import('drizzle-orm');
+    await projects.createProject((await member('promoter', 'Promoter')).id, { key: 'DEPP', name: 'Promote' });
+    await projects.updateProject((await projects.getProjectByKey('DEPP'))!.id, { githubRepo: 'acme/depp' });
+    const p = (await projects.getProjectByKey('DEPP'))!;
+    const [prod, stage] = await deploys.saveDeployEnvs(p, [{ name: 'Prod', sourceRef: '', isProduction: true }, { name: 'Stage', sourceRef: '', isProduction: false }]);
+    const i = await svc.createIssue(p, null, { title: 'promoted' });
+    await hooks.recordCommits([{ id: 'prm0001', message: `fix DEPP-${i.number}`, url: 'https://x', timestamp: new Date().toISOString(), author: { name: 'K' } }], 'acme/depp');
+    // Prywatne repo bez tokenu: GitHub odpowiada 404 na compare.
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 404 }));
+    try {
+      await hooks.reportDeployHook({ project: 'DEPP', sha: 'prm0001', status: 'finished', env: 'Stage' });
+      // Kolejny commit bez zadania (np. poprawka bez klucza) i promote na prod.
+      await hooks.reportDeployHook({ project: 'DEPP', sha: 'other02', status: 'finished', env: 'Stage' });
+      await hooks.reportDeployHook({ project: 'DEPP', sha: 'other02', status: 'finished', env: 'Prod' });
+    } finally { vi.unstubAllGlobals(); }
+    const marks = await dbmod.db.select().from(issueCommitDeploys).where(eq(issueCommitDeploys.sha, 'prm0001'));
+    expect(marks.map((m) => m.envId).sort()).toEqual([prod.id, stage.id].sort());
+    const [row] = await dbmod.db.select({ e: projectsT.githubLastError }).from(projectsT).where(eq(projectsT.id, p.id));
+    expect(row.e).toBe('HTTP 404');
+  });
+
   it('saveDeployEnvs validates names and the production marker, and replaces the list', async () => {
     const deploys = await import('../src/server/deploys.ts');
     const web = await projects.createProject((await member('envsaver', 'Envsaver')).id, { key: 'DEPV', name: 'Deploy validate' });

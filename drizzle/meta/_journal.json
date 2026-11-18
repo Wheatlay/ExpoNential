@@ -316,6 +316,13 @@
       "when": 1795300000000,
       "tag": "0044_phone_start",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1795400000000,
+      "tag": "0045_github_last_error",
+      "breakpoints": true
     }
   ]
 }

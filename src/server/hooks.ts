@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, desc, eq, inArray, isNull, lte, sql as dsql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, lte, ne, sql as dsql } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { activity, deploys, issueCommitDeploys, issueCommits, issues, projects } from '../db/schema.ts';
 import { extractIssueRefs, identifier, RuleError } from './rules.ts';
@@ -102,8 +102,11 @@ export async function recordDeploy(p: Project, sha: string, env: DeployEnvRow) {
       const cmp = (await github(`/repos/${p.githubRepo}/compare/${prev.sha}...${sha}`)) as { commits: { sha: string }[]; total_commits?: number };
       // Compare zwraca najwyżej 250 commitów; ponad to oznaczamy tylko bieżący.
       if ((cmp.total_commits ?? cmp.commits.length) <= 250) { shas = cmp.commits.map((c) => c.sha); compared = true; }
-    } catch {
+      if (p.githubLastError) await db.update(projects).set({ githubLastError: '', githubLastErrorAt: null }).where(eq(projects.id, p.id));
+    } catch (e) {
       // Poprzedni SHA zniknął (force-push) albo brak dostępu do repo: zapisujemy deploy mimo to, inaczej każdy kolejny też by padł.
+      // Błąd zostaje przy projekcie (Ustawienia › Deploys), bo bez porównania oznaczenia środowisk są niepełne.
+      await db.update(projects).set({ githubLastError: (e as Error).message.replace(/^GitHub \S+: /, 'HTTP ').slice(0, 200), githubLastErrorAt: new Date() }).where(eq(projects.id, p.id));
     }
   }
   await db.insert(deploys).values({ projectId: p.id, sha, envId: env.id });
@@ -120,6 +123,21 @@ export async function recordDeploy(p: Project, sha: string, env: DeployEnvRow) {
       const older = await db.select({ sha: issueCommits.sha }).from(issueCommits)
         .where(and(eq(issueCommits.issueId, h.issueId), lte(issueCommits.committedAt, h.at)));
       shas.push(...older.map((o) => o.sha));
+    }
+    // Produkcja dostaje zwykle to, co już było na innym środowisku (promote ze stage): wszystko, co tamto środowisko
+    // miało w chwili deployu tego samego commita, jest teraz też tutaj.
+    if (env.isProduction) {
+      const same = await db.select({ envId: deploys.envId, at: deploys.at }).from(deploys)
+        .where(and(eq(deploys.projectId, p.id), eq(deploys.sha, sha), ne(deploys.envId, env.id)));
+      for (const s of same) {
+        if (s.envId == null) continue;
+        // Znaczniki z tamtego deployu powstają chwilę po jego wpisie, więc granicą jest następny deploy tamtego środowiska.
+        const [next] = await db.select({ at: deploys.at }).from(deploys)
+          .where(and(eq(deploys.envId, s.envId), gt(deploys.at, s.at))).orderBy(deploys.at).limit(1);
+        const had = await db.select({ sha: issueCommitDeploys.sha }).from(issueCommitDeploys)
+          .where(and(eq(issueCommitDeploys.envId, s.envId), ...(next ? [lt(issueCommitDeploys.at, next.at)] : [])));
+        shas.push(...had.map((h) => h.sha));
+      }
     }
     shas = [...new Set(shas)];
   }
