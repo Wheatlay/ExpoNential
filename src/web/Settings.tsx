@@ -789,6 +789,7 @@ function GithubRepoRows({ p, ro, patch, demo }: { p: ProjectDetail; ro: string |
   const sugg = useQuery({ queryKey: ['repo-suggestions', p.key], queryFn: () => api<string[]>(`/api/projects/${p.key}/repo-suggestions`), enabled: !demo, staleTime: 60_000 });
   const suggestions = (sugg.data ?? []).filter((r) => r.toLowerCase() !== p.githubRepo.toLowerCase());
   const exists = p.githubRepo ? check.data?.exists : undefined;
+  const [showSugg, setShowSugg] = useState(false);
   return (
     <>
       <div id="github-repo" className="s-row s-group-head">
@@ -804,8 +805,13 @@ function GithubRepoRows({ p, ro, patch, demo }: { p: ProjectDetail; ro: string |
         </Tooltip>
         {exists === true && <Tooltip text={t('Found on GitHub')}><span className="hint" tabIndex={0} role="img" aria-label={t('Found on GitHub')}><Icon.check size={14} /></span></Tooltip>}
         {exists === false && <Tooltip text={t('The repo does not exist or is private.')}><span className="hint s-hint" tabIndex={0}>{t('Not found on GitHub')}</span></Tooltip>}
-        {/* Podpowiedzi tylko do wyboru repo: przy ustawionym i znalezionym repo są zbędne. */}
-        {suggestions.length > 0 && (!p.githubRepo || exists === false) && (
+        {/* Przy wybranym repo podpowiedzi są zwinięte do jednego przycisku; puste albo nieznalezione repo pokazuje je od razu. */}
+        {suggestions.length > 0 && !(showSugg || !p.githubRepo || exists === false) && (
+          <span className="my-pc-pills s-hint">
+            <button type="button" className="chip" onClick={() => setShowSugg(true)}>{t('On your PCs')} ({suggestions.length})</button>
+          </span>
+        )}
+        {suggestions.length > 0 && (showSugg || !p.githubRepo || exists === false) && (
           <span className="my-pc-pills s-hint">
             <span className="hint">{t('On your PCs')}</span>
             {suggestions.map((r) => (
