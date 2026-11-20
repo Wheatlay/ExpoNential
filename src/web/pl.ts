@@ -484,7 +484,7 @@ export const pl: Record<string, string> = {
   'Issue title': 'Tytuł zgłoszenia',
   'What happens?\nWhat should happen?\nWhere (screen, link, steps)?': 'Co się dzieje?\nCo powinno się dziać?\nGdzie (ekran, link, kroki)?',
   'Keeps this window open after creating, so you can add several issues in a row': 'Okno zostaje otwarte po utworzeniu, żeby dodać kilka zgłoszeń pod rząd',
-  'Create another': 'Utwórz kolejne',
+  'Create and add another': 'Utwórz i dodaj kolejne',
   'Create issue': 'Utwórz zgłoszenie',
   'New project': 'Nowy projekt',
   'Project name': 'Nazwa projektu',

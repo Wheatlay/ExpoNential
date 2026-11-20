@@ -42,7 +42,6 @@ function NewIssueModal({ init }: { init: Init }) {
   const create = useCreateIssue();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [another, setAnother] = useState(false);
   const [analyze, setAnalyzeState] = useState(() => { try { return localStorage.getItem('newIssue.analyze') === '1'; } catch { return false; } });
   const setAnalyze = (v: boolean) => { setAnalyzeState(v); try { localStorage.setItem('newIssue.analyze', v ? '1' : '0'); } catch { /* brak storage */ } };
   const att = useAttachments();
@@ -63,7 +62,8 @@ function NewIssueModal({ init }: { init: Init }) {
   const status = meta.statuses.find((s) => s.id === form.statusId) ?? defaultStatus!;
   const assignee = meta.users.find((u) => u.id === form.assigneeId);
 
-  const submit = async () => {
+  // another: "Utwórz i dodaj kolejne" (Shift+Enter w tytule) czyści pola i zostawia okno otwarte.
+  const submit = async (another = false) => {
     if (!title.trim()) return;
     const row = await create.mutateAsync({
       title, description: att.withImages(description), statusId: form.statusId, priority: form.priority, assigneeId: form.assigneeId,
@@ -87,7 +87,7 @@ function NewIssueModal({ init }: { init: Init }) {
           <CurrentProjectBadge /> {getProjectKey()} <Icon.chevronRight size={12} /> {init.parentNumber ? t('Sub-issue of {id}', { id: ident(init.parentNumber) }) : t('New issue')}
         </div>
         <input className="title" autoFocus placeholder={t('Issue title')} value={title} onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); void submit(); } }} />
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey) { e.preventDefault(); void submit(e.shiftKey); } }} />
         <textarea ref={descRef} placeholder={t('What happens?\nWhat should happen?\nWhere (screen, link, steps)?')} value={description} onChange={(e) => setDescription(e.target.value)}
           onPaste={att.onPaste}
           onKeyDown={(e) => { e.stopPropagation(); mention.onKeyDown(e); if (e.defaultPrevented) return; if (e.key === 'Escape') close(); enterToSubmit(e, () => void submit(), setDescription); }} />
@@ -118,10 +118,10 @@ function NewIssueModal({ init }: { init: Init }) {
           <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
             <input type="checkbox" checked={analyze} onChange={(e) => setAnalyze(e.target.checked)} /> {t('Request AI analysis')}
           </label>
-          <label className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }} title={t('Keeps this window open after creating, so you can add several issues in a row')}>
-            <input type="checkbox" checked={another} onChange={(e) => setAnother(e.target.checked)} /> {t('Create another')}
-          </label>
           <button className="btn" onClick={close}>{t('Cancel')}</button>
+          <button className="btn" disabled={!title.trim() || create.isPending} onClick={() => void submit(true)} title={t('Keeps this window open after creating, so you can add several issues in a row')}>
+            {t('Create and add another')} <span className="kbd">⇧↵</span>
+          </button>
           <button className="btn primary" disabled={!title.trim() || create.isPending} onClick={() => void submit()}>
             {t('Create issue')} <span className="kbd">↵</span>
           </button>
