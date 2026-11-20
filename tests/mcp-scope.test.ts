@@ -98,6 +98,31 @@ describe('MCP extras', () => {
   });
 });
 
+describe('MCP description limit and set_decision', () => {
+  it('save_issue rejects a description over the limit, accepts one at the limit', async () => {
+    const { DESCRIPTION_MAX } = await import('../src/server/mcp.ts');
+    const long = await call('save_issue', { project: 'SC', title: 'long', description: 'x'.repeat(DESCRIPTION_MAX + 1) });
+    expect(isError(long)).toBe(true);
+    expect(text(long)).toContain('set_analysis');
+    expect(isError(await call('save_issue', { id: `SC-${n2}`, description: 'x'.repeat(DESCRIPTION_MAX) }))).toBe(false);
+  });
+  it('set_decision picks an option by label, takes an own answer and clears', async () => {
+    const r = JSON.parse(text(await call('save_issue', { project: 'SC', title: 'decide' })));
+    const id = r.id as string;
+    await call('set_analysis', { id, type: 'feature', sections: { current: 'Now' }, decisions: [
+      { question: 'Where?', options: [{ label: 'List', recommended: true }, { label: 'Edit form' }] },
+    ] });
+    expect(isError(await call('set_decision', { id, decision: 2, option: 'List' }))).toBe(true);
+    expect(isError(await call('set_decision', { id, decision: 1, option: 'Nope' }))).toBe(true);
+    expect(isError(await call('set_decision', { id, decision: 1, option: 'edit form' }))).toBe(false);
+    expect(JSON.parse(text(await call('get_issue', { id }))).analysis).toMatch(/Edit form.*✓/);
+    await call('set_decision', { id, decision: 1, other: 'Both' });
+    expect(JSON.parse(text(await call('get_issue', { id }))).analysis).toContain('Both');
+    await call('set_decision', { id, decision: 1 });
+    expect(JSON.parse(text(await call('get_issue', { id }))).analysis).not.toContain('Both');
+  });
+});
+
 describe('MCP issue scope', () => {
   it('without the header every tool works', async () => {
     expect(isError(await call('list_projects', {}))).toBe(false);

@@ -15,7 +15,7 @@ import { and, eq, ilike, or } from 'drizzle-orm';
 import { db } from '../db/index.ts';
 import { comments, issues, sprints } from '../db/schema.ts';
 import { mentionsOf } from './issueMentions.ts';
-import { ANALYSIS_TYPES, SECTION_KEYS, TYPE_LABEL_NAMES, analysisInputSchema, decisionSchema } from './analysis.ts';
+import { ANALYSIS_TYPES, SECTION_KEYS, TYPE_LABEL_NAMES, analysisInputSchema, decisionSchema, parseData } from './analysis.ts';
 
 const analysisSections = z.object(Object.fromEntries(SECTION_KEYS.map((k) => [k, z.string().optional()])));
 
@@ -136,7 +136,9 @@ async function presentIssue(me: SessionUser, p: Project, number: number) {
 
 /** Zakres jednego zgłoszenia (nagłówek X-Exponential-Issue: agent analizy dostaje tylko to, czego potrzebuje do jednej analizy). */
 export type McpScope = { key: string; number: number };
-export const SCOPED_TOOLS = ['get_issue', 'list_comments', 'get_attachment', 'get_procedure', 'set_analysis'];
+/** Limit opisu zapisywanego przez MCP (ludzi w UI nie dotyczy): analiza agenta ma iść do set_analysis, nie do opisu. */
+export const DESCRIPTION_MAX = 1500;
+export const SCOPED_TOOLS =['get_issue', 'list_comments', 'get_attachment', 'get_procedure', 'set_analysis'];
 
 export function buildServer(user: SessionUser, scope: McpScope | null = null) {
   const me = { ...user, ai: true };   // zmiany przez MCP robi agent: historia pokazuje je jako AI
@@ -148,6 +150,8 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       'Before moving an issue to a "completed" status (Done), fill in changeHuman and changeAi with set_change_notes (the team expects them; it is not enforced). changeNotesStale=true means commits landed after the notes were written: update them with the close procedure. ' +
       'Issues with analysisRequested=true are waiting for an AI analysis: list them with list_issues({analysisRequested:true}) (all your projects) and write the result with set_analysis. ' +
       'Before analyzing an issue or closing one (moving to Done), call get_procedure with name analyze or close and follow it. ' +
+      `An issue description is short (max ${DESCRIPTION_MAX} characters): the problem and the goal, in plain language. Places in the code, risks and open questions go to set_analysis (sections and decisions), also for an issue you have just created. ` +
+      'When a person answers a decision from the analysis in the chat, record it with set_decision. ' +
       'Images in descriptions and comments (/uploads/... links) need get_attachment; a plain fetch returns 401.',
   });
 
@@ -247,7 +251,7 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
     id: z.string().optional(),
     project: projectArg.describe('Project key for a new issue (required when you are in more than one project); ignored when id is given'),
     title: z.string().optional(),
-    description: z.string().optional().describe('Markdown'),
+    description: z.string().optional().describe(`Markdown, max ${DESCRIPTION_MAX} characters: the problem and the goal only. Code locations, risks and open questions go to set_analysis`),
     status: z.string().optional(),
     assignee: z.string().nullable().optional().describe('User name, login, "me", or null to unassign'),
     priority: z.union([z.number().int().min(0).max(4), z.string()]).optional().describe('0 none, 1 urgent, 2 high, 3 medium, 4 low'),
@@ -258,6 +262,10 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
     pauseReason: z.string().optional().describe('Why the issue is paused; use with a status whose role is paused (see list_issue_statuses)'),
     pauseWaitsOn: z.string().optional().describe('Identifier of the issue this one waits on; use with a status whose role is paused. The issue returns to its previous status when that one closes'),
   }, async (a) => {
+    if (a.description && a.description.length > DESCRIPTION_MAX) {
+      throw new RuleError(`Description has ${a.description.length} characters, the limit is ${DESCRIPTION_MAX}. Keep the problem and the goal in the description; ` +
+        'move code locations, risks and open questions to set_analysis (sections and decisions).', 'invalid');
+    }
     const target = a.id ? await ref(me, a.id) : { p: await projectOf(me, a.project), n: 0 };
     const p = target.p;
     const r = await resolver(p);
@@ -318,7 +326,30 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       return `Analysis saved on ${id}`;
     });
 
-  tool('set_change_notes', 'Set the HUMAN (short, for people) and/or AI (detailed, technical) description of the changes. Expected before Done.',
+  tool('set_decision',
+    'Record a person\'s answer to a decision from the AI analysis (the same as picking it in the tracker). Use it after asking them in the chat. ' +
+    'Give option (its label) or other (own answer); both empty clears the choice.',
+    {
+      id: z.string(),
+      decision: z.number().int().min(1).describe('Decision number as listed in the analysis (1 = first)'),
+      option: z.string().optional().describe('Label of the chosen option, as in the analysis'),
+      other: z.string().optional().describe('Own answer when none of the options fits'),
+    },
+    async ({ id, decision, option, other }) => {
+      const { p, n } = await ref(me, id);
+      const d = parseData((await svc.getIssueDetail(p, n)).analysisData)?.decisions[decision - 1];
+      if (!d) throw new RuleError(`${id} has no decision ${decision}`, 'invalid');
+      let index: number | null = null;
+      if (option?.trim()) {
+        const norm = (s: string) => s.trim().toLowerCase();
+        index = d.options.findIndex((o) => norm(o.label) === norm(option));
+        if (index < 0) throw new RuleError(`Unknown option "${option}". Options: ${d.options.map((o) => o.label).join(', ')}`, 'invalid');
+      }
+      await svc.chooseDecision(p, me, n, decision - 1, index, index == null ? other ?? '' : '');
+      return `Decision ${decision} on ${id}: ${index != null ? d.options[index].label : other?.trim() || 'cleared'}`;
+    });
+
+  tool('set_change_notes','Set the HUMAN (short, for people) and/or AI (detailed, technical) description of the changes. Expected before Done.',
     { id: z.string(), human: z.string().optional(), ai: z.string().optional() }, async ({ id, human, ai }) => {
       if (human === undefined && ai === undefined) throw new RuleError('Provide human and/or ai', 'invalid');
       const { p, n } = await ref(me, id);

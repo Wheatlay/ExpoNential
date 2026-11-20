@@ -21,7 +21,7 @@ export const DEFAULT_PROMPTS_PL: Record<PromptKind, string> = {
       'Najpierw pobierz zgłoszenie: get_issue {id} i list_comments {id} (opis, analiza, decyzje, komentarze). Obrazki z opisu i komentarzy (/uploads/...) otwieraj przez get_attachment.',
       'Jeśli analiza ma „Powiązane”, przeczytaj ich pole AI (sekcje Gdzie i Decyzje): tam są miejsca w kodzie i rzeczy, których nie cofać.',
       'Dopiero potem wejdź w EnterPlanMode (tryb planu).',
-      'Decyzje oznaczone „Ustalono” są już podjęte, trzymaj się ich. O pozostałe zapytaj mnie narzędziem AskUserQuestion (opcje z analizy, polecana pierwsza).',
+      'Decyzje oznaczone „Ustalono” są już podjęte, trzymaj się ich. O pozostałe zapytaj mnie narzędziem AskUserQuestion (opcje z analizy, polecana pierwsza), a każdą odpowiedź zapisz w zgłoszeniu przez set_decision.',
     ].join('\n'),
     [
       'Przejrzyj kod wokół zmiany i napisz plan w dwóch częściach:',
@@ -48,7 +48,7 @@ export const DEFAULT_PROMPTS_EN: Record<PromptKind, string> = {
       'First fetch the issue: get_issue {id} and list_comments {id} (description, analysis, decisions, comments). Open images from the description and comments (/uploads/...) with get_attachment.',
       'If the analysis has "Related" issues, read their AI change notes: they list places in the code and things not to undo.',
       'Only then enter plan mode with EnterPlanMode.',
-      'Decisions marked "Decided" are already made, stick to them. Ask me about the rest with the AskUserQuestion tool (options from the analysis, recommended first).',
+      'Decisions marked "Decided" are already made, stick to them. Ask me about the rest with the AskUserQuestion tool (options from the analysis, recommended first) and record each answer on the issue with set_decision.',
     ].join('\n'),
     [
       'Review the code around the change and write the plan in two parts:',
