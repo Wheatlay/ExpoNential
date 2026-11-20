@@ -558,7 +558,11 @@ function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, re
       : <>{t('cleared the decision')} „{p.question}”</>;
     case 'sprint': return p.to ? <>{t('moved to')} <b>{p.to}</b></> : <>{t('removed from sprint')}</>;
     case 'parent': return p.to ? <>{t('set parent to')} <a {...linkProps(`/issue/${ident(p.to)}`)}><b>{ident(p.to)}</b></a></> : <>{t('removed parent')}</>;
-    case 'commit': return <>{p.author} {t('committed')} <a href={p.url} target="_blank" rel="noreferrer"><code>{p.sha.slice(0, 7)}</code> {p.message}</a></>;
+    // Autor z webhooka to login GitHuba ("Wheatlay"); konto trackera o tym loginie pokazujemy imieniem, jak resztę osi.
+    case 'commit': {
+      const u = meta.users.find((x) => x.login.toLowerCase() === p.author.toLowerCase());
+      return <><b>{u ? <PersonLink userId={u.id}>{u.name}</PersonLink> : p.author}</b> {t('committed')} <a href={p.url} target="_blank" rel="noreferrer"><code>{p.sha.slice(0, 7)}</code> {p.message}</a></>;
+    }
     case 'question': return <>{t('asked')} <b>{p.to}</b>: {p.question}</>;
     case 'answered': return <>{t('answered the question')}{p.backTo ? <>, {t('back to')} <b>{p.backTo}</b></> : ''}</>;
     case 'paused': return <>{t('paused it')}{p.reason ? <>: {p.reason}</> : ''}{p.waitsOn ? <>, {t('waiting on')} <a {...linkProps(`/issue/${ident(p.waitsOn)}`)}><b>{ident(p.waitsOn)}</b></a></> : ''}</>;
