@@ -175,7 +175,7 @@ export function IssuePage({ number }: { number: number }) {
   const curStatus = meta?.statuses.find((s) => s.id === issue?.statusId);
   // Zamknięte zgłoszenie: zlecanie analizy tylko zaśmiecałoby pasek (README: ukryte, gdy tylko zaśmieca). Po ponownym otwarciu wraca.
   const closed = ['completed', 'canceled', 'duplicate'].includes(curStatus?.type ?? '');
-  const envNow = issue && (curStatus?.role === 'testing' || curStatus?.type === 'completed') ? deployedEnvOf(issue.commits) : null;
+  const envNow = issue ? deployedEnvOf(issue.commits) : null;
   const target: PickTarget | null = issue ? {
     number, statusId: issue.statusId, priority: issue.priority, assigneeId: issue.assigneeId, labelIds: issue.labelIds,
     sprintId: issue.sprintId, hasChangeNotes: !!issue.changeHuman.trim() && !!issue.changeAi.trim(), changeNotesStale: issue.changeNotesStale,
