@@ -13,7 +13,7 @@ i odrzuciłeś, zostaje u Ciebie.
 
 ## Krok 2: sprawdź w kodzie
 
-1. `get_issue` i `list_comments`.
+1. `get_issue` i `list_comments`. Obrazki z opisu i komentarzy (`/uploads/...`) otwieraj przez `get_attachment` (zwykłe pobranie daje 401).
 2. Ustal typ: `bug` (coś działa źle), `feature` (czegoś brakuje albo ma działać inaczej),
    `investigate` (pytanie "czemu", "sprawdzić", "ustalić"). Gdy typu nie da się pewnie ustalić
    (np. zgłoszenie testowe, puste, niejasne): wybierz najbliższy typ i daj `label: false`, wtedy

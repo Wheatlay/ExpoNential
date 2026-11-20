@@ -116,7 +116,7 @@ export function Calendar() {
     return (
       <div key={day.toISOString()} className={`cal-day ${today ? 'today' : ''} ${nextWeek ? 'next' : ''}`}
         onDoubleClick={(e) => { if (e.target === e.currentTarget) openNewMeeting(day); }}>
-        <div className="cal-day-head"><span className="cal-day-name" title={fmtDay(day)}>{fmtDay(day)}</span>{today ? <span className="hint">{t('today')}</span> : nextWeek ? <span className="hint">{t('next week')}</span> : null}</div>
+        <div className="cal-day-head"><span className="cal-day-name" title={fmtDay(day)}>{fmtDay(day)}</span>{today ? <span className="hint">{t('today')}</span> : null}</div>
         {/* "+" od razu pod nagłówkiem dnia: zawsze w tym samym miejscu, niezależnie od liczby spotkań. */}
         <button className="cell-add" aria-label={t('New meeting on {day}', { day: fmtDay(day) })} title={t('New meeting on {day}', { day: fmtDay(day) })} onClick={() => openNewMeeting(day)}>
           <Icon.plus size={14} />
@@ -147,7 +147,7 @@ export function Calendar() {
             <>
               <button className="icon-btn" aria-label={t('Previous week')} onClick={() => setWeek((w) => addDays(w, -7))}><Icon.chevronRight size={13} className="flip" /></button>
               <button className="icon-btn" aria-label={t('Next week')} onClick={() => setWeek((w) => addDays(w, 7))}><Icon.chevronRight size={13} /></button>
-              <span style={{ fontWeight: 600 }}>{range}</span><span className="hint">{t('+ start of next week')}</span>
+              <span style={{ fontWeight: 600 }}>{range}</span>
               <Tooltip text={isThisWeek ? t('Already showing this week') : null}>
                 <button className="btn sm" disabled={isThisWeek} onClick={() => setWeek(weekStart(new Date()))}>{t('Today')}</button>
               </Tooltip>

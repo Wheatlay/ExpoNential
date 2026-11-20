@@ -72,7 +72,7 @@ func findEngine(engine string) string {
 // allowed explicitly and --permission-mode default is forced (a user defaultMode/allow must not widen it), so in -p mode
 // reads outside the repo are not approved. Secrets (repo-relative and absolute, see secrets.go) are denied on top.
 // Deny rules win over allow rules in Claude Code, so a blanket Read(//**) deny would also block the repo: not used.
-const allowedTools = "Skill,mcp__expo__get_procedure,mcp__expo__get_issue,mcp__expo__list_comments,mcp__expo__list_issues,mcp__expo__set_analysis"
+const allowedTools = "Skill,mcp__expo__get_procedure,mcp__expo__get_issue,mcp__expo__list_comments,mcp__expo__get_attachment,mcp__expo__list_issues,mcp__expo__set_analysis"
 
 // othersRun: the analysis was requested by someone other than this account (or the identity is unknown), so the
 // repo's own .claude settings must not load.

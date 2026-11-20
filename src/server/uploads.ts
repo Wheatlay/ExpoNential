@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { requireUser } from './auth.ts';
@@ -38,6 +38,17 @@ export function saveUpload(data: Buffer, ext: string, userId?: number) {
   const name = `${userId != null ? `u${userId}-` : ''}${randomBytes(16).toString('hex')}.${ext}`;
   writeFileSync(path.join(UPLOADS_DIR, name), data);
   return `/uploads/${name}`;
+}
+
+/**
+ * Obrazek z /uploads dla agenta (MCP): Claude nie ma ciasteczka sesji, więc sam link zwraca mu 401.
+ * Przyjmuje "/uploads/<nazwa>" albo pełny URL; tylko sama nazwa pliku, bez "..". Null = nie ma takiego obrazka.
+ */
+export function readUpload(url: string) {
+  const m = /\/uploads\/([\w-]+\.(png|jpg|gif|webp))(?:[?#].*)?$/.exec(url.trim());
+  if (!m) return null;
+  const mime = Object.keys(EXT).find((k) => EXT[k] === m[2])!;
+  try { return { data: readFileSync(path.join(UPLOADS_DIR, m[1])), mimeType: mime }; } catch { return null; }
 }
 
 export async function registerUploads(app: FastifyInstance) {

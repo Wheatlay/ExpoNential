@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+- Calendar week view: dropped the "next week" labels on the extra columns and next to the date range (the columns are already dimmed).
+- Start work prompt: Claude fetches the issue first and only then enters plan mode (fewer permission clicks); the plan opens with a plain-language "What changes" part, with extra guidance for issues labeled Bug or Feature.
+- New MCP tool get_attachment: Claude can open screenshots from issue descriptions and comments (plain links returned 401). Allowed for local analysis in the agent.
+
 ## Agent [0.4.28] - 17.11.2026
 
 - A deleted project (or one you left) is removed from the agent's repo mappings and the Start from phone list on the next scan.

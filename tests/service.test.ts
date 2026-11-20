@@ -88,6 +88,22 @@ describe('issues', () => {
     expect(prompts.analysisModel(custom, true)).toBe('haiku');
   });
 
+  it('start prompt: issue fetched before plan mode, human part first, guide by type label', async () => {
+    const prompts = await import('../src/server/prompts.ts');
+    const n = (await svc.createIssue(P, null, { title: 'typed' })).number;
+    const plain = await prompts.renderPrompt(P, n, 'start');
+    expect(plain.indexOf('get_issue')).toBeLessThan(plain.indexOf('EnterPlanMode'));
+    expect(plain).toContain('get_attachment');
+    expect(plain).not.toContain('{typeGuide}');
+    expect(plain).not.toContain(prompts.TYPE_GUIDE.bug);
+    await svc.setAnalysis(P, null, n, { type: 'bug', sections: { verdict: 'x' }, decisions: [] });
+    expect(await prompts.renderPrompt(P, n, 'start')).toContain(prompts.TYPE_GUIDE.bug);
+    await svc.setAnalysis(P, null, n, { type: 'feature', sections: { verdict: 'x' }, decisions: [] });
+    const feat = await prompts.renderPrompt(P, n, 'start');
+    expect(feat).toContain(prompts.TYPE_GUIDE.feature);
+    expect(feat).not.toContain(prompts.TYPE_GUIDE.bug);
+  });
+
   it('sub-issues: parent link and progress', async () => {
     const child = await svc.createIssue(P, null, { title: 'child', parentNumber: 5 });
     const [row] = (await svc.listIssues(P)).filter((i) => i.number === 5);

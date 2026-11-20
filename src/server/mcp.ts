@@ -10,6 +10,7 @@ import type { SessionUser } from './auth.ts';
 import { markMcpUse } from './oauth.ts';
 import { procedures } from './skills/index.ts';
 import { addRelation, removeRelation } from './relations.ts';
+import { readUpload } from './uploads.ts';
 import { ANALYSIS_TYPES, SECTION_KEYS, TYPE_LABEL_NAMES, analysisInputSchema, decisionSchema } from './analysis.ts';
 
 const analysisSections = z.object(Object.fromEntries(SECTION_KEYS.map((k) => [k, z.string().optional()])));
@@ -128,7 +129,7 @@ async function presentIssue(p: Project, number: number) {
 
 /** Zakres jednego zgłoszenia (nagłówek X-Exponential-Issue: agent analizy dostaje tylko to, czego potrzebuje do jednej analizy). */
 export type McpScope = { key: string; number: number };
-export const SCOPED_TOOLS = ['get_issue', 'list_comments', 'get_procedure', 'set_analysis'];
+export const SCOPED_TOOLS = ['get_issue', 'list_comments', 'get_attachment', 'get_procedure', 'set_analysis'];
 
 export function buildServer(user: SessionUser, scope: McpScope | null = null) {
   const me = { ...user, ai: true };   // zmiany przez MCP robi agent: historia pokazuje je jako AI
@@ -139,7 +140,8 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       'list_issues without project lists issues of all your projects. ' +
       'Before moving an issue to a "completed" status (Done), fill in changeHuman and changeAi with set_change_notes (the team expects them; it is not enforced). changeNotesStale=true means commits landed after the notes were written: update them with the close procedure. ' +
       'Issues with analysisRequested=true are waiting for an AI analysis: list them with list_issues({analysisRequested:true}) (all your projects) and write the result with set_analysis. ' +
-      'Before analyzing an issue or closing one (moving to Done), call get_procedure with name analyze or close and follow it.',
+      'Before analyzing an issue or closing one (moving to Done), call get_procedure with name analyze or close and follow it. ' +
+      'Images in descriptions and comments (/uploads/... links) need get_attachment; a plain fetch returns 401.',
   });
 
   const tool = <S extends z.ZodRawShape>(name: string, description: string, shape: S, fn: (a: z.infer<z.ZodObject<S>>) => Promise<unknown>) =>
@@ -312,6 +314,29 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
     return d.comments.map((c) => ({
       id: c.id, author: r.meta.users.find((u) => u.id === c.authorId)?.name ?? null, body: c.body, createdAt: c.createdAt,
     }));
+  });
+
+  // Obrazki z opisu i komentarzy (/uploads/...): bez sesji link zwraca 401, więc agent bierze je tędy.
+  // Zwraca treść typu image, więc z pominięciem tool() (ten pakuje wynik w tekst).
+  server.registerTool('get_attachment', {
+    description: 'Get an image attached to an issue description or comment (a /uploads/... link, relative or full URL). Plain HTTP fetches of these links return 401; use this tool instead.',
+    inputSchema: { url: z.string() },
+  }, async ({ url }) => {
+    try {
+      if (scope) {
+        // Sesja jednego zgłoszenia: tylko obrazki, które to zgłoszenie faktycznie zawiera.
+        const d = await svc.getIssueDetail((await requireMember(me, scope.key)).project, scope.number);
+        const name = /\/uploads\/([^/?#]+)/.exec(url)?.[1];
+        const texts = [d.description, d.analysis, ...d.comments.map((c) => c.body)];
+        if (!name || !texts.some((t) => t.includes(`/uploads/${name}`))) return fail(`This session is limited to attachments of ${identifier(scope.key, scope.number)}`);
+      }
+      const f = readUpload(url);
+      if (!f) return fail(`No uploaded image at "${url}"`);
+      return { content: [{ type: 'image' as const, data: f.data.toString('base64'), mimeType: f.mimeType }] };
+    } catch (e) {
+      if (e instanceof RuleError) return fail(e.message);
+      throw e;
+    }
   });
 
   tool('save_comment', 'Add a comment to an issue (markdown).', { id: z.string(), body: z.string().min(1) }, async ({ id, body }) => {

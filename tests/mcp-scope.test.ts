@@ -7,11 +7,13 @@ import postgres from 'postgres';
 
 const ADMIN_URL = 'postgres://tracker:tracker@localhost:5434/tracker';
 process.env.DATABASE_URL = 'postgres://tracker:tracker@localhost:5434/tracker_test_mcpscope';
+process.env.UPLOADS_DIR = (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'mcpscope-'));
 
 let dbmod: typeof import('../src/db/index.ts');
 let app: import('fastify').FastifyInstance;
 let token: string;
 let n1: number, n2: number;
+let img: string, otherImg: string;
 
 beforeAll(async () => {
   const admin = postgres(ADMIN_URL, { onnotice: () => {} });
@@ -29,7 +31,11 @@ beforeAll(async () => {
   await svc.seedDefaults();
   const [u] = await dbmod.db.insert(schema.users).values({ login: 'dora', name: 'Dora' }).returning();
   await dbmod.db.insert(schema.projectMembers).values({ projectId: P.id, userId: u.id });
-  n1 = (await svc.createIssue(P, null, { title: 'one' })).number;
+  const up = await import('../src/server/uploads.ts');
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+  img = up.saveUpload(png, 'png', u.id);
+  otherImg = up.saveUpload(png, 'png', u.id);
+  n1 = (await svc.createIssue(P, null, { title: 'one', description: `![shot](${img})` })).number;
   n2 = (await svc.createIssue(P, null, { title: 'two' })).number;
   const Fastify = (await import('fastify')).default;
   const cookie = (await import('@fastify/cookie')).default;
@@ -54,6 +60,25 @@ async function call(name: string, args: Record<string, unknown>, scopeHeader?: s
 }
 const isError = (r: { body: string }) => !!JSON.parse(r.body).result?.isError;
 const text = (r: { body: string }) => JSON.parse(r.body).result?.content?.[0]?.text as string;
+
+describe('get_attachment', () => {
+  it('returns an uploaded image as image content (relative or full URL)', async () => {
+    for (const url of [img, `https://tracker.example${img}`]) {
+      const c = JSON.parse((await call('get_attachment', { url })).body).result.content[0];
+      expect(c.type).toBe('image');
+      expect(c.mimeType).toBe('image/png');
+    }
+  });
+  it('rejects paths outside uploads and missing files', async () => {
+    expect(isError(await call('get_attachment', { url: '/uploads/../package.json' }))).toBe(true);
+    expect(isError(await call('get_attachment', { url: '/uploads/nope.png' }))).toBe(true);
+  });
+  it('in an issue scope only serves images of that issue', async () => {
+    const id = `SC-${n1}`;
+    expect(isError(await call('get_attachment', { url: img }, id))).toBe(false);
+    expect(isError(await call('get_attachment', { url: otherImg }, id))).toBe(true);
+  });
+});
 
 describe('MCP issue scope', () => {
   it('without the header every tool works', async () => {
