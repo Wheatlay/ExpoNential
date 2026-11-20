@@ -4,6 +4,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Relations: the manual "Related to" link is gone (existing ones removed). Instead the panel lists **Mentioned** issues (both directions), found in descriptions and comments the same way as the issue pills (CHUB-210, chub 210, chub210), also from your other projects. MCP get_issue returns them as mentions / mentionedIn.
+- History: assigning an issue to yourself reads "assigned it to themselves" instead of "X assigned to X".
+- Every change made with a token (MCP, agent, hook) is marked AI in the history, not only MCP tool calls.
+- Issue page: when the HUMAN summary is filled in, it is the only bar open by default.
+- MCP (no new tools): get_issue history: true returns who changed what; list_issues query searches descriptions and comments too, plus a sprint filter ("current" or name); save_comment can edit your own comment (commentId) and attach images; list_users shows people tags.
+
 - Calendar week view: dropped the "next week" labels on the extra columns and next to the date range (the columns are already dimmed).
 - Start work prompt: Claude fetches the issue first and only then enters plan mode (fewer permission clicks); the plan opens with a plain-language "What changes" part, with extra guidance for issues labeled Bug or Feature.
 - New MCP tool get_attachment: Claude can open screenshots from issue descriptions and comments (plain links returned 401). Allowed for local analysis in the agent.

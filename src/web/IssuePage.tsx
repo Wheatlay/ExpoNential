@@ -16,7 +16,7 @@ import { useProjectKey } from './project.ts';
 import { Avatar, Icon, PriorityIcon, StatusIcon, startedFraction } from './icons.tsx';
 import { openMenu, isMenuOpen, Tooltip, type MenuSpec } from './menu.tsx';
 import { assigneeMenu, issueStatusIcon, labelMenu, priorityMenu, relationMenu, sprintLabel, sprintMenu, statusMenu, type PickTarget } from './pickers.tsx';
-import { ApiError, isAskedTo, type IssueRow, type RelatedIssue, type RelationKind } from './api.ts';
+import { ApiError, isAskedTo, type IssueRow, type MentionedIssue, type RelatedIssue, type RelationKind } from './api.ts';
 import { linkProps, navigate } from './router.ts';
 import { openNewIssue } from './NewIssue.tsx';
 import { copyText, toast } from './toast.ts';
@@ -30,7 +30,7 @@ import { enterToSubmit, keyHint, useAutoGrow } from './keys.ts';
 import { useMentionAutocomplete } from './MentionInput.tsx';
 import { PersonLink, profileContextMenu } from './PersonCard.tsx';
 import { rememberIssue } from './SidebarExtras.tsx';
-import { ident } from './project.ts';
+import { getProjectKey, ident } from './project.ts';
 import { t, tn } from './i18n.ts';
 
 /** Zmiana wartości, której nie wywołała ta karta (np. cudza edycja przez SSE): krótka poświata, żeby było widać, że coś się zmieniło. */
@@ -213,6 +213,7 @@ export function IssuePage({ number }: { number: number }) {
   const creator = meta.users.find((u) => u.id === issue.creatorId);
   const sprint = sprints.find((s) => s.id === issue.sprintId);
   const subDone = issue.children.filter((c) => ['completed', 'canceled', 'duplicate'].includes(meta.statuses.find((s) => s.id === c.statusId)?.type ?? '')).length;
+  const humanFirst = !!issue.changeHuman?.trim();
 
   const local = !!me?.hasAgent;
   // Stare skrypty na PC: serwer i tak nie wyda im zlecenia, więc nie dajemy go złożyć (powód + skrót do aktualizacji obok).
@@ -325,9 +326,10 @@ export function IssuePage({ number }: { number: number }) {
           <SubIssues issue={issue} meta={meta} done={subDone} />
           <hr className="issue-sep" />
 
+          {/* Jest HUMAN: to jedyny pasek otwarty na start (podsumowanie zmian dla ludzi wystarcza). */}
           {/* ---- pola AI: zwijane paski z podglądem (wariant C) ---- */}
           <div className="section fold-group">
-            <FoldBar id="analysis" tour="analysis" badge={<span className="badge ai">AI</span>} name={t('Problem analysis')}
+            <FoldBar key={`analysis-${issue.number}`} id="analysis" forced={humanFirst ? false : undefined} tour="analysis" badge={<span className="badge ai">AI</span>} name={t('Problem analysis')}
               preview={issue.analysisRequestedAt ? t('Waiting for analysis…') : analysisPreview(issue) || t('No analysis yet')}
               meta={issue.analysisUpdatedAt && !issue.analysisRequestedAt ? `${timeAgo(issue.analysisUpdatedAt)}${!issue.analysisRequestedAt && issue.analysisResultDeep ? ` · ${t('Deep')}` : ''}` : ''}
               tools={<span className="fold-tools">
@@ -367,7 +369,7 @@ export function IssuePage({ number }: { number: number }) {
                   placeholder={issue.analysisRequestedAt ? t('Analysis will appear here') : t('No analysis yet')} size="md" />}
               </div>
             </FoldBar>
-            <FoldBar id="human" badge={<span className="badge human">HUMAN</span>} name={t('Summary')}
+            <FoldBar key={`human-${issue.number}`} id="human" forced={humanFirst ? true : undefined} badge={<span className="badge human">HUMAN</span>} name={t('Summary')}
               preview={firstLine(issue.changeHuman) || t('Short summary for people, one change per line')}
               meta={lineCount(issue.changeHuman)} required={!issue.changeHuman.trim()} stale={issue.changeNotesStale}>
               <div className="panel human">
@@ -375,7 +377,7 @@ export function IssuePage({ number }: { number: number }) {
                   placeholder={t('One change per line')} size="sm" />
               </div>
             </FoldBar>
-            <FoldBar id="tech" badge={<span className="badge tech">TECH</span>} name={t('Change log')}
+            <FoldBar key={`tech-${issue.number}`} id="tech" forced={humanFirst ? false : undefined} badge={<span className="badge tech">TECH</span>} name={t('Change log')}
               preview={techSummary(issue.changeAi) || t('Commits, files, reasons, verification')}
               meta="" required={!issue.changeAi.trim()} stale={issue.changeNotesStale}>
               <div className="panel tech">
@@ -537,11 +539,12 @@ function SubIssues({ issue, meta, done }: { issue: IssueDetail; meta: Meta; done
 }
 
 type CommitRef = { sha: string; url: string };
-function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, resolveCommit?: (c: { sha: string; message: string }) => CommitRef | undefined, deployCount?: number) {
+function eventText(p: IssueDetail['activity'][number]['payload'], meta: Meta, resolveCommit?: (c: { sha: string; message: string }) => CommitRef | undefined, deployCount?: number, actorName?: string) {
   switch (p.kind) {
     case 'created': return <>{t('created the issue')}</>;
     case 'status': return <>{t('changed status from')} <b>{p.from ?? '—'}</b> {t('to')} <b>{p.to}</b></>;
-    case 'assignee': return p.to ? <>{t('assigned to')} <b>{p.to}</b></> : <>{t('removed assignee')} <b>{p.from}</b></>;
+    // Przypisanie siebie: "Krzysztof assigned to Krzysztof" czytało się jak błąd.
+    case 'assignee': return p.to ? (p.to === actorName ? <>{t('assigned it to themselves')}</> : <>{t('assigned to')} <b>{p.to}</b></>) : <>{t('removed assignee')} <b>{p.from}</b></>;
     case 'priority': return <>{t('set priority to')} <b>{t(meta.priorities[p.to])}</b></>;
     case 'labels': return <>{p.added.length > 0 && <>{t('added')} <b>{p.added.join(', ')}</b> </>}{p.removed.length > 0 && <>{t('removed')} <b>{p.removed.join(', ')}</b></>}</>;
     case 'field': return <>{t('edited')} {{ title: t('the title'), description: t('the description'), analysis: t('the AI analysis'), change_human: t('the HUMAN change notes'), change_ai: t('the AI change log') }[p.field] ?? p.field}</>;
@@ -688,7 +691,7 @@ function Activity({ issue, meta, meId }: { issue: IssueDetail; meta: Meta; meId?
           return (
             <div key={`e${en.e.id}`} className={`event ${tone} ${cont ? 'cont' : ''}`}>
               <span className="ev-icon">{cont ? null : eventIcon(en.e.payload) ?? <Avatar user={actor} size={16} />}</span>
-              <span>{!anon && !cont && <b>{actor ? <PersonLink userId={actor.id}>{actor.name}</PersonLink> : t('System')} </b>}{en.e.viaAi && !cont && <><span className="badge ai">AI</span> </>}{eventText(en.e.payload, meta, resolveCommit, deployCount(en.e))} · <span title={fullDate(en.at)}>{timeAgo(en.at)}</span></span>
+              <span>{!anon && !cont && <b>{actor ? <PersonLink userId={actor.id}>{actor.name}</PersonLink> : t('System')} </b>}{en.e.viaAi && !cont && <><span className="badge ai">AI</span> </>}{eventText(en.e.payload, meta, resolveCommit, deployCount(en.e), actor?.name)} · <span title={fullDate(en.at)}>{timeAgo(en.at)}</span></span>
             </div>
           );
         }
@@ -761,11 +764,14 @@ function Relations({ issue, meta }: { issue: IssueDetail; meta: Meta }) {
   const groups: [RelationKind, string, RelatedIssue[]][] = [
     ['waits_on', t('Waiting on'), issue.relations.waitingOn],
     ['blocks', t('Blocks'), issue.relations.blocking],
-    ['related', t('Related'), issue.relations.related],
     ['duplicate_of', t('Duplicate of'), issue.relations.duplicateOf ?? []],
     ['duplicated_by', t('Duplicates'), issue.relations.duplicates ?? []],
   ];
-  const any = groups.some(([, , l]) => l.length);
+  // Wzmianki: z tekstu, więc bez przycisku usuwania (zmienia się je w opisie albo komentarzu).
+  // Jedna grupa na obie strony (to zgłoszenie wspomina albo jest wspomniane), bez powtórzeń.
+  const mentioned = [...(issue.mentions ?? []), ...(issue.mentionedIn ?? []).filter((x) => !(issue.mentions ?? []).some((y) => y.id === x.id))];
+  const mentionGroups: [string, string, MentionedIssue[]][] = [['mentioned', t('Mentioned'), mentioned]];
+  const any = groups.some(([, , l]) => l.length) || mentionGroups.some(([, , l]) => l.length);
   return (
     <div className="props-group">
       <h4 style={{ display: 'flex', alignItems: 'center' }}>
@@ -787,6 +793,20 @@ function Relations({ issue, meta }: { issue: IssueDetail; meta: Meta }) {
                 <StatusIcon status={st} fraction={startedFraction(meta.statuses, st)} size={12} />
                 <a {...linkProps(`/issue/${ident(r.number)}`)} title={r.title}>{ident(r.number)} <span>{r.title}</span></a>
                 <button className="icon-btn" title={t('Remove relation')} aria-label={t('Remove relation')} onClick={() => remove(kind, r.number)}><Icon.close size={12} /></button>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+      {mentionGroups.map(([key, label, list]) => list.length > 0 && (
+        <div key={key} style={{ marginBottom: 6 }}>
+          <div className="hint" style={{ padding: '2px 8px' }}>{label}</div>
+          {list.map((r) => {
+            const st = r.key === getProjectKey() ? meta.statuses.find((s) => s.id === r.statusId) : undefined;
+            return (
+              <div key={r.id} className="relation-row">
+                {st ? <StatusIcon status={st} fraction={startedFraction(meta.statuses, st)} size={12} /> : <Icon.relation size={12} />}
+                <a {...linkProps(`/issue/${r.id}`)} title={r.title}>{r.id} <span>{r.title}</span></a>
               </div>
             );
           })}
@@ -821,13 +841,14 @@ function techSummary(md: string) {
 }
 
 /** Zwijany pasek: jedna linia podglądu, rozwinięcie zapamiętane w przeglądarce. */
-function FoldBar({ id, tour, badge, name, preview, meta, required, stale, tools, children }: {
-  id: string; tour?: string; badge: React.ReactNode; name: string; preview: string; meta: string; required?: boolean; stale?: boolean; tools?: React.ReactNode; children: React.ReactNode;
+function FoldBar({ id, forced, tour, badge, name, preview, meta, required, stale, tools, children }: {
+  /** Stan startowy narzucony przez zgłoszenie (np. jest HUMAN: tylko on otwarty), zamiast zapamiętanego. */
+  id: string; forced?: boolean; tour?: string; badge: React.ReactNode; name: string; preview: string; meta: string; required?: boolean; stale?: boolean; tools?: React.ReactNode; children: React.ReactNode;
 }) {
   const key = `fold.${id}`;
   // Demo: analiza otwarta od początku (tam dzieje się pokaz), o ile nikt jej nie zwinął.
   const demoOpen = !!useMe().data?.demo && id === 'analysis';
-  const [open, setOpen] = useState(() => { try { const v = localStorage.getItem(key); return v === null ? demoOpen : v === '1'; } catch { return demoOpen; } });
+  const [open, setOpen] = useState(() => { if (forced !== undefined) return forced; try { const v = localStorage.getItem(key); return v === null ? demoOpen : v === '1'; } catch { return demoOpen; } });
   const toggle = () => setOpen((o) => { try { localStorage.setItem(key, o ? '0' : '1'); } catch { /* prywatne okno */ } return !o; });
   return (
     <div className={`fold ${open ? 'open' : ''}`} data-tour={tour}>

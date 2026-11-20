@@ -193,14 +193,20 @@ describe('relations', () => {
     expect((await svc.getIssueDetail(P, a.number)).relations.waitingOn).toEqual([]);
   });
 
-  it('related is symmetric and stored once', async () => {
-    const rel = await import('../src/server/relations.ts');
-    const a = await svc.createIssue(P, null, { title: 'C' });
-    const b = await svc.createIssue(P, null, { title: 'D' });
-    await rel.addRelation(P, null, a.number, 'related', b.number);
-    await rel.addRelation(P, null, b.number, 'related', a.number);
-    expect((await svc.getIssueDetail(P, b.number)).relations.related.map((x) => x.number)).toEqual([a.number]);
-    await expect(rel.addRelation(P, null, a.number, 'related', a.number)).rejects.toThrow(/itself/);
+  it('mentions: found in descriptions and comments both ways, like the text pills; code ignored; members only', async () => {
+    const { mentionsOf } = await import('../src/server/issueMentions.ts');
+    const a = await svc.createIssue(P, null, { title: 'target' });
+    const b = await svc.createIssue(P, null, { title: 'by description', description: `see ${P.key.toLowerCase()} ${a.number}` });
+    const c = await svc.createIssue(P, null, { title: 'by comment' });
+    await svc.addComment(P, null, c.number, `like ${P.key}${a.number}, not ${P.key}-${a.number}0`);
+    const d = await svc.createIssue(P, null, { title: 'only code', description: `\`${P.key}-${a.number}\`` });
+    const admin = { id: -1, isAdmin: true };
+    const of = async (n: number) => { const x = await svc.getIssueDetail(P, n); return mentionsOf(admin, x, x.comments); };
+    expect((await of(a.number)).mentionedIn.map((x) => x.number).sort()).toEqual([b.number, c.number].sort());
+    expect((await of(b.number)).mentions.map((x) => x.id)).toEqual([`${P.key}-${a.number}`]);
+    expect((await of(d.number)).mentions).toEqual([]);
+    const x = await svc.getIssueDetail(P, a.number);
+    expect(await mentionsOf({ id: -1, isAdmin: false }, x, x.comments)).toEqual({ mentions: [], mentionedIn: [] });
   });
 });
 

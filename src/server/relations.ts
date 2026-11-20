@@ -4,8 +4,8 @@ import { activity, issueRelations, issues, statuses } from '../db/schema.ts';
 import { RuleError, identifier } from './rules.ts';
 import { publish, requireIssue, updateIssue, type Actor, type Project } from './service.ts';
 
-/** Z perspektywy jednego zadania: na co czeka, co blokuje, z czym jest powiązane. */
-export type RelationKind = 'waits_on' | 'blocks' | 'related' | 'duplicate_of' | 'duplicated_by';
+/** Z perspektywy jednego zadania: na co czeka, co blokuje, czego jest duplikatem. Luźne powiązania to wzmianki (issueMentions.ts). */
+export type RelationKind = 'waits_on' | 'blocks' | 'duplicate_of' | 'duplicated_by';
 const OPEN_TYPES = ['backlog', 'unstarted', 'started'];
 
 /** Zapis zawsze w kierunku "from blokuje to"; "A czeka na B" to blocks(B → A). */
@@ -14,12 +14,10 @@ function toStored(kind: RelationKind, selfId: number, otherId: number) {
   if (kind === 'blocks') return { kind: 'blocks' as const, fromIssueId: selfId, toIssueId: otherId };
   // Duplikat zapisany jako duplicate(kopia → oryginał).
   if (kind === 'duplicate_of') return { kind: 'duplicate' as const, fromIssueId: selfId, toIssueId: otherId };
-  if (kind === 'duplicated_by') return { kind: 'duplicate' as const, fromIssueId: otherId, toIssueId: selfId };
-  const [a, b] = selfId < otherId ? [selfId, otherId] : [otherId, selfId];
-  return { kind: 'related' as const, fromIssueId: a, toIssueId: b };
+  return { kind: 'duplicate' as const, fromIssueId: otherId, toIssueId: selfId };
 }
 
-const opposite: Record<RelationKind, RelationKind> = { waits_on: 'blocks', blocks: 'waits_on', related: 'related', duplicate_of: 'duplicated_by', duplicated_by: 'duplicate_of' };
+const opposite: Record<RelationKind, RelationKind> = { waits_on: 'blocks', blocks: 'waits_on', duplicate_of: 'duplicated_by', duplicated_by: 'duplicate_of' };
 
 export async function addRelation(p: Project, actor: Actor, number: number, kind: RelationKind, otherNumber: number) {
   if (number === otherNumber) throw new RuleError('An issue cannot be related to itself', 'invalid');
@@ -74,13 +72,12 @@ export async function relationsOf(issueId: number) {
       .from(issues).innerJoin(statuses, eq(statuses.id, issues.statusId)).where(inArray(issues.id, otherIds))
     : [];
   const byId = new Map(others.map((o) => [o.id, { number: o.number, title: o.title, statusId: o.statusId, open: OPEN_TYPES.includes(o.type) }]));
-  const out = { waitingOn: [] as RelatedIssue[], blocking: [] as RelatedIssue[], related: [] as RelatedIssue[], duplicateOf: [] as RelatedIssue[], duplicates: [] as RelatedIssue[] };
+  const out = { waitingOn: [] as RelatedIssue[], blocking: [] as RelatedIssue[], duplicateOf: [] as RelatedIssue[], duplicates: [] as RelatedIssue[] };
   for (const r of rows) {
     if (r.kind === 'blocks' && r.toIssueId === issueId) out.waitingOn.push(byId.get(r.fromIssueId)!);
     else if (r.kind === 'blocks') out.blocking.push(byId.get(r.toIssueId)!);
     else if (r.kind === 'duplicate' && r.fromIssueId === issueId) out.duplicateOf.push(byId.get(r.toIssueId)!);
-    else if (r.kind === 'duplicate') out.duplicates.push(byId.get(r.fromIssueId)!);
-    else out.related.push(byId.get(r.fromIssueId === issueId ? r.toIssueId : r.fromIssueId)!);
+    else if (r.kind === 'duplicate' && r.toIssueId === issueId) out.duplicates.push(byId.get(r.fromIssueId)!);
   }
   return out;
 }

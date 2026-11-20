@@ -72,8 +72,10 @@ export type ActivityPayload =
   | { kind: 'resumed'; by: number }
   | { kind: 'relation'; action: 'added' | 'removed'; relation: RelationKind; other: number };
 
-export type RelationKind = 'waits_on' | 'blocks' | 'related' | 'duplicate_of' | 'duplicated_by';
+export type RelationKind = 'waits_on' | 'blocks' | 'duplicate_of' | 'duplicated_by';
 export type RelatedIssue = { number: number; title: string; statusId: number; open: boolean };
+/** Wzmianka z opisu albo komentarza (liczona przez serwer, też z innych projektów użytkownika). */
+export type MentionedIssue = { id: string; key: string; number: number; title: string; statusId: number; open: boolean };
 
 /** Jak AnalysisData w src/server/analysis.ts. */
 export type AnalysisData = {
@@ -100,7 +102,8 @@ export type IssueDetail = {
   comments: { id: number; authorId: number | null; body: string; createdAt: string; updatedAt: string; replyToId: number | null }[];
   infoCommentId: number | null;
   activity: { id: number; actorId: number | null; viaAi: boolean; payload: ActivityPayload; createdAt: string }[];
-  relations: { waitingOn: RelatedIssue[]; blocking: RelatedIssue[]; related: RelatedIssue[]; duplicateOf: RelatedIssue[]; duplicates: RelatedIssue[] };
+  relations: { waitingOn: RelatedIssue[]; blocking: RelatedIssue[]; duplicateOf: RelatedIssue[]; duplicates: RelatedIssue[] };
+  mentions?: MentionedIssue[]; mentionedIn?: MentionedIssue[];
   lastSeenAt: string | null;
   commits: { sha: string; message: string; url: string; author: string; committedAt: string; deployedAt: string | null; envs: { name: string; at: string; isProduction: boolean }[] }[];
 };

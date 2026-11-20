@@ -80,6 +80,24 @@ describe('get_attachment', () => {
   });
 });
 
+describe('MCP extras', () => {
+  const res = (r: { body: string }) => JSON.parse(text(r));
+  it('list_issues query also searches comments; save_comment edits own comment and appends images; history on request', async () => {
+    const id = `SC-${n2}`;
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1]).toString('base64');
+    const c = res(await call('save_comment', { id, body: 'zebra stripes', images: [{ data: png, mimeType: 'image/png' }] }));
+    expect(res(await call('list_issues', { project: 'SC', query: 'ZEBRA' })).map((x: { id: string }) => x.id)).toEqual([id]);
+    expect(isError(await call('save_comment', { id, body: 'x', images: [{ data: 'aGk=', mimeType: 'image/png' }] }))).toBe(true);
+    await call('save_comment', { id, body: 'edited', commentId: c.id });
+    const body = res(await call('list_comments', { id }))[0].body as string;
+    expect(body).toBe('edited');
+    const withHist = res(await call('get_issue', { id, history: true }));
+    expect(Array.isArray(withHist.history)).toBe(true);
+    expect(res(await call('get_issue', { id })).history).toBeUndefined();
+    expect(isError(await call('list_issues', { project: 'SC', sprint: 'current' }))).toBe(true);
+  });
+});
+
 describe('MCP issue scope', () => {
   it('without the header every tool works', async () => {
     expect(isError(await call('list_projects', {}))).toBe(false);

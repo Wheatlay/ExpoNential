@@ -168,11 +168,11 @@ export function issueContextMenu(opts: {
   return { searchable: false, items };
 }
 
-export const RELATION_LABELS: Record<RelationKind, string> = { waits_on: t('Waiting on…'), blocks: t('Blocks…'), related: t('Related to…'), duplicate_of: t('Duplicate of…'), duplicated_by: t('Duplicated by…') };
+export const RELATION_LABELS: Record<RelationKind, string> = { waits_on: t('Waiting on…'), blocks: t('Blocks…'), duplicate_of: t('Duplicate of…'), duplicated_by: t('Duplicated by…') };
 /** Zdanie po identyfikatorze: "ACME-3 waits on ACME-5". */
-const RELATION_VERB: Record<RelationKind, string> = { waits_on: t('waits on'), blocks: t('blocks'), related: t('is related to'), duplicate_of: t('is a duplicate of'), duplicated_by: t('is duplicated by') };
+const RELATION_VERB: Record<RelationKind, string> = { waits_on: t('waits on'), blocks: t('blocks'), duplicate_of: t('is a duplicate of'), duplicated_by: t('is duplicated by') };
 /** Rodzaje w menu "Add relation" (duplicated_by to tylko odwrotna strona duplicate_of). */
-const MENU_KINDS: RelationKind[] = ['waits_on', 'blocks', 'related', 'duplicate_of'];
+const MENU_KINDS: RelationKind[] = ['waits_on', 'blocks', 'duplicate_of'];
 const relIcon = (k: RelationKind) => (k === 'waits_on' || k === 'blocks' ? <Icon.blocked size={14} /> : <Icon.relation size={14} />);
 
 /**

@@ -12,6 +12,7 @@ import { t } from './i18n.ts';
 import { getProjectKey } from './project.ts';
 import { ImageBlock } from './ImageBlock.tsx';
 import { SKIP, TAG_TRAILING, USER_TRAILING, findByName, tagRe, userRe } from '../shared/mentions.ts';
+import { findIssueRefs, issueRefPattern } from '../shared/issueRefs.ts';
 
 // Znacznik w tytule linku: odróżnia wzmiankę od ręcznie wpisanego linku do zgłoszenia.
 const MENTION = 'issue-mention';
@@ -19,15 +20,11 @@ const USER_MENTION = 'user-mention';
 const TAG_MENTION = 'tag-mention';
 // @login i #tag: wzmianka tylko wtedy, gdy login/tag istnieje w projekcie (inaczej e-mail czy #1 zostają tekstem).
 
-/**
- * Wzorzec wzmianki: tylko klucze istniejących projektów (inaczej UTF-8 czy ISO-9001 stałyby się linkami),
- * dowolna wielkość liter, myślnik, spacja albo nic przed numerem: CHUB-172, chub 172, chub172.
- */
+/** Wzorzec z kluczami projektów, które użytkownik widzi (wspólny z serwerem: shared/issueRefs.ts). */
 function useMentionPattern() {
   const keys = new Set((useProjects().data ?? []).map((p) => p.key));
   if (getProjectKey()) keys.add(getProjectKey());
-  if (!keys.size) return null;
-  return new RegExp(`(?<![\\w/-])(${[...keys].join('|')})[- ]?(\\d+)\\b`, 'gi');
+  return issueRefPattern(keys);
 }
 
 function linkIssues(text: string, re: RegExp | null, meta?: Meta) {
@@ -48,17 +45,9 @@ function linkIssues(text: string, re: RegExp | null, meta?: Meta) {
   }).join('');
 }
 
-/** Identyfikatory rozpoznane w tekście, bez powtórzeń, w kolejności wystąpienia. */
-function findMentions(text: string, re: RegExp | null) {
-  if (!re) return [];
-  const ids = text.split(SKIP).filter((_, i) => i % 2 === 0)
-    .flatMap((part) => [...part.matchAll(re)].map((m) => `${m[1].toUpperCase()}-${m[2]}`));
-  return [...new Set(ids)];
-}
-
 /** Pod polem edycji: które zgłoszenia tekst rozpozna, zanim ktoś zapisze. Chipy tylko do podglądu (klik nie zabiera z edycji). */
 export function MentionHint({ text }: { text: string }) {
-  const ids = findMentions(text, useMentionPattern());
+  const ids = findIssueRefs(text, useMentionPattern());
   if (!ids.length) return null;
   return (
     <div className="mention-hint">

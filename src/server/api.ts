@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { mentionsOf } from './issueMentions.ts';
 import { z } from 'zod';
 import { and, asc, desc, eq, inArray, isNull, notInArray, sql as dsql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -557,7 +558,7 @@ export async function registerApi(app: FastifyInstance) {
       if (req.authVia !== 'token') await svc.markSeen(req.user!.id, d.id);
       const runner = await ag.analysisRunner(p, d);
       const [waitReason] = await ag.waitReasons(p, [d]);
-      return { ...d, projectKey: p.key, projectHasRepo: !!p.githubRepo, analysisWaitReason: waitReason, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, analysisNoCapablePc: runner.noCapablePc, teamQueue: p.agentTeamQueue, startOnPc: await ag.startJobState(req.user!, d.id) };
+      return { ...d, projectKey: p.key, projectHasRepo: !!p.githubRepo, analysisWaitReason: waitReason, lastSeenAt, analysisCanRun: runner.canRun, analysisClaimedDeviceName: runner.claimedDeviceName, analysisNoCapablePc: runner.noCapablePc, teamQueue: p.agentTeamQueue, startOnPc: await ag.startJobState(req.user!, d.id), ...(await mentionsOf(req.user!, d, d.comments)) };
     });
 
     r.post('/api/issues', async (req) => {
@@ -640,7 +641,7 @@ export async function registerApi(app: FastifyInstance) {
       await svc.publish({ type: 'presence', projectKey: project.key, userId: req.user!.id, name: req.user!.name, ...b });
       return { ok: true };
     });
-    const relationBody = z.object({ kind: z.enum(['waits_on', 'blocks', 'related', 'duplicate_of', 'duplicated_by']), other: z.union([z.string(), z.number()]) });
+    const relationBody = z.object({ kind: z.enum(['waits_on', 'blocks', 'duplicate_of', 'duplicated_by']), other: z.union([z.string(), z.number()]) });
     r.post<{ Params: { id: string } }>('/api/issues/:id/relations', async (req) => {
       const b = relationBody.parse(req.body);
       const { p, number } = await issueRef(req, req.params.id);

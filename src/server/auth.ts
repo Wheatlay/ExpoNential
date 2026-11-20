@@ -28,7 +28,8 @@ const emailLimiter = createAttemptLimiter(20, 15 * 60_000);
 const adminEmails = () => (process.env.ADMIN_EMAILS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 const tmpCookie = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: isProd, maxAge: 600 };
 
-export type SessionUser = { id: number; name: string; login: string; isAdmin: boolean };
+/** ai: żądanie przyszło z tokenu (MCP, agent, hook), więc zmiany w historii mają znaczek AI. */
+export type SessionUser = { id: number; name: string; login: string; isAdmin: boolean; ai?: boolean };
 
 declare module 'fastify' {
   interface FastifyRequest { user: SessionUser | null; authVia: 'session' | 'token' | null; /** Token Bearer należy do agenta (grant exponential-agent albo klucz trk_ z agentId). */ tokenAgent: boolean }
@@ -156,7 +157,7 @@ export async function registerAuth(app: FastifyInstance) {
   app.addHook('onRequest', async (req, reply) => {
     const fromSession = await userFromSession(req.cookies[COOKIE], reply);
     const viaToken = fromSession ? null : await tokenAuth(req.headers.authorization);
-    req.user = fromSession ?? viaToken?.user ?? null;
+    req.user = fromSession ?? (viaToken ? { ...viaToken.user, ai: true } : null);
     req.authVia = req.user ? (fromSession ? 'session' : 'token') : null;
     req.tokenAgent = !!viaToken?.agent;
     if (req.authVia === 'token' && !tokenAllowed(req.method, req.url)) {

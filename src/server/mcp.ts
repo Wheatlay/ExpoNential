@@ -10,7 +10,11 @@ import type { SessionUser } from './auth.ts';
 import { markMcpUse } from './oauth.ts';
 import { procedures } from './skills/index.ts';
 import { addRelation, removeRelation } from './relations.ts';
-import { readUpload } from './uploads.ts';
+import { matchesMagic, readUpload, saveUpload } from './uploads.ts';
+import { and, eq, ilike, or } from 'drizzle-orm';
+import { db } from '../db/index.ts';
+import { comments, issues, sprints } from '../db/schema.ts';
+import { mentionsOf } from './issueMentions.ts';
 import { ANALYSIS_TYPES, SECTION_KEYS, TYPE_LABEL_NAMES, analysisInputSchema, decisionSchema } from './analysis.ts';
 
 const analysisSections = z.object(Object.fromEntries(SECTION_KEYS.map((k) => [k, z.string().optional()])));
@@ -81,8 +85,9 @@ async function resolver(p: Project) {
   };
 }
 
-async function presentIssue(p: Project, number: number) {
+async function presentIssue(me: SessionUser, p: Project, number: number) {
   const d = await svc.getIssueDetail(p, number);
+  const m = await mentionsOf(me, d, d.comments);
   const r = await resolver(p);
   const identifier = (n: number) => `${p.key}-${n}`;
   const userName = (id: number | null) => (id == null ? null : r.meta.users.find((u) => u.id === id)?.name ?? null);
@@ -99,7 +104,9 @@ async function presentIssue(p: Project, number: number) {
     parent: d.parent ? identifier(d.parent.number) : null,
     waitingOn: d.relations.waitingOn.map((x) => ({ id: identifier(x.number), title: x.title, open: x.open })),
     blocking: d.relations.blocking.map((x) => ({ id: identifier(x.number), title: x.title, open: x.open })),
-    relatedTo: d.relations.related.map((x) => ({ id: identifier(x.number), title: x.title })),
+    // Wzmianki z opisu i komentarzy (w obie strony), też z innych projektów użytkownika.
+    mentions: m.mentions.map((x) => ({ id: x.id, title: x.title, open: x.open })),
+    mentionedIn: m.mentionedIn.map((x) => ({ id: x.id, title: x.title, open: x.open })),
     duplicateOf: d.relations.duplicateOf.map((x) => ({ id: identifier(x.number), title: x.title })),
     duplicatedBy: d.relations.duplicates.map((x) => ({ id: identifier(x.number), title: x.title })),
     subIssues: d.children.map((c) => ({ id: identifier(c.number), title: c.title, status: r.meta.statuses.find((s) => s.id === c.statusId)?.name })),
@@ -171,8 +178,16 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
   server.registerPrompt('analyze_issue', { description: procedures.analyze.title, argsSchema: { id: z.string().describe('Issue identifier, e.g. ACME-12') } }, ({ id }) => promptFor('analyze', id));
   server.registerPrompt('close_issue', { description: procedures.close.title, argsSchema: { id: z.string().describe('Issue identifier, e.g. ACME-12') } }, ({ id }) => promptFor('close', id));
 
-  tool('get_issue', 'Get an issue by identifier (e.g. ACME-12) with description, AI analysis, HUMAN/AI change notes, sub-issues, commits and the Claude Code worklog (files and commits per session).',
-    { id: z.string() }, async ({ id }) => { const { p, n } = await ref(me, id); return presentIssue(p, n); });
+  tool('get_issue', 'Get an issue by identifier (e.g. ACME-12) with description, AI analysis, HUMAN/AI change notes, sub-issues, commits and the Claude Code worklog (files and commits per session). history: true adds who changed what and when.',
+    { id: z.string(), history: z.boolean().optional() }, async ({ id, history }) => {
+      const { p, n } = await ref(me, id);
+      const out = await presentIssue(me, p, n);
+      if (!history) return out;
+      // Historia bez tego, co już jest w commits/worklog; jedna płaska linia na zdarzenie.
+      const d = await svc.getIssueDetail(p, n);
+      const users = (await svc.getMeta(p)).users;
+      return { ...out, history: d.activity.filter((a) => !['worklog', 'commit'].includes(a.payload.kind)).map((a) => ({ at: a.createdAt, by: users.find((u) => u.id === a.actorId)?.name ?? null, ...(a.viaAi ? { ai: true } : {}), ...a.payload })) };
+    });
 
   tool('list_projects', 'List projects you are a member of (key, name, your role).', {}, async () =>
     (await projectsOf(me)).map(({ project, role }) => ({ key: project.key, name: project.name, role })));
@@ -183,7 +198,8 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
     assignee: z.string().optional().describe('User name, login or "me"'),
     label: z.string().optional(),
     analysisRequested: z.boolean().optional().describe('Only issues waiting for an AI analysis'),
-    query: z.string().optional().describe('Case-insensitive search in title'),
+    query: z.string().optional().describe('Case-insensitive search in title, description and comments'),
+    sprint: z.string().optional().describe('"current" or a sprint name'),
     limit: z.number().int().max(250).optional(),
   }, async (a) => {
     const ps = a.project ? [await projectOf(me, a.project)] : (await projectsOf(me)).map((x) => x.project);
@@ -196,8 +212,20 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       const assigneeId = a.assignee ? find(() => r.user(a.assignee!, me)) : undefined;
       const labelId = a.label ? find(() => r.label(a.label!)) : undefined;
       if (statusId === null || assigneeId === null || labelId === null) continue;
-      let rows = await svc.listIssues(p, { statusIds: statusId ? [statusId] : undefined, assigneeId, labelId, analysisRequested: a.analysisRequested });
-      if (a.query) rows = rows.filter((x) => x.title.toLowerCase().includes(a.query!.toLowerCase()));
+      let sprintId: number | undefined;
+      if (a.sprint) {
+        const all = await db.select({ id: sprints.id, name: sprints.name, status: sprints.status }).from(sprints).where(eq(sprints.projectId, p.id));
+        const sp = a.sprint.toLowerCase() === 'current' ? all.find((s) => s.status === 'active') : all.find((s) => s.name.toLowerCase() === a.sprint!.toLowerCase());
+        if (!sp) { if (a.project) throw new RuleError(a.sprint.toLowerCase() === 'current' ? 'No active sprint' : 'Unknown sprint "' + a.sprint + '". Available: ' + all.map((s) => s.name).join(', '), 'invalid'); continue; }
+        sprintId = sp.id;
+      }
+      let rows = await svc.listIssues(p, { statusIds: statusId ? [statusId] : undefined, assigneeId, labelId, sprintId, analysisRequested: a.analysisRequested });
+      if (a.query) {
+        const q = '%' + a.query.replace(/[%_]/g, (c) => String.fromCharCode(92) + c) + '%';
+        const hits = new Set((await db.selectDistinct({ id: issues.id }).from(issues).leftJoin(comments, eq(comments.issueId, issues.id))
+          .where(and(eq(issues.projectId, p.id), or(ilike(issues.title, q), ilike(issues.description, q), ilike(comments.body, q))))).map((r) => r.id));
+        rows = rows.filter((x) => hits.has(x.id));
+      }
       out.push(...rows.map((x) => ({
         id: identifier(p.key, x.number),
         title: x.title,
@@ -256,11 +284,11 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
     };
     if (a.id) {
       await svc.updateIssue(p, me, target.n, input);
-      return presentIssue(p, target.n);
+      return presentIssue(me, p, target.n);
     }
     if (!a.title) throw new RuleError('title is required to create an issue', 'invalid');
     const row = await svc.createIssue(p, me, { ...input, title: a.title });
-    return presentIssue(p, row.number);
+    return presentIssue(me, p, row.number);
   });
 
   tool('set_analysis',
@@ -298,8 +326,8 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       return `Change notes saved on ${id}`;
     });
 
-  tool('set_relation', 'Add or remove a relation. waits_on: this issue waits on other (other blocks it). blocks: this issue blocks other. related: plain link. duplicate_of: this issue is a duplicate of other (the original); duplicated_by: the reverse.',
-    { id: z.string(), kind: z.enum(['waits_on', 'blocks', 'related', 'duplicate_of', 'duplicated_by']), otherId: z.string(), remove: z.boolean().optional() },
+  tool('set_relation', 'Add or remove a relation (plain links between issues are not a relation: mention the id, e.g. ACME-12, in the description or a comment; get_issue lists them as mentions). waits_on: this issue waits on other (other blocks it). blocks: this issue blocks other. duplicate_of: this issue is a duplicate of other (the original); duplicated_by: the reverse.',
+    { id: z.string(), kind: z.enum(['waits_on', 'blocks', 'duplicate_of', 'duplicated_by']), otherId: z.string(), remove: z.boolean().optional() },
     async ({ id, kind, otherId, remove }) => {
       const { p, n } = await ref(me, id);
       if (remove) await removeRelation(p, me, n, kind, numIn(p, otherId));
@@ -339,9 +367,21 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
     }
   });
 
-  tool('save_comment', 'Add a comment to an issue (markdown).', { id: z.string(), body: z.string().min(1) }, async ({ id, body }) => {
+  tool('save_comment', 'Add a comment to an issue (markdown), or edit your own one (commentId). images: PNG/JPEG/GIF/WebP as base64, appended to the body.', {
+    id: z.string(), body: z.string().min(1), commentId: z.number().int().optional(),
+    images: z.array(z.object({ data: z.string(), mimeType: z.enum(['image/png', 'image/jpeg', 'image/gif', 'image/webp']) })).max(5).optional(),
+  }, async ({ id, body, commentId, images }) => {
     const { p, n } = await ref(me, id);
-    const c = await svc.addComment(p, me, n, body);
+    const urls = (images ?? []).map((im) => {
+      const ext = im.mimeType.split('/')[1].replace('jpeg', 'jpg');
+      const buf = Buffer.from(im.data, 'base64');
+      if (!matchesMagic(ext, buf)) throw new RuleError('Image content does not match ' + im.mimeType, 'invalid');
+      if (buf.length > 10 * 1024 * 1024) throw new RuleError('Image too large (max 10 MB)', 'invalid');
+      return saveUpload(buf, ext, me.id);
+    });
+    const text = [body, ...urls.map((u) => '![](' + u + ')')].join('\n\n');
+    if (commentId != null) { await svc.updateComment(p, me, commentId, text); return { id: commentId, issue: id }; }
+    const c = await svc.addComment(p, me, n, text);
     return { id: c.id, issue: id };
   });
 
@@ -407,8 +447,13 @@ export function buildServer(user: SessionUser, scope: McpScope | null = null) {
       return a.answer ? `Answered ${a.answer}` : 'Answer removed';
     });
 
-  tool('list_users', 'List members of a project.', { project: projectArg }, async (a) =>
-    (await svc.getMeta(await projectOf(me, a.project))).users.filter((u) => u.active).map((u) => ({ name: u.name, login: u.login, role: u.role })));
+  tool('list_users', 'List members of a project with their people tags (usable as askUser "#tag").', { project: projectArg }, async (a) => {
+    const meta = await svc.getMeta(await projectOf(me, a.project));
+    return meta.users.filter((u) => u.active).map((u) => {
+      const tags = u.tagIds.map((t) => meta.tags.find((x) => x.id === t)?.name).filter(Boolean);
+      return { name: u.name, login: u.login, role: u.role, ...(tags.length ? { tags } : {}) };
+    });
+  });
 
   return server;
 }
