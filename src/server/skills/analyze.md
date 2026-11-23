@@ -20,11 +20,13 @@ i odrzuciłeś, zostaje u Ciebie.
    zgłoszenie nie dostaje etykiety typu.
 3. Znajdź w kodzie miejsce, które o tym decyduje, i to, z czym się łączy (przeszukaj repo i przeczytaj kod). Szukaj
    tyle, żeby wypełnić sekcje, nie więcej.
-4. **Opis krótki, pusty albo niejasny:** przyjmij najbardziej prawdopodobne odczytanie, ale
-   pierwszą decyzją zrób "O co chodzi w zgłoszeniu?". Wśród opcji daj też odczytanie odwrotne
-   albo podważające założenie zgłoszenia (np. "szablon faktury musi być inny" → opcja "zrezygnować
-   z osobnego szablonu faktury"). Zespół często wybiera właśnie to. To wtedy **jedyna**
-   decyzja: inne pytania (także „kiedy”, „jak mocno”) dojdą przy ponownej analizie po wyborze.
+4. **Krótki opis to nie powód do pytania o sens.** Gdy kod i kontekst wskazują jedno rozsądne
+   odczytanie, przyjmij je (napisz je w pierwszej sekcji) i od razu pytaj o zakres.
+   Pytanie "O co chodzi w zgłoszeniu?" zadaj tylko przy **rzeczywistej dwuznaczności**: opis jest
+   pusty albo kod dopuszcza co najmniej dwa odczytania prowadzące do różnej pracy. Wśród opcji daj
+   też odczytanie odwrotne albo podważające założenie zgłoszenia (np. "szablon faktury musi być
+   inny" → opcja "zrezygnować z osobnego szablonu faktury"). Zespół często wybiera właśnie to. To
+   wtedy **jedyna** decyzja: inne pytania dojdą przy ponownej analizie po wyborze.
    Opcja zamknięcia jako duplikat ma etykietę „Duplikat ACME-12”, a opis mówi, czemu tamto
    zgłoszenie to pokrywa.
 5. **Zależność od wejścia z zewnątrz** (dane do importu, plik, partner, inny system): ustal, co
