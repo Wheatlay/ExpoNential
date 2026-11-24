@@ -127,6 +127,10 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 
 - **Moved repo folders are found again:** a mapping made by discovery (`source: auto`) whose folder no longer exists counts as missing, so the next discovery pass maps the project to the folder's new place. Manual and cloned mappings are never replaced.
 
+## 0.4.31
+
+- **Queue done toast:** `batchDone` counts finished runs (failed ones too); the first poll that is not busy, takes no job and has no consent card waiting shows one toast "All analyses done (N)" (`notifyQueueDone`, gated by `notifyOwn` and mute) and resets the counter.
+
 ## 0.4.30
 
 - **A run that saved nothing is a failure:** after exit code 0 the agent reads the issue; still requested and still claimed by this device means no analysis was written, so the run is recorded as failed and the claim is released with the error "the engine finished without saving an analysis" (the tracker shows it), instead of holding the claim for 30 minutes as ok.

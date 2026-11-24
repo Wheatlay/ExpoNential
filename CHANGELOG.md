@@ -2,6 +2,11 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.31] - 24.11.2026
+
+- When all queued analyses are done, the agent shows one notification with how many ran.
+- Starting an analysis while your PC is online no longer shows the "Queued" message; the status on the issue is enough.
+
 ## Agent [0.4.30] - 24.11.2026
 
 - An analysis that ends without saving anything is shown as failed in the tracker right away, instead of the issue staying taken for 30 minutes.
