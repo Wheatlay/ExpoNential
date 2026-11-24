@@ -139,6 +139,10 @@ const COMPLETED_LABEL: Record<Display['completed'], string> = { day: t('Past day
 const isClosedType = (s: Status) => s.type === 'completed' || s.type === 'canceled' || s.type === 'duplicate';
 const NONE = 'none';
 
+/** Przewinięcie tablicy i jej komórek między montowaniami (wejście w zadanie i powrót), do odświeżenia strony. */
+const boardScroll = { top: 0, left: 0 };
+const cellScroll = new Map<string, number>();
+
 export function Board() {
   const metaQ = useMeta();
   const issuesQ = useIssues();
@@ -157,6 +161,17 @@ export function Board() {
   const [colCollapsed, setColCollapsed] = useStored<Record<string, boolean>>('board.colCollapsed', {});
   const boardRef = useRef<HTMLDivElement>(null);
   const [boardWidth, setBoardWidth] = useState(0);
+  // Pozycja całej tablicy (wiersze swimlane, poziomo) przeżywa wejście w zadanie i powrót.
+  // Bez listy zależności: tablica pojawia się dopiero po załadowaniu danych, a podpinamy się raz na element.
+  const scrollBound = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const el = boardRef.current;
+    if (!el || scrollBound.current === el) return;
+    scrollBound.current = el;
+    el.scrollTop = boardScroll.top;
+    el.scrollLeft = boardScroll.left;
+    el.addEventListener('scroll', () => { boardScroll.top = el.scrollTop; boardScroll.left = el.scrollLeft; }, { passive: true });
+  });
   useEffect(() => {
     const el = boardRef.current;
     if (!el) return;
@@ -686,6 +701,15 @@ function Cell({ status, rowKey, issues, dragging, meta, onHover, onContext, onAd
     const up = el.scrollTop > 1, down = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
     setEdge((e) => (e.up === up && e.down === down ? e : { up, down }));
   }, []);
+  // Powrót z zadania: tablica montuje się od nowa, więc przewinięcie komórki odtwarzamy z pamięci.
+  useLayoutEffect(() => {
+    const top = cellScroll.get(`${status.id}|${rowKey}`);
+    if (box.current && top) box.current.scrollTop = top;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const onScroll = () => {
+    if (box.current) cellScroll.set(`${status.id}|${rowKey}`, box.current.scrollTop);
+    measure();
+  };
   useLayoutEffect(() => {
     measure();
     const el = box.current;
@@ -703,7 +727,7 @@ function Cell({ status, rowKey, issues, dragging, meta, onHover, onContext, onAd
     </div>;
   }
   return (
-    <div ref={setRefs} onScroll={measure} data-cell={`${status.id}|${rowKey}`} style={{ width }} title={isOver && warn ? warn : undefined}
+    <div ref={setRefs} onScroll={onScroll} data-cell={`${status.id}|${rowKey}`} style={{ width }} title={isOver && warn ? warn : undefined}
       className={`col ${width < 180 ? 'narrow' : ''} ${isOver ? (warn ? 'warn' : 'over') : ''} ${edge.up ? 'more-up' : ''} ${edge.down ? 'more-down' : ''}`}>
       {issues.map((i) => (
         <DraggableCard key={i.id} issue={i} meta={meta} statusId={status.id} rowKey={rowKey} onHover={onHover} onContext={onContext}
