@@ -26,7 +26,14 @@ func TestDenyRules(t *testing.T) {
 			t.Errorf("missing %s in %s", want, r)
 		}
 	}
-	if !strings.Contains(r, "Read(//") {
-		t.Errorf("no absolute data dir rule: %s", r)
+	d := ruleAbs(dataDir())
+	for _, want := range []string{"Read(" + d + "/*.json)", "Grep(" + d + "/*.txt)", "Read(" + d + "/*.lock)"} {
+		if !strings.Contains(r, want) {
+			t.Errorf("missing %s in %s", want, r)
+		}
+	}
+	// The analysis worktrees (worktrees/KEY), clones and temp worktrees live in the data dir: no blanket deny.
+	if strings.Contains(r, d+"/**") {
+		t.Errorf("data dir denied as a whole, worktrees unreadable: %s", r)
 	}
 }

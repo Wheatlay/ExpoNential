@@ -43,11 +43,19 @@ func ruleAbs(p string) string {
 	return "/" + strings.TrimRight(s, "/")
 }
 
+// dataDirSecretFiles: the agent's own files at the top of the data dir (config.json with the token, mcp-*.json with
+// the bearer, log.txt, runs.json, locks, stack dumps). Only top-level files ("*" does not cross "/"): the analysis
+// worktrees, clones and temp worktrees also live in the data dir (worktrees/, repos/, tmp/) and must stay readable.
+// A blanket dataDir/** deny blocked every run requested by someone else (CHUB-240).
+var dataDirSecretFiles = []string{"*.json", "*.txt", "*.lock"}
+
 // secretDenyPaths: every absolute location a run must not read. extraDirs are more Claude config dirs (accounts).
 func secretDenyPaths(extraDirs ...string) []string {
 	out := []string{}
 	if d := ruleAbs(dataDir()); d != "" {
-		out = append(out, d+"/**")
+		for _, f := range dataDirSecretFiles {
+			out = append(out, d+"/"+f)
+		}
 	}
 	out = append(out, homeSecretPaths...)
 	for _, d := range extraDirs {
