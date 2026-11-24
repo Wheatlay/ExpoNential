@@ -12,6 +12,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Board: a cell with more cards than fit shows a shadow at the edge where cards are hidden; Display › Board options › "Show all cards" lets cells grow instead of scrolling.
 - Relations: the manual "Related to" link is gone (existing ones removed). Instead the panel lists **Mentioned** issues (both directions), found in descriptions and comments the same way as the issue pills (CHUB-210, chub 210, chub210), also from your other projects. MCP get_issue returns them as mentions / mentionedIn.
 - History: assigning an issue to yourself reads "assigned it to themselves" instead of "X assigned to X".
 - Every change made with a token (MCP, agent, hook) is marked AI in the history, not only MCP tool calls.
