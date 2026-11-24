@@ -554,6 +554,11 @@ textarea.md-edit {
   .sidebar:not(.open) .nav-item .count { position: absolute; left: 24px; top: 0; max-width: 26px; font-size: var(--text-xs); line-height: 1; }
   .sidebar .nav-item { position: relative; }
   .sidebar:not(.open) .sidebar-bottom .settings-link { order: -1; }
+  /* Awatar i wyloguj nie mieszczą się na szynie (wystawał kawałek awatara): wracają po rozwinięciu. */
+  .sidebar .sidebar-bottom > :not(.settings-link) { transition: opacity 0.18s; }
+  .sidebar:not(.open) .sidebar-bottom > :not(.settings-link) { opacity: 0; pointer-events: none; }
+  /* Litera środowiska pod kropką deployu, tylko na szynie. */
+  .sidebar:not(.open) .deploy-env { display: flex; }
   .rail-only, .sidebar-backdrop { display: inline-grid; }
 }
 
@@ -866,6 +871,9 @@ a.sub-row > button { display: inline-flex; }
 .deploy-status.failed .deploy-dot { background: var(--danger); }
 .deploy-status.in_progress .deploy-dot, .deploy-status.queued .deploy-dot { background: var(--progress); animation: deploy-pulse 1.2s ease-in-out infinite; }
 @keyframes deploy-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--progress) 60%, transparent); } 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--progress) 0%, transparent); } }
+/* Litera środowiska pod kropką (left = padding + ramka karty, szerokość kropki); widoczna tylko na szynie paska. */
+.deploy-status { position: relative; }
+.deploy-env { display: none; position: absolute; left: 11px; top: 25px; width: 9px; justify-content: center; font-size: var(--text-xs); font-weight: 600; line-height: 1; color: var(--text-tertiary); }
 .deploy-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .deploy-label { font-weight: 600; font-size: var(--text-md); }
 .deploy-status.failed .deploy-label { color: var(--danger-text); }
