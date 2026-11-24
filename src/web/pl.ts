@@ -269,6 +269,7 @@ export const pl: Record<string, string> = {
   'Duplicated by…': 'Ma duplikat…',
   '{id} is a duplicate of…': '{id} jest duplikatem…',
   'Show empty rows': 'Pokaż puste wiersze',
+  'Show all cards': 'Pokaż wszystkie karty',
   'Show others dragging cards': 'Pokaż, jak inni przesuwają karty',
   'Display properties': 'Widoczne właściwości',
   '{done} done · {doing} in progress · {todo} to do': '{done} zrobione · {doing} w toku · {todo} do zrobienia',

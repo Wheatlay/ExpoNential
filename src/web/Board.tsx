@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { ErrorState, LoadingState } from './states.tsx';
 import { CLAIM_TTL_MIN } from './time.ts';
 import { askConfirm } from './Confirm.tsx';
@@ -36,6 +36,8 @@ type Display = {
   completed: 'day' | 'week' | 'month' | 'all';
   showSubIssues: boolean;
   showEmptyRows: boolean;
+  /** Komórki bez limitu wysokości (bez przewijania w środku). */
+  showAllCards?: boolean;
   /** Stare ustawienie: wszystkie ukryte kolumny naraz. Zostaje jako wartość startowa dla hiddenShown. */
   showHidden: boolean;
   /** Które ukryte kolumny (Backlog, Canceled, Duplicate…) są jednak pokazane; brak = według showHidden. */
@@ -612,7 +614,7 @@ export function Board() {
                     </div>
                   )}
                   {!isCollapsed && (
-                    <div className="row-cols">
+                    <div className={`row-cols ${display.showAllCards ? 'full' : ''}`}>
                       {columns.map((s) => (
                         <Cell
                           key={s.id}
@@ -675,6 +677,25 @@ function Cell({ status, rowKey, issues, dragging, meta, onHover, onContext, onAd
   const overData = over?.data.current as { statusId?: number; rowKey?: string } | undefined;
   const isOver = overCell || (overData?.statusId === status.id && overData?.rowKey === rowKey);
   const warn = dragging && dragging.statusId !== status.id ? doneWarning(status, dragging.hasChangeNotes) : undefined;
+  // Cienie przewijania: czy nad / pod widocznym fragmentem komórki są jeszcze karty.
+  const box = useRef<HTMLDivElement | null>(null);
+  const [edge, setEdge] = useState({ up: false, down: false });
+  const measure = useCallback(() => {
+    const el = box.current;
+    if (!el) return;
+    const up = el.scrollTop > 1, down = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+    setEdge((e) => (e.up === up && e.down === down ? e : { up, down }));
+  }, []);
+  useLayoutEffect(() => {
+    measure();
+    const el = box.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    for (const c of Array.from(el.children)) ro.observe(c);
+    return () => ro.disconnect();
+  }, [measure, issues.length, collapsed]);
+  const setRefs = (el: HTMLDivElement | null) => { setNodeRef(el); box.current = el; };
   // Zwinięta kolumna nadal przyjmuje upuszczone karty (np. szybkie przeniesienie do Done).
   if (collapsed) {
     return <div ref={setNodeRef} data-cell={`${status.id}|${rowKey}`} style={{ width }} className={`col collapsed ${isOver ? (warn ? 'warn' : 'over') : ''}`} title={isOver && warn ? warn : `${status.name}: ${issues.length}`}>
@@ -682,7 +703,8 @@ function Cell({ status, rowKey, issues, dragging, meta, onHover, onContext, onAd
     </div>;
   }
   return (
-    <div ref={setNodeRef} data-cell={`${status.id}|${rowKey}`} style={{ width }} className={`col ${width < 180 ? 'narrow' : ''} ${isOver ? (warn ? 'warn' : 'over') : ''}`} title={isOver && warn ? warn : undefined}>
+    <div ref={setRefs} onScroll={measure} data-cell={`${status.id}|${rowKey}`} style={{ width }} title={isOver && warn ? warn : undefined}
+      className={`col ${width < 180 ? 'narrow' : ''} ${isOver ? (warn ? 'warn' : 'over') : ''} ${edge.up ? 'more-up' : ''} ${edge.down ? 'more-down' : ''}`}>
       {issues.map((i) => (
         <DraggableCard key={i.id} issue={i} meta={meta} statusId={status.id} rowKey={rowKey} onHover={onHover} onContext={onContext}
           movedBy={remote.find((p) => p.number === i.number)?.name} />
@@ -867,7 +889,7 @@ function DisplayPanel({ at, narrow, display, setDisplay, onClose }: {
   const props = { ...ALL_PROPS, ...display.props };
   // Telefon/tablet pokazuje listę, nie tablicę: opcje tylko dla tablicy są wyszarzone z powodem (nie chowamy ich).
   const boardOnly = narrow ? t('Only on the board') : null;
-  const toggle = (k: 'showSubIssues' | 'showEmptyRows' | 'showHidden' | 'livePresence', label: string, off: string | null = null) => (
+  const toggle = (k: 'showSubIssues' | 'showEmptyRows' | 'showAllCards' | 'showHidden' | 'livePresence', label: string, off: string | null = null) => (
     <Tooltip text={off}>
       <button className="row" disabled={!!off} onClick={() => set(k, !display[k])}>
         <span>{label}</span><span className={`switch ${display[k] ? 'on' : ''}`} role="switch" aria-checked={display[k]} />
@@ -904,6 +926,7 @@ function DisplayPanel({ at, narrow, display, setDisplay, onClose }: {
         <span className="title">{t('Board options')}</span>
         <HiddenColumns display={display} set={(ids) => set('hiddenShown', ids)} />
         {toggle('showEmptyRows', t('Show empty rows'), boardOnly)}
+        {toggle('showAllCards', t('Show all cards'), boardOnly)}
         {toggle('livePresence', t('Show others dragging cards'), boardOnly)}
         <span>{t('Display properties')}</span>
         <div className="prop-chips">
