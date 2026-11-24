@@ -28,6 +28,7 @@ func hhmm() string { return time.Now().Format("15:04") }
 
 var (
 	running      atomic.Bool
+	batchDone    atomic.Int32 // analyses finished since the queue was last empty: one toast when it empties
 	stateMu      sync.Mutex
 	cloneAllowed []string // project keys the server lets this agent clone on its own
 	lastErr      string   // goes to the tracker with the next successful poll
@@ -776,6 +777,7 @@ func pollOnce(delay *int, errLogged *bool) error {
 			setAnalyzing(key, "")
 			defer setAnalyzing("", "")
 			defer running.Store(false)
+			defer batchDone.Add(1)
 			defer func() {
 				if r := recover(); r != nil {
 					logf("error: %v", r)
@@ -788,6 +790,12 @@ func pollOnce(delay *int, errLogged *bool) error {
 			m := hhmm() + " could not open VS Code: " + err.Error()
 			setLastErr(m)
 			logf("%s", m)
+		}
+	}
+	// The queue emptied after a run of analyses (nothing to take, nothing waiting for consent): one summary toast.
+	if !busy && job == nil && pending == 0 {
+		if n := batchDone.Swap(0); n > 0 {
+			notifyQueueDone(int(n))
 		}
 	}
 	// No pause after a successful poll: the server holds the request (long poll). Only guards against a tight loop.

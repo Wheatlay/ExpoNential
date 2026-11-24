@@ -5,6 +5,7 @@ package app
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -84,6 +85,24 @@ func showInfoCard(key, name string) {
 			logf("toast: %s", err)
 		}
 	}()
+}
+
+// notifyQueueDone: every analysis in the queue is done (n finished in this run). Respects mute and the own-card switch.
+func notifyQueueDone(n int) {
+	if !notifyOwnOn() || isMuted() {
+		return
+	}
+	title := fmt.Sprintf("All analyses done (%d)", n)
+	if n == 1 {
+		title = "Analysis done"
+	}
+	if agentLang() == "pl" {
+		title = fmt.Sprintf("Wszystkie analizy zrobione (%d)", n)
+		if n == 1 {
+			title = "Analiza zrobiona"
+		}
+	}
+	notifyText(title)
 }
 
 // notifyText shows a plain toast.

@@ -314,7 +314,6 @@ export const pl: Record<string, string> = {
   'Problem analysis': 'Analiza problemu',
   'No analysis yet': 'Brak analizy',
   'Waiting': 'Czeka',
-  'Queued. It runs on your PC in a moment.': 'W kolejce. Za chwilę ruszy na twoim PC.',
   'Queued. Your PC is offline, it runs when it is on.': 'W kolejce. twój PC jest wyłączony, ruszy po jego włączeniu.',
   'Waiting for a PC': 'Czeka na PC',
   'No PC with the agent is online for this request. It runs when one is on.': 'Żaden PC z agentem nie jest teraz online dla tego zlecenia. Ruszy, gdy któryś się włączy.',

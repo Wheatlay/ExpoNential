@@ -242,7 +242,8 @@ export function IssuePage({ number }: { number: number }) {
       throw e;
     }
     void qc.invalidateQueries({ queryKey: ['issue', number] });
-    if (local) analysisToast(number, me?.agentOnline ? t('Queued. It runs on your PC in a moment.') : t('Queued. Your PC is offline, it runs when it is on.'));
+    // PC online: status na zgłoszeniu i toast agenta wystarczą, bez dodatkowego komunikatu.
+    if (local) { if (!me?.agentOnline) analysisToast(number, t('Queued. Your PC is offline, it runs when it is on.')); }
     else analysisToast(number, t('AI analysis requested. A PC with the agent runs it.'));
   };
   // Stan zlecenia: czeka (jest online PC, który je weźmie) / czeka na PC (nikt nie słucha) / biegnie na PC (claim).
