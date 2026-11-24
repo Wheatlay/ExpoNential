@@ -55,7 +55,7 @@ Exponential (adres i nazwy techniczne: `tracker`) to narzędzie zespołu do zgł
 
 - Niedostępna akcja: wyszarzona z podpowiedzią podającą powód (`Tooltip` + `disabled`), gdy użytkownikowi przyda się wiedza, że ta opcja istnieje (Deep, Today, Carry over all); ukryta, gdy tylko zaśmiecałaby widok (chipy z licznikiem 0, „×” przy jedynym terminie, sekcja Accounts dla nie-adminów). Zatwierdzone 04.11.2026. Wyszarzona akcja jest osiągalna klawiaturą, żeby powód był do przeczytania.
 - Przyciski w oknach: drugorzędny (Cancel) po lewej, główny ostatni po prawej; akcja niszcząca (Delete, Cancel meeting) przy lewej krawędzi, oddzielona. Zatwierdzone 04.11.2026.
-- Komórka boardu z limitem wysokości przewija się w środku; gdy nad albo pod widocznym fragmentem są karty, przy tej krawędzi jest cień przewijania (gradient 14px w `shadow-scroll`). Display › „Show all cards” zdejmuje limit (zatwierdzone 24.11.2026).
+- Komórka boardu z limitem wysokości przewija się w środku; gdy nad albo pod widocznym fragmentem są karty, przy tej krawędzi jest cień przewijania (gradient 28px w `shadow-scroll`). Display › „Show all cards” zdejmuje limit (zatwierdzone 24.11.2026).
 - Najechanie nie przesuwa układu (np. „+” w komórce boardu zajmuje miejsce zawsze, tylko jest niewidoczny).
 - Potwierdzenia przez `askConfirm` (okno aplikacji), nigdy systemowe `confirm()`/`alert()`.
 - Filtry w kolumnach: lejek w nagłówku kolumny i popover.
