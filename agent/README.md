@@ -127,6 +127,10 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 
 - **Moved repo folders are found again:** a mapping made by discovery (`source: auto`) whose folder no longer exists counts as missing, so the next discovery pass maps the project to the folder's new place. Manual and cloned mappings are never replaced.
 
+## 0.4.29
+
+- **Teammates' analyses read the code again:** the deny rules blocked the whole data folder (`dataDir/**`), which also holds the analysis worktrees (`worktrees/KEY`), clones and temp worktrees, so a run for someone else got Read/Grep denied and ended without an analysis. Now only the data folder's top-level files are denied (`*.json`, `*.txt`, `*.lock`: config, MCP file, logs, locks).
+
 ## 0.4.28
 
 - **Deleted projects disappear from the agent:** on each repo scan (agent start, Rescan, hourly) the local mapping and phone switch of a project the server no longer lists (deleted, or you left it) are removed.

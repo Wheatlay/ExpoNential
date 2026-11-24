@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.29] - 24.11.2026
+
+- Analyses requested by a teammate can read the code again (they ended without an analysis, the agent's data folder was blocked as a whole).
+
 ## Unreleased
 
 - Relations: the manual "Related to" link is gone (existing ones removed). Instead the panel lists **Mentioned** issues (both directions), found in descriptions and comments the same way as the issue pills (CHUB-210, chub 210, chub210), also from your other projects. MCP get_issue returns them as mentions / mentionedIn.
