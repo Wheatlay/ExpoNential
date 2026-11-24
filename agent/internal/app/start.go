@@ -416,6 +416,16 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 				rec.Result, rec.Reason = runFail, cut(failMessage(engine, code, f), 160)
 			}
 		}
+		if code == 0 && analysisStillOurs(a, key, deviceID) {
+			// Exit 0 but nothing saved (e.g. the engine was denied the repo and asked a question nobody sees, CHUB-240):
+			// a failure, so the claim is released with an error the tracker shows, not held for 30 minutes as "ok".
+			rec.Result, rec.Reason = runFail, noAnalysisMsg
+			appendRun(rec)
+			recorded = true
+			failMsg, failCat = noAnalysisMsg, noAnalysisMsg
+			logf("%s: %s", key, noAnalysisMsg)
+			return
+		}
 		appendRun(rec)
 		recorded = true
 		if code == 0 {
@@ -432,6 +442,26 @@ func analyze(a *Auth, key string, deepJob bool, deviceID string, rq requesterInf
 		failCat = fmt.Sprintf("engine exited %d", code)
 		return
 	}
+}
+
+const noAnalysisMsg = "the engine finished without saving an analysis"
+
+// analysisStillOurs: after a run that exited 0, the issue is still waiting for an analysis and still claimed by this
+// device, i.e. nothing was saved. False when the check itself fails (then the run counts as ok, as before).
+func analysisStillOurs(a *Auth, key, deviceID string) bool {
+	var d struct {
+		AnalysisRequestedAt   *string `json:"analysisRequestedAt"`
+		AnalysisClaimedDevice *string `json:"analysisClaimedDevice"`
+	}
+	if err := request(a, "GET", "/api/issues/"+key, nil, 30*time.Second, &d); err != nil {
+		logf("%s: could not check whether the analysis was saved: %s", key, shortErr(err))
+		return false
+	}
+	return stillOurs(d.AnalysisRequestedAt, d.AnalysisClaimedDevice, deviceID)
+}
+
+func stillOurs(requestedAt, claimedDevice *string, deviceID string) bool {
+	return requestedAt != nil && *requestedAt != "" && claimedDevice != nil && *claimedDevice == deviceID
 }
 
 // encodeURIComponent equivalent.

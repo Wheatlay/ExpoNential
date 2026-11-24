@@ -127,6 +127,10 @@ stacks of all goroutines to `stack-<time>.txt` in its data folder (a hung window
 
 - **Moved repo folders are found again:** a mapping made by discovery (`source: auto`) whose folder no longer exists counts as missing, so the next discovery pass maps the project to the folder's new place. Manual and cloned mappings are never replaced.
 
+## 0.4.30
+
+- **A run that saved nothing is a failure:** after exit code 0 the agent reads the issue; still requested and still claimed by this device means no analysis was written, so the run is recorded as failed and the claim is released with the error "the engine finished without saving an analysis" (the tracker shows it), instead of holding the claim for 30 minutes as ok.
+
 ## 0.4.29
 
 - **Teammates' analyses read the code again:** the deny rules blocked the whole data folder (`dataDir/**`), which also holds the analysis worktrees (`worktrees/KEY`), clones and temp worktrees, so a run for someone else got Read/Grep denied and ended without an analysis. Now only the data folder's top-level files are denied (`*.json`, `*.txt`, `*.lock`: config, MCP file, logs, locks).

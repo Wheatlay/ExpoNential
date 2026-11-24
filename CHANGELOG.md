@@ -2,6 +2,10 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Agent [0.4.30] - 24.11.2026
+
+- An analysis that ends without saving anything is shown as failed in the tracker right away, instead of the issue staying taken for 30 minutes.
+
 ## Agent [0.4.29] - 24.11.2026
 
 - Analyses requested by a teammate can read the code again (they ended without an analysis, the agent's data folder was blocked as a whole).
