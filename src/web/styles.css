@@ -559,6 +559,10 @@ textarea.md-edit {
   .sidebar:not(.open) .sidebar-bottom > :not(.settings-link) { opacity: 0; pointer-events: none; }
   /* Litera środowiska obok kropki deployu, tylko na szynie. */
   .sidebar:not(.open) .deploy-env { display: flex; }
+  /* Para kropka + litera wyśrodkowana na osi ikon szyny (sama kropka już na niej stoi): obie o 6px w lewo. */
+  .sidebar .deploy-dot { transition: transform 0.18s; }
+  .sidebar:not(.open) .deploy-status:has(.deploy-env) .deploy-dot { transform: translateX(-6px); }
+  .sidebar:not(.open) .deploy-env { left: 18px; }
   .rail-only, .sidebar-backdrop { display: inline-grid; }
 }
 
