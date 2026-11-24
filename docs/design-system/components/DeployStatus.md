@@ -2,4 +2,4 @@ Status ostatniego deployu każdego środowiska projektu w pasku bocznym (jedna k
 
 - `finished` success, `in_progress`/`queued` progress (kropka pulsuje), `failed` danger z tłem.
 - Treść: czas względny · autor commita (pogrubiony), pod spodem wiadomość commita (maks. 2 linie).
-- Na wąskiej szynie paska (761-1100 px) sama kropka, a przy kilku środowiskach pod nią pierwsza litera nazwy (`text-xs`, `text-tertiary`); ramka, tło i tekst wracają po rozwinięciu paska (zatwierdzone 24.11.2026).
+- Na wąskiej szynie paska (761-1100 px) sama kropka, a przy kilku środowiskach obok niej pierwsza litera nazwy (`text-xs`, `text-secondary`); ramka, tło i tekst wracają po rozwinięciu paska (zatwierdzone 24.11.2026).

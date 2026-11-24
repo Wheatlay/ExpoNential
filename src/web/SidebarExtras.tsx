@@ -92,7 +92,7 @@ function DeployCard({ d, env }: { d: NonNullable<Deploy>; env: string | null }) 
     <div className={`deploy-status ${d.status}`} role="status" aria-label={env ? `${env}: ${label}` : label}
       title={[env, label, d.commit?.slice(0, 7), d.message].filter(Boolean).join(' · ')}>
       <span className="deploy-dot" />
-      {/* Na wąskiej szynie paska widać tylko kropki: litera środowiska mówi, która to które (pełna nazwa w podpowiedzi). */}
+      {/* Na wąskiej szynie paska widać tylko kropki: litera obok kropki mówi, które to środowisko (pełna nazwa w podpowiedzi). */}
       {env && <span className="deploy-env" aria-hidden>{env.slice(0, 1).toUpperCase()}</span>}
       <span className="deploy-text">
         <span className="deploy-meta">{env && <><b>{env}</b> · </>}{when ? timeAgo(when) : ''}{d.author && <> · <b>{d.author}</b></>}</span>
