@@ -96,7 +96,12 @@ function useBoardView() {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void api('/api/view', { method: 'PUT', body: { view: next } }), 600);
   };
-  const update = (next: View) => { setLocal(next); save(next); };
+  const update = (next: View) => {
+    setLocal(next);
+    save(next);
+    // Cache też, bo stan lokalny ginie przy odmontowaniu (wejście w task i powrót).
+    queryClient.setQueryData<ViewResponse>(['view'], (d) => d && { ...d, mine: next });
+  };
   // Jednorazowo: widok sprzed zmiany (trzymany w przeglądarce) przechodzi na konto.
   useEffect(() => {
     if (!q.data || q.data.mine) return;

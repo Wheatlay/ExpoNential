@@ -17,6 +17,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+- Board: a changed view (display and filters) no longer jumps back to the default after opening an issue and going back.
 - Collapsed sidebar: no more piece of your avatar showing next to Settings; each deploy dot has its environment's first letter next to it.
 - Board: a cell with more cards than fit shows a shadow at the edge where cards are hidden; Display › Board options › "Show all cards" lets cells grow instead of scrolling.
 - Relations: the manual "Related to" link is gone (existing ones removed). Instead the panel lists **Mentioned** issues (both directions), found in descriptions and comments the same way as the issue pills (CHUB-210, chub 210, chub210), also from your other projects. MCP get_issue returns them as mentions / mentionedIn.
